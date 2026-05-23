@@ -61,5 +61,13 @@ def downgrade() -> None:
     op.drop_index("ix_incidents_severity", table_name="incidents")
     op.drop_index("ix_incidents_status", table_name="incidents")
     op.drop_table("incidents")
-    sa.Enum(name="incident_status").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="severity_level").drop(op.get_bind(), checkfirst=True)
+    # Drop Postgres native enum types created in upgrade()
+    # These must match the values used in upgrade() exactly.
+    sa.Enum(
+        "open", "investigating", "mitigating", "resolved", "closed",
+        name="incident_status",
+    ).drop(op.get_bind(), checkfirst=True)
+    sa.Enum(
+        "SEV-1", "SEV-2", "SEV-3", "SEV-4",
+        name="severity_level",
+    ).drop(op.get_bind(), checkfirst=True)

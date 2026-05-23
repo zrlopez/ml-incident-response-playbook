@@ -26,9 +26,19 @@ from httpx import AsyncClient, ASGITransport
 async def app_client(sqlite_engine):
     """
     FastAPI test client backed by in-memory SQLite.
-    Overrides the database dependency to use the test engine.
+
+    Overrides:
+      - get_session       -> scoped SQLite async session (no Postgres needed)
+      - get_current_user  -> stub admin user (no JWT/Redis needed)
+
+    Uses lifespan=False so the real lifespan (init_db, Redis connect, OTel)
+    does not run during tests. Each test gets a fresh session bound to the
+    same in-memory engine that already has the schema applied by sqlite_engine.
     """
-    from api.app import app
+    import os
+    os.environ.setdefault("JWT_SECRET_KEY", "test-secret-minimum-32-chars-xxxxxxxxxxxx")
+
+    from api.app import app, get_current_user
     from src.incident_tracker import get_session
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -36,14 +46,24 @@ async def app_client(sqlite_engine):
 
     async def override_get_session():
         async with factory() as session:
-            yield session
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    async def override_get_current_user():
+        """Stub admin user — bypasses JWT decode and Redis denylist check."""
+        return {"username": "test-admin", "role": "admin", "disabled": False}
 
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_current_user] = override_get_current_user
 
+    # lifespan=False: skip init_db(), Redis connect, and OTel bootstrap
     async with AsyncClient(
-        transport=ASGITransport(app=app),
+        transport=ASGITransport(app=app, raise_app_exceptions=True),
         base_url="http://testserver",
-        headers={"Authorization": "Bearer test-token-override"},
     ) as client:
         yield client
 
@@ -53,10 +73,10 @@ async def app_client(sqlite_engine):
 # ── Helpers ─────────────────────────────────────────────────────────────────────
 
 async def create_incident(client: AsyncClient) -> str:
-    """Create a fresh OPEN incident and return its ID."""
+    """Create a fresh OPEN incident and return its UUID."""
     resp = await client.post("/incidents/", json={
         "title": "API test: model latency spike",
-        "severity": "SEV2",
+        "severity": "SEV-2",
         "category": "latency",
         "owner": "oncall-ml",
     })
@@ -77,7 +97,7 @@ async def patch_status(client: AsyncClient, incident_id: str, new_status: str):
 async def test_create_incident_returns_201(app_client):
     resp = await app_client.post("/incidents/", json={
         "title": "CPU spike on serving cluster",
-        "severity": "SEV1",
+        "severity": "SEV-1",
         "category": "compute",
         "owner": "platform-oncall",
     })

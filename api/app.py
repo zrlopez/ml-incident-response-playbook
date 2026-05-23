@@ -171,7 +171,7 @@ _USERS: dict[str, dict[str, Any]] = {
 
 # ── Stub incident store ───────────────────────────────────────────────────
 # TODO(prod): replace with IncidentRepository from src/incident_tracker.py
-_INCIDENTS: dict[str, dict[str, Any]] = {}
+# _INCIDENTS stub REMOVED — replaced by IncidentRepository (see incident routes below)
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────
@@ -192,10 +192,15 @@ class TokenPayload(BaseModel):
 
 
 class IncidentCreate(BaseModel):
+    """
+    Request body for POST /incidents.
+    Fields aligned with IncidentRepository.create() signature.
+    """
     title: str = Field(..., min_length=5, max_length=200)
-    description: str = Field(..., min_length=10, max_length=5000)
     severity: str = Field(...)
-    affected_system: str = Field(..., min_length=2, max_length=100)
+    category: str = Field(..., min_length=2, max_length=100)
+    owner: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
 
     @field_validator("severity")
     @classmethod
@@ -206,20 +211,26 @@ class IncidentCreate(BaseModel):
         return v.upper()
 
 
-class IncidentUpdate(BaseModel):
-    status: str | None = None
-    resolution_notes: str | None = Field(default=None, max_length=10000)
-    severity: str | None = None
+class StatusUpdate(BaseModel):
+    """
+    Request body for PATCH /incidents/{id}/status.
+    Only the status field is accepted; all other fields are immutable via this endpoint.
+    """
+    status: str
 
     @field_validator("status")
     @classmethod
-    def validate_status(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
+    def validate_status(cls, v: str) -> str:
         allowed = {"open", "investigating", "mitigating", "resolved", "closed"}
         if v.lower() not in allowed:
-            raise ValueError(f"status must be one of {allowed}")
+            raise ValueError(f"status must be one of {sorted(allowed)}")
         return v.lower()
+
+
+class IncidentUpdate(BaseModel):
+    """Request body for PATCH /incidents/{id} (metadata-only updates)."""
+    resolution_notes: str | None = Field(default=None, max_length=10000)
+    severity: str | None = None
 
     @field_validator("severity")
     @classmethod
@@ -691,128 +702,172 @@ async def logout(
     )
 
 
-# ── Incident routes ────────────────────────────────────────────────────────
+# ── Incident routes (repository-backed) ───────────────────────────────────
+#
+# All four routes use FastAPI Depends(get_session) to receive a scoped
+# async SQLAlchemy session and construct an IncidentRepository per request.
+# The _INCIDENTS in-memory stub has been fully removed.
+#
+# Status transitions are enforced by the domain state machine via
+# IncidentRepository.update_status(); violations raise InvalidTransitionError
+# which is mapped to HTTP 409 by the exception handler registered above.
 
-@app.post("/incidents", status_code=201, tags=["incidents"])
+
+@app.post("/incidents/", status_code=201, tags=["incidents"])
 async def create_incident(
     incident: IncidentCreate,
     current_user: Annotated[dict, Depends(require_role("analyst", "admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ):
-    """Create a new incident record. Requires analyst or admin role."""
-    incident_id = f"INC-{uuid.uuid4().hex[:12].upper()}"
-    now = datetime.now(timezone.utc).isoformat()
-    record = {
-        "incident_id": incident_id,
-        "title": incident.title,
-        "description": incident.description,
-        "severity": incident.severity,
-        "affected_system": incident.affected_system,
-        "status": "open",
-        "created_by": current_user["username"],
-        "created_at": now,
-        "updated_at": now,
-    }
-    _INCIDENTS[incident_id] = record
+    """Create a new incident in OPEN status. Requires analyst or admin role."""
+    repo = IncidentRepository(session)
+    try:
+        severity_enum = SeverityLevel(incident.severity)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid severity '{incident.severity}'. Must be one of SEV-1..SEV-4.",
+        )
 
+    record = await repo.create(
+        title=incident.title,
+        severity=severity_enum,
+        category=incident.category,
+        owner=incident.owner,
+        description=incident.description,
+    )
     log.info(
         "incident.created",
-        incident_id=incident_id,
-        severity=incident.severity,
-        affected_system=incident.affected_system,
+        incident_id=record.id,
+        severity=record.severity.value,
+        category=record.category,
         created_by=current_user["username"],
         log_type="audit",
         event="incident_created",
     )
-    return record
+    return record.to_dict()
 
 
-@app.get("/incidents", tags=["incidents"])
+@app.get("/incidents/", tags=["incidents"])
 async def list_incidents(
     current_user: Annotated[dict, Depends(require_role("analyst", "admin", "operator"))],
-    status_filter: str | None = None,
-    severity_filter: str | None = None,
-    limit: int = Field(default=50, ge=1, le=200),
-    offset: int = Field(default=0, ge=0),
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: int = 50,
+    offset: int = 0,
 ):
-    """List incidents with optional status/severity filtering and pagination."""
-    incidents = list(_INCIDENTS.values())
-
-    if status_filter:
-        incidents = [i for i in incidents if i["status"] == status_filter]
-    if severity_filter:
-        incidents = [i for i in incidents if i["severity"] == severity_filter.upper()]
-
-    total = len(incidents)
+    """List open incidents (most recent first). Requires analyst, operator, or admin."""
+    repo = IncidentRepository(session)
+    incidents = await repo.list_open(limit=min(limit, 200))
     page = incidents[offset: offset + limit]
-
     log.info(
         "incident.list",
-        total=total,
         returned=len(page),
         requested_by=current_user["username"],
     )
-    return {"total": total, "offset": offset, "limit": limit, "incidents": page}
+    return {"total": len(incidents), "offset": offset, "limit": limit, "incidents": [i.to_dict() for i in page]}
 
 
 @app.get("/incidents/{incident_id}", tags=["incidents"])
 async def get_incident(
     incident_id: str,
     current_user: Annotated[dict, Depends(require_role("analyst", "admin", "operator"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ):
-    """Retrieve a single incident by ID."""
-    if not re.fullmatch(r"INC-[A-F0-9]{12}", incident_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid incident_id format",
-        )
-    record = _INCIDENTS.get(incident_id)
-    if not record:
+    """Retrieve a single incident by UUID. Requires analyst, operator, or admin."""
+    repo = IncidentRepository(session)
+    record = await repo.get(incident_id)
+    if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Incident not found",
+            detail=f"Incident '{incident_id}' not found.",
         )
-    return record
+    return record.to_dict()
+
+
+@app.patch("/incidents/{incident_id}/status", tags=["incidents"])
+async def update_incident_status(
+    incident_id: str,
+    update: StatusUpdate,
+    current_user: Annotated[dict, Depends(require_role("operator", "admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """
+    Transition an incident to a new lifecycle status.
+
+    Valid transitions are enforced by the domain state machine.
+    Invalid transitions return HTTP 409 Conflict with an 'invalid_transition' error body.
+    Requires operator or admin role.
+    """
+    repo = IncidentRepository(session)
+    try:
+        new_status_enum = IncidentStatus(update.status)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown status '{update.status}'.",
+        )
+
+    # IncidentRepository.get() used first so we can return a clean 404
+    existing = await repo.get(incident_id)
+    if existing is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Incident '{incident_id}' not found.",
+        )
+
+    # InvalidTransitionError propagates to the registered 409 exception handler
+    record = await repo.update_status(
+        incident_id=incident_id,
+        new_status=new_status_enum,
+    )
+    log.info(
+        "incident.status_updated",
+        incident_id=incident_id,
+        new_status=record.status.value,
+        updated_by=current_user["username"],
+        log_type="audit",
+        event="incident_status_updated",
+    )
+    return record.to_dict()
 
 
 @app.patch("/incidents/{incident_id}", tags=["incidents"])
-async def update_incident(
+async def update_incident_metadata(
     incident_id: str,
     update: IncidentUpdate,
     current_user: Annotated[dict, Depends(require_role("operator", "admin"))],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ):
-    """Update incident status/severity/resolution notes. Requires operator or admin."""
-    if not re.fullmatch(r"INC-[A-F0-9]{12}", incident_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid incident_id format",
-        )
-    record = _INCIDENTS.get(incident_id)
-    if not record:
+    """
+    Update mutable incident metadata (resolution_notes, severity).
+    Does NOT change lifecycle status — use PATCH /incidents/{id}/status for that.
+    Requires operator or admin role.
+    """
+    repo = IncidentRepository(session)
+    record = await repo.get(incident_id)
+    if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Incident not found",
+            detail=f"Incident '{incident_id}' not found.",
         )
 
-    changes: dict[str, Any] = {}
-    if update.status is not None:
-        changes["status"] = {"from": record.get("status"), "to": update.status}
-        record["status"] = update.status
-    if update.resolution_notes is not None:
-        record["resolution_notes"] = update.resolution_notes
-        changes["resolution_notes"] = "updated"
     if update.severity is not None:
-        changes["severity"] = {"from": record.get("severity"), "to": update.severity}
-        record["severity"] = update.severity
+        try:
+            record.severity = SeverityLevel(update.severity)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid severity '{update.severity}'.",
+            )
 
-    record["updated_at"] = datetime.now(timezone.utc).isoformat()
-    record["updated_by"] = current_user["username"]
+    if update.resolution_notes is not None:
+        record.description = update.resolution_notes
 
     log.info(
-        "incident.updated",
+        "incident.metadata_updated",
         incident_id=incident_id,
-        changes=changes,
         updated_by=current_user["username"],
         log_type="audit",
-        event="incident_updated",
+        event="incident_metadata_updated",
     )
-    return record
+    return record.to_dict()
