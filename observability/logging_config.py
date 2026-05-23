@@ -1,84 +1,91 @@
-"""logging_config.py — Centralized structured logging configuration (remediation initiative)
-
-Fixes applied:
-  - structlog replaces ad-hoc print()/logging.info() calls
-  - JSON output in production; pretty-printed in development
-  - PII scrubbing processor: redacts email, phone, token fields
-  - Log level configurable via LOG_LEVEL env var
-  - Audit log helper for security-relevant events
-  - No plaintext secrets in log records
 """
+Centralised structured logging configuration.
+
+Features:
+  - PII scrubbing (regex + field-level redaction)
+  - JSON output in production, coloured console in development
+  - ISO-8601 timestamps
+  - Per-request trace_id via structlog contextvars
+  - Audit-log tagging (log_type="audit") for SIEM routing
+  - Callable from app.py at import time — idempotent (safe to call multiple times)
+"""
+
 from __future__ import annotations
 
 import logging
 import os
 import re
+import sys
 from typing import Any
 
 import structlog
 
-# ---------------------------------------------------------------------------
-# Configuration from environment
-# ---------------------------------------------------------------------------
-_LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-_API_ENV = os.getenv("API_ENV", "development")
-_IS_PRODUCTION = _API_ENV == "production"
+APP_ENV: str = os.getenv("APP_ENV", "production")
 
-# ---------------------------------------------------------------------------
-# PII Scrubbing Processor
-# ---------------------------------------------------------------------------
-# Fields that should NEVER appear in log output as plaintext
-_SENSITIVE_KEYS = frozenset({
-    "password", "passwd", "secret", "token", "authorization",
-    "jwt", "api_key", "apikey", "credit_card", "ssn",
-    "access_token", "refresh_token", "private_key",
+# Fields whose values are always fully redacted regardless of content
+_REDACTED_FIELDS: frozenset[str] = frozenset({
+    "password", "passwd", "secret", "token", "access_token", "refresh_token",
+    "jwt", "authorization", "api_key", "private_key", "credit_card",
+    "ssn", "social_security", "hashed_password",
 })
 
-# Simple regex patterns for value-level scrubbing
-_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
-_PHONE_RE = re.compile(r"\b(\+?1[\s.-]?)?\(?[0-9]{3}\)?[\s.-]?[0-9]{3}[\s.-]?[0-9]{4}\b")
+# Regex patterns for content-level PII scrubbing applied to rendered log strings
+_PII_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"), "[EMAIL_REDACTED]"),
+    (re.compile(r"\b(?:\+?1[-.]?)?\(?\d{3}\)?[-.]?\d{3}[-.]?\d{4}\b"), "[PHONE_REDACTED]"),
+    (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[SSN_REDACTED]"),
+    (re.compile(r"\b4[0-9]{12}(?:[0-9]{3})?\b"), "[CARD_REDACTED]"),  # Visa
+    (re.compile(r"\b5[1-5][0-9]{14}\b"), "[CARD_REDACTED]"),          # Mastercard
+]
 
 
-def _scrub_pii(logger, method, event_dict: dict[str, Any]) -> dict[str, Any]:
-    """structlog processor that redacts sensitive keys and value patterns.
-
-    Mutates event_dict in-place (structlog convention).
-    """
+def _redact_fields(logger: Any, method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Processor: redact sensitive field values."""
     for key in list(event_dict.keys()):
-        if key.lower() in _SENSITIVE_KEYS:
+        if key.lower() in _REDACTED_FIELDS:
             event_dict[key] = "[REDACTED]"
-            continue
-        val = event_dict.get(key)
-        if isinstance(val, str):
-            val = _EMAIL_RE.sub("[EMAIL_REDACTED]", val)
-            val = _PHONE_RE.sub("[PHONE_REDACTED]", val)
-            event_dict[key] = val
     return event_dict
 
 
-# ---------------------------------------------------------------------------
-# Configure structlog
-# ---------------------------------------------------------------------------
+def _scrub_pii(logger: Any, method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Processor: apply regex PII scrubbing to all string values."""
+    for key, value in event_dict.items():
+        if isinstance(value, str):
+            for pattern, replacement in _PII_PATTERNS:
+                value = pattern.sub(replacement, value)
+            event_dict[key] = value
+    return event_dict
+
+
+def _add_service_context(logger: Any, method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Processor: add static service metadata to every log event."""
+    event_dict.setdefault("service", "ml-incident-api")
+    event_dict.setdefault("env", APP_ENV)
+    return event_dict
+
+
+_configured = False
+
 
 def configure_logging() -> None:
-    """Call once at application startup to configure structlog and stdlib logging."""
-    log_level = getattr(logging, _LOG_LEVEL, logging.INFO)
+    """Bootstrap structlog. Idempotent — safe to call at module import."""
+    global _configured
+    if _configured:
+        return
 
-    # Shared processors for all environments
-    shared_processors: list = [
+    shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
-        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        _add_service_context,
+        _redact_fields,
         _scrub_pii,
-        structlog.processors.StackInfoRenderer(),
     ]
 
-    if _IS_PRODUCTION:
-        # JSON output for production (log aggregation: Datadog, Splunk, Loki, etc.)
-        renderer = structlog.processors.JSONRenderer()
+    if APP_ENV == "production":
+        renderer: Any = structlog.processors.JSONRenderer()
     else:
-        # Human-readable console output for development
         renderer = structlog.dev.ConsoleRenderer(colors=True)
 
     structlog.configure(
@@ -86,6 +93,7 @@ def configure_logging() -> None:
             *shared_processors,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
+        context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
@@ -95,85 +103,46 @@ def configure_logging() -> None:
         processor=renderer,
         foreign_pre_chain=shared_processors,
     )
-
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
 
     root_logger = logging.getLogger()
-    root_logger.handlers = [handler]
-    root_logger.setLevel(log_level)
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(logging.INFO if APP_ENV == "production" else logging.DEBUG)
 
-    # Suppress noisy third-party loggers
-    for noisy in ["uvicorn.access", "httpx", "httpcore"]:
-        logging.getLogger(noisy).setLevel(logging.WARNING)
-
-
-# ---------------------------------------------------------------------------
-# Audit logging helper
-# ---------------------------------------------------------------------------
-
-_audit_log = structlog.get_logger("audit")
+    _configured = True
 
 
 def audit(
-    action: str,
+    event: str,
     actor: str,
     resource: str,
+    action: str,
     outcome: str,
-    **extra: Any,
+    **kwargs: Any,
 ) -> None:
-    """Emit a structured audit log event for security-relevant actions.
+    """
+    Emit a structured audit log event.
 
-    All audit events are tagged with ``log_type="audit"`` for easy SIEM filtering.
+    All audit events carry log_type="audit" so downstream SIEM / log aggregators
+    (Datadog, Splunk, CloudWatch Logs Insights) can route them independently.
 
     Args:
-        action:   What was attempted (e.g., 'incident.create', 'auth.login').
-        actor:    Who performed the action (user ID / service account).
-        resource: What resource was acted upon (e.g., incident ID).
-        outcome:  'success' | 'failure' | 'denied'.
-        **extra:  Additional context (severity, IP, etc.).
+        event:    Short machine-readable event name, e.g. "incident.created".
+        actor:    Username or service identity performing the action.
+        resource: Resource identifier, e.g. "INC-ABC123" or "/incidents".
+        action:   Verb, e.g. "create", "update", "delete", "login".
+        outcome:  "success" | "failure" | "denied".
+        **kwargs: Additional structured context.
     """
-    _audit_log.info(
-        action,
-        log_type="audit",
+    log = structlog.get_logger("audit")
+    log.info(
+        event,
         actor=actor,
         resource=resource,
+        action=action,
         outcome=outcome,
-        **extra,
+        log_type="audit",
+        **kwargs,
     )
-
-
-# ---------------------------------------------------------------------------
-# Alerting hook (stub for Slack / PagerDuty / SNS integration)
-# ---------------------------------------------------------------------------
-
-_alert_log = structlog.get_logger("alert")
-
-
-def send_alert(
-    title: str,
-    severity: str,
-    details: dict[str, Any],
-    channel: str = "#ml-incidents",
-) -> None:
-    """Log a structured alert. Wire to real alerting channel in production.
-
-    TODO(prod): Replace body with Slack webhook, PagerDuty event, or SNS publish.
-
-    Args:
-        title:    Alert title (short, descriptive).
-        severity: 'SEV-1' | 'SEV-2' | 'SEV-3' | 'SEV-4'.
-        details:  Dict of context/evidence.
-        channel:  Target Slack channel or PagerDuty service name.
-    """
-    _alert_log.warning(
-        "alert.fired",
-        log_type="alert",
-        title=title,
-        severity=severity,
-        channel=channel,
-        **{k: v for k, v in details.items() if k.lower() not in _SENSITIVE_KEYS},
-    )
-    # TODO(prod):
-    # webhook_url = os.environ["SLACK_WEBHOOK_URL"]
-    # requests.post(webhook_url, json={"text": f"*{severity}* {title}", "channel": channel})
