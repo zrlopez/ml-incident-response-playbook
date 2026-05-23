@@ -1,0 +1,79 @@
+# .dockerignore — Remediation Initiative
+# Prevents sensitive files from being included in any COPY . . instructions.
+# IMPORTANT: Even with explicit COPY file lists, this is a critical safety net.
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+secrets/
+credentials/
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Test artifacts
+tests/
+.coverage
+coverage.xml
+*.pytest_cache
+htmlcov/
+
+# Documentation
+docs/
+*.md
+*.rst
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# CI/CD
+.github/
+ci_cd/
+
+# Local data
+data/
+*.csv
+*.json
+*.parquet
+*.db
+*.sqlite
+
+# Notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Reports
+reports/
+benchmarks/

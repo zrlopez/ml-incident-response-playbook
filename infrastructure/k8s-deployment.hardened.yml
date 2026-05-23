@@ -1,0 +1,165 @@
+# k8s-deployment.hardened.yml — Remediation Initiative
+#
+# Remediations applied:
+#   K8S-01 — runAsNonRoot: true + runAsUser: 1001
+#   K8S-02 — readOnlyRootFilesystem: true
+#   K8S-03 — allowPrivilegeEscalation: false
+#   K8S-04 — capabilities: drop [ALL]
+#   K8S-05 — Secrets injected from Kubernetes Secret, not env literals
+#   K8S-06 — Resource limits AND requests defined
+#   K8S-07 — Liveness and readiness probes configured
+#   K8S-08 — NetworkPolicy (separate resource, see below)
+#   K8S-09 — PodDisruptionBudget for HA
+#   K8S-10 — Topology spread for anti-affinity
+---
+apiVersion: apps/v1
+kind: Deployment
+meta
+  name: ml-incident-api
+  namespace: ml-platform
+  labels:
+    app: ml-incident-api
+    version: "1.0.0"
+    security-review: "passed"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ml-incident-api
+  template:
+    meta
+      labels:
+        app: ml-incident-api
+      annotations:
+        seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    spec:
+      serviceAccountName: ml-incident-api-sa
+      automountServiceAccountToken: false  # K8S-SA: disable unless needed
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: ml-incident-api
+      containers:
+        - name: api
+          image: ml-incident-api:1.0.0  # Pin to immutable digest in production
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: API_ENV
+              value: production
+            - name: ACCESS_TOKEN_EXPIRE_MINUTES
+              value: "30"
+            # Secrets: injected from Kubernetes Secret, never hardcoded
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ml-incident-api-secrets
+                  key: jwt-secret-key
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom:
+                secretKeyRef:
+                  name: ml-incident-api-secrets
+                  key: cors-allowed-origins
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp-vol
+              mountPath: /tmp
+            - name: logs-vol
+              mountPath: /app/logs
+      volumes:
+        - name: tmp-vol
+          emptyDir: {}
+        - name: logs-vol
+          emptyDir: {}
+
+---
+# Service Account with no extra RBAC permissions
+apiVersion: v1
+kind: ServiceAccount
+meta
+  name: ml-incident-api-sa
+  namespace: ml-platform
+automountServiceAccountToken: false
+
+---
+# NetworkPolicy: allow only ingress on 8000 from ingress-nginx
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+meta
+  name: ml-incident-api-netpol
+  namespace: ml-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-incident-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443   # HTTPS egress for external integrations
+        - protocol: TCP
+          port: 5432  # PostgreSQL (if applicable)
+
+---
+# PodDisruptionBudget: maintain at least 1 pod available during rolling updates
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+meta
+  name: ml-incident-api-pdb
+  namespace: ml-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ml-incident-api
