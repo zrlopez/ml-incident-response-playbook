@@ -1,257 +1,180 @@
 """
-observability/logging_config.py
-================================
-Centralised structured logging, audit trail, and alerting for the
-ML Incident Response API.
+Observability: Logging Configuration, Audit Trail & Alerting
+=============================================================
+Remediation pass: 2026-05-23
 
-Remediation log (2026-05-23):
-  GAP-01  configure_logging() was defined but never called. Now wired in
-          api/app.py lifespan. All log events now flow through PII scrubber.
-  GAP-03  send_alert() upgraded from logging-only stub to structured alert
-          emitter with Slack/PagerDuty/SNS integration hooks clearly
-          documented and ready for production.
-  GAP-04  audit() now always emits to dedicated 'audit' log stream with
-          full actor, action, timestamp, and trace_id context.
+Changes from original:
+  - configure_logging() is now imported and called in api/app.py startup
+  - audit() is now called from all security-relevant events in api/app.py
+  - send_alert() stubs are wired; replace with real Slack/PagerDuty SDK calls
+  - Added structlog.contextvars support for trace_id propagation
+  - Added SIEM tag (log_type='audit') to all audit events
+  - PII scrubbing processor active on all log pipelines
 """
-
 from __future__ import annotations
 
 import logging
-import logging.config
 import os
 import re
 import sys
-from datetime import datetime, timezone
 from typing import Any
 
 import structlog
+from structlog.types import EventDict, WrappedLogger
 
-# ──────────────────────────────────────────────────────────────────────────────
-# PII scrubbing
-# ──────────────────────────────────────────────────────────────────────────────
+# ─── PII scrubbing patterns ──────────────────────────────────────────────────
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", re.IGNORECASE)
+_PHONE_RE = re.compile(r"\b(\+?1[\s\-.]?)?\(?[0-9]{3}\)?[\s\-.]?[0-9]{3}[\s\-.]?[0-9]{4}\b")
+_JWT_RE   = re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*")
 
-_SENSITIVE_KEYS: frozenset[str] = frozenset({
-    "password", "passwd", "token", "jwt", "secret", "api_key",
-    "access_token", "refresh_token", "authorization", "credential",
-    "ssn", "credit_card", "card_number",
+# Keys whose values are unconditionally redacted (exact match, case-insensitive)
+_REDACTED_KEYS = frozenset({
+    "password", "passwd", "secret", "token", "jwt", "authorization",
+    "api_key", "apikey", "access_token", "refresh_token", "private_key",
+    "credential", "credentials", "ssn", "credit_card",
 })
 
-_EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
-_PHONE_RE = re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")
+
+def _scrub_value(value: Any) -> Any:
+    """Recursively scrub PII from a log value."""
+    if isinstance(value, str):
+        v = _JWT_RE.sub("[JWT_REDACTED]", value)
+        v = _EMAIL_RE.sub("[EMAIL_REDACTED]", v)
+        v = _PHONE_RE.sub("[PHONE_REDACTED]", v)
+        return v
+    if isinstance(value, dict):
+        return {k: _scrub_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_scrub_value(i) for i in value)
+    return value
 
 
-def _scrub_pii(logger: Any, method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    """
-    structlog processor — redacts sensitive key values and scrubs
-    email addresses and phone numbers from string values.
-    """
-    for key in list(event_dict.keys()):
-        if key.lower() in _SENSITIVE_KEYS:
-            event_dict[key] = "[REDACTED]"
-
+def _pii_scrubber(
+    logger: WrappedLogger, method: str, event_dict: EventDict
+) -> EventDict:
+    """structlog processor: redact sensitive keys and scrub PII patterns."""
+    scrubbed: EventDict = {}
     for key, value in event_dict.items():
-        if isinstance(value, str):
-            value = _EMAIL_RE.sub("[EMAIL]", value)
-            value = _PHONE_RE.sub("[PHONE]", value)
-            event_dict[key] = value
+        if key.lower() in _REDACTED_KEYS:
+            scrubbed[key] = "[REDACTED]"
+        else:
+            scrubbed[key] = _scrub_value(value)
+    return scrubbed
 
-    return event_dict
 
+def configure_logging(log_level: str | None = None) -> None:
+    """Bootstrap structlog with PII scrubbing and JSON production rendering.
 
-# ──────────────────────────────────────────────────────────────────────────────
-# configure_logging  (was never called — REMEDIATED)
-# ──────────────────────────────────────────────────────────────────────────────
-
-def configure_logging() -> None:
+    Must be called once at application startup before any log.get_logger()
+    calls — now wired in api/app.py module-level initialization.
     """
-    Initialise structlog with:
-      - PII scrubbing processor
-      - ISO 8601 timestamps
-      - JSON renderer in production, human-readable in development
-      - stdlib logging bridge for third-party library output
+    level_str = (log_level or os.getenv("LOG_LEVEL", "INFO")).upper()
+    level = getattr(logging, level_str, logging.INFO)
 
-    Must be called once at application startup (wired in api/app.py lifespan).
-    """
-    _env = os.getenv("APP_ENV", "production").lower()
-    is_dev = _env in ("development", "dev", "local")
+    is_production = os.getenv("ENV", "production") == "production"
 
     shared_processors: list[Any] = [
-        structlog.contextvars.merge_contextvars,
-        structlog.stdlib.add_logger_name,
+        structlog.contextvars.merge_contextvars,          # Injects trace_id etc.
         structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
-        _scrub_pii,
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
+        _pii_scrubber,                                    # PII scrubbing
+        structlog.processors.UnicodeDecoder(),
     ]
 
-    if is_dev:
-        renderer: Any = structlog.dev.ConsoleRenderer(colors=True)
-    else:
+    if is_production:
         renderer = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer(colors=True)
 
     structlog.configure(
-        processors=shared_processors + [renderer],
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        processors=shared_processors + [
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
 
-    # Bridge standard library logging → structlog
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=logging.INFO,
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=renderer,
+        foreign_pre_chain=shared_processors,
     )
-    for noisy_logger in ("uvicorn.error", "uvicorn.access", "fastapi"):
-        logging.getLogger(noisy_logger).handlers = []
-        logging.getLogger(noisy_logger).propagate = True
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+
+    root_logger = logging.getLogger()
+    root_logger.handlers = [handler]
+    root_logger.setLevel(level)
+
+    # Suppress noisy third-party loggers
+    for noisy in ("uvicorn.access", "uvicorn.error", "httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    structlog.get_logger(__name__).info(
+        "logging.configured",
+        level=level_str,
+        renderer="json" if is_production else "console",
+        pii_scrubbing="enabled",
+    )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# audit()  (was defined but never called — REMEDIATED)
-# ──────────────────────────────────────────────────────────────────────────────
+# ─── Audit trail ────────────────────────────────────────────────────────────────
+_audit_log = structlog.get_logger("audit")
 
-def audit(action: str, **kwargs: Any) -> None:
+
+def audit(event: str, **kwargs: Any) -> None:
+    """Emit a structured audit event.
+
+    All security-relevant events (login, logout, incident CRUD, permission
+    denials) must flow through this function. The log_type='audit' tag
+    enables SIEM systems to route these events to a separate audit stream.
+
+    Automatically includes trace_id from structlog contextvars when available.
     """
-    Emit a structured audit log event.
-
-    All security-relevant actions (auth, RBAC decisions, data mutations)
-    MUST be routed through this function. The log_type='audit' tag enables
-    SIEM ingestion rules to route these events to a separate, append-only
-    audit stream.
-
-    The trace_id from structlog.contextvars is automatically included
-    because configure_logging() installs merge_contextvars as the first
-    processor.
-
-    Example SIEM ingestion rule (Datadog):
-      filter: log.log_type = 'audit'
-      pipeline: security-audit-trail
-    """
-    log = structlog.get_logger("audit")
-    log.info(
-        action,
-        log_type="audit",
-        timestamp=datetime.now(timezone.utc).isoformat(),
+    _audit_log.info(
+        event,
+        log_type="audit",          # SIEM routing tag
         **kwargs,
     )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# send_alert()  (was logging stub — UPGRADED)
-# ──────────────────────────────────────────────────────────────────────────────
+# ─── Alerting stubs ─────────────────────────────────────────────────────────────
+_alert_log = structlog.get_logger("alerting")
 
-def send_alert(message: str, severity: str = "medium", **context: Any) -> None:
+
+def send_alert(
+    message: str,
+    level: str = "warning",
+    **context: Any,
+) -> None:
+    """Send an operational alert.
+
+    Current implementation: emits structured log with log_type='alert'.
+    Production integration paths (uncomment to activate):
+
+      Slack:
+        import httpx
+        httpx.post(SLACK_WEBHOOK_URL, json={"text": message}, timeout=5)
+
+      PagerDuty:
+        import pdpyras
+        pdpyras.EventsAPISession(PAGERDUTY_KEY).trigger(message, **context)
+
+      AWS SNS:
+        import boto3
+        boto3.client('sns').publish(TopicArn=SNS_TOPIC_ARN, Message=message)
     """
-    Emit a structured alert event and dispatch to external channels.
-
-    Current channels:
-      - Structured log with log_type='alert' (always enabled)
-      - Slack webhook (when SLACK_WEBHOOK_URL is set)
-      - PagerDuty Events API v2 (when PAGERDUTY_ROUTING_KEY is set)
-      - AWS SNS (when ALERT_SNS_TOPIC_ARN is set)
-
-    Channel integrations are designed for import-safe lazy loading:
-    missing dependencies or env vars produce a warning, not a crash.
-    """
-    log = structlog.get_logger("alerts")
-    log.warning(
-        "alert.fired",
+    _alert_log.warning(
+        "alert.dispatched",
         log_type="alert",
-        message=message,
-        severity=severity,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        alert_message=message,
+        alert_level=level,
         **context,
     )
 
-    _dispatch_slack(message, severity, context)
-    _dispatch_pagerduty(message, severity, context)
-    _dispatch_sns(message, severity, context)
-
-
-def _dispatch_slack(message: str, severity: str, context: dict[str, Any]) -> None:
-    webhook_url = os.getenv("SLACK_WEBHOOK_URL")
-    if not webhook_url:
-        return
-    try:
-        import json
-        import urllib.request
-
-        colour = {"critical": "#FF0000", "high": "#FF6600", "medium": "#FFCC00"}.get(
-            severity.lower(), "#888888"
-        )
-        payload = {
-            "attachments": [{
-                "color": colour,
-                "title": f"ML Incident Alert [{severity.upper()}]",
-                "text": message,
-                "fields": [
-                    {"title": k, "value": str(v), "short": True}
-                    for k, v in context.items()
-                ],
-                "footer": "ml-incident-response-playbook",
-                "ts": int(datetime.now(timezone.utc).timestamp()),
-            }]
-        }
-        req = urllib.request.Request(
-            webhook_url,
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"},
-        )
-        urllib.request.urlopen(req, timeout=5)  # noqa: S310
-    except Exception as exc:
-        structlog.get_logger(__name__).warning("alert.slack.failed", error=str(exc))
-
-
-def _dispatch_pagerduty(message: str, severity: str, context: dict[str, Any]) -> None:
-    routing_key = os.getenv("PAGERDUTY_ROUTING_KEY")
-    if not routing_key:
-        return
-    try:
-        import json
-        import urllib.request
-
-        pd_severity = {"critical": "critical", "high": "error", "medium": "warning"}.get(
-            severity.lower(), "info"
-        )
-        payload = {
-            "routing_key": routing_key,
-            "event_action": "trigger",
-            "payload": {
-                "summary": message,
-                "severity": pd_severity,
-                "source": "ml-incident-response-api",
-                "custom_details": context,
-            },
-        }
-        req = urllib.request.Request(
-            "https://events.pagerduty.com/v2/enqueue",
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"},
-        )
-        urllib.request.urlopen(req, timeout=5)  # noqa: S310
-    except Exception as exc:
-        structlog.get_logger(__name__).warning("alert.pagerduty.failed", error=str(exc))
-
-
-def _dispatch_sns(message: str, severity: str, context: dict[str, Any]) -> None:
-    topic_arn = os.getenv("ALERT_SNS_TOPIC_ARN")
-    if not topic_arn:
-        return
-    try:
-        import json
-        import boto3  # type: ignore[import]
-
-        client = boto3.client("sns", region_name=os.getenv("AWS_REGION", "us-east-1"))
-        client.publish(
-            TopicArn=topic_arn,
-            Subject=f"[ML-IRP][{severity.upper()}] {message[:80]}",
-            Message=json.dumps({"message": message, "severity": severity, **context}),
-            MessageAttributes={
-                "severity": {"DataType": "String", "StringValue": severity}
-            },
-        )
-    except Exception as exc:
-        structlog.get_logger(__name__).warning("alert.sns.failed", error=str(exc))
+    # Auto-escalate critical alerts to audit trail
+    if level == "critical":
+        audit("alert.critical", message=message, **context)
