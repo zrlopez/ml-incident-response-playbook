@@ -1,0 +1,78 @@
+# ============================================================
+# .gitignore — ml-incident-response-playbook
+# ============================================================
+
+# ── SECRETS & CREDENTIALS (never commit) ────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+secrets/
+credentials/
+token.json
+*_secret.json
+service_account*.json
+*_credentials*
+*_token*
+jwt_secret*
+airflow_connections*
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+*.egg
+
+# ── Virtual environments ────────────────────────────────
+.venv
+venv/
+env/
+ENV/
+
+# ── Testing & coverage ─────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# ── Airflow ────────────────────────────────────────────
+logs/
+airflow.db
+airflow.cfg
+unittests.cfg
+*.pid
+
+# ── ML artifacts (large files / model weights) ───────────────
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
+models/
+checkpoints/
+
+# ── IDEs & editors ────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── Logs & runtime output ──────────────────────────────
+*.log
+run_logs/
+output/

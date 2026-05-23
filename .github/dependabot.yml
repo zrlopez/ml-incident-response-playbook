@@ -1,0 +1,47 @@
+# ============================================================
+# dependabot.yml — ml-incident-response-playbook
+# Automated dependency security updates.
+# ============================================================
+
+version: 2
+
+updates:
+  # ── Python dependencies ─────────────────────────────────
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Chicago
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "deps"
+      include: scope
+    reviewers:
+      - zrduloup
+    ignore:
+      # Pin major version upgrades for review — bump manually
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # ── GitHub Actions ───────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Chicago
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci-cd
+    commit-message:
+      prefix: "ci"
+      include: scope
+    reviewers:
+      - zrduloup
