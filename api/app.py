@@ -82,11 +82,36 @@ def revoke_token(jti: str, expires_in: int) -> None:
     _denylist.revoke(jti, ttl_seconds=expires_in)
 
 
+class DenylistUnavailableError(Exception):
+    """Raised when token revocation check cannot be completed safely."""
+
+
 def is_token_revoked(jti: str) -> bool:
+    """
+    Check if a JWT has been revoked.
+
+    Fail-CLOSED: if the denylist is unavailable, raises DenylistUnavailableError.
+    The caller must respond with HTTP 503 so clients can retry.
+    This prioritises security over availability — correct for an auth control plane.
+    """
     if _denylist is None:
-        log.error("denylist.not_initialised", jti=jti)
-        return False  # fail-open in degenerate state; alert fires via Redis monitor
-    return _denylist.is_revoked(jti)
+        log.critical(
+            "denylist.unavailable.fail_closed",
+            jti=jti,
+            action="request_denied",
+            alert="page_oncall",
+        )
+        raise DenylistUnavailableError("Token denylist not initialised — failing closed")
+    try:
+        return _denylist.is_revoked(jti)
+    except Exception as exc:
+        log.critical(
+            "denylist.check_failed.fail_closed",
+            jti=jti,
+            error=str(exc),
+            action="request_denied",
+        )
+        raise DenylistUnavailableError(f"Denylist check failed: {exc}") from exc
 
 
 # ── Password hashing ───────────────────────────────────────────────────────
@@ -96,23 +121,42 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 # ── Stub user store ───────────────────────────────────────────────────────
-# TODO(prod): replace with async DB query via SQLAlchemy / asyncpg.
+# PRODUCTION GATE: Hard-fail on startup if ENVIRONMENT=production.
+# Replace with PostgresUserRepository before any production deployment.
+# See api/user_repository.py for the production implementation contract.
+if ENVIRONMENT == "production":
+    raise RuntimeError(
+        "\n"
+        "  FATAL: Stub user store must not run in production.\n"
+        "  Action: Wire PostgresUserRepository in api/user_repository.py\n"
+        "  and inject it via the lifespan context before deploying.\n"
+    )
+
+_DEV_ADMIN_PW: str = os.environ.get("DEV_ADMIN_PASSWORD", "")
+if not _DEV_ADMIN_PW and ENVIRONMENT != "production":
+    import warnings
+    warnings.warn(
+        "DEV_ADMIN_PASSWORD not set — using insecure fallback. Set it in .env for local dev.",
+        stacklevel=1,
+    )
+    _DEV_ADMIN_PW = "admin-dev-only"
+
 _USERS: dict[str, dict[str, Any]] = {
     "admin": {
         "username": "admin",
-        "hashed_password": pwd_context.hash("admin-dev-only"),
+        "hashed_password": pwd_context.hash(_DEV_ADMIN_PW),
         "role": "admin",
         "disabled": False,
     },
     "analyst": {
         "username": "analyst",
-        "hashed_password": pwd_context.hash("analyst-dev-only"),
+        "hashed_password": pwd_context.hash(os.environ.get("DEV_ANALYST_PASSWORD", "analyst-dev-only")),
         "role": "analyst",
         "disabled": False,
     },
     "operator": {
         "username": "operator",
-        "hashed_password": pwd_context.hash("operator-dev-only"),
+        "hashed_password": pwd_context.hash(os.environ.get("DEV_OPERATOR_PASSWORD", "operator-dev-only")),
         "role": "operator",
         "disabled": False,
     },
@@ -188,9 +232,21 @@ def create_access_token(
     expires_delta: timedelta | None = None,
 ) -> tuple[str, str, int]:
     """
-    Returns (encoded_jwt, jti, ttl_seconds) so callers can set Redis TTL
-    to match the token's natural expiry — no orphaned denylist entries.
+    Create a signed JWT access token.
+
+    Args:
+         Payload claims to encode. Must include 'sub' and 'role'.
+        expires_delta: Override default expiry window.
+
+    Returns:
+        Tuple of (encoded_jwt, jti, ttl_seconds) so callers can set Redis TTL
+        to match the token's natural expiry — no orphaned denylist entries.
+
+    Raises:
+        ValueError: If payload is missing required claims.
     """
+    if "sub" not in data or "role" not in 
+        raise ValueError("Token payload must include 'sub' and 'role' claims")
     to_encode = data.copy()
     jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -209,7 +265,20 @@ def create_access_token(
 def create_refresh_token(
      dict[str, Any],
 ) -> tuple[str, str, int]:
-    """Returns (encoded_jwt, jti, ttl_seconds)."""
+    """
+    Create a signed JWT refresh token.
+
+    Args:
+         Payload claims to encode. Must include 'sub'.
+
+    Returns:
+        Tuple of (encoded_jwt, jti, ttl_seconds).
+
+    Raises:
+        ValueError: If payload is missing 'sub' claim.
+    """
+    if "sub" not in 
+        raise ValueError("Refresh token payload must include 'sub' claim")
     to_encode = data.copy()
     jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -255,7 +324,7 @@ def decode_token(token: str) -> dict[str, Any]:
 def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
     user = _USERS.get(username)
     if not user:
-        pwd_context.dummy_verify()  # constant-time: prevent username enumeration
+        pwd_context.dummy_verify("dummy", pwd_context.hash("dummy"))  # constant-time: prevent username enumeration
         return None
     if user.get("disabled"):
         return None
@@ -275,7 +344,16 @@ async def get_current_user(
             detail="Wrong token type",
         )
     jti = payload.get("jti", "")
-    if is_token_revoked(jti):
+    try:
+        revoked = is_token_revoked(jti)
+    except DenylistUnavailableError:
+        # Fail-closed: denylist unreachable — return 503, not 401, so clients retry
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable",
+            headers={"Retry-After": "30"},
+        )
+    if revoked:
         log.warning(
             "auth.revoked_token_access",
             jti=jti,

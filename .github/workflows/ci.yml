@@ -1,0 +1,173 @@
+# =============================================================================
+# ML Incident Response API - Hardened CI/CD Pipeline
+# Remediation 2026-05-23
+# CI-01: JWT_SECRET_KEY moved to GitHub Actions secret (was echoed plaintext)
+# CI-02: mypy continue-on-error removed (now hard gate)
+# CI-03: Trivy container scan added
+# CI-04: syft SBOM generation added
+# CI-05: Bandit now scans tests/ at low threshold
+# =============================================================================
+name: Secure CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write
+
+jobs:
+  secrets-scan:
+    name: TruffleHog Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@09e9e7cb5a6e5cf698ed38e57ef21d1e6cd09e6f
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  dependency-audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    needs: secrets-scan
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: pip-audit
+        run: |
+          pip install pip-audit==2.7.3
+          pip-audit --requirement requirements.txt --strict --format json --output pip-audit-report.json || true
+          pip-audit --requirement requirements.txt --strict
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
+          retention-days: 90
+
+  sast:
+    name: SAST - Bandit + mypy
+    runs-on: ubuntu-latest
+    needs: secrets-scan
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Bandit - application code
+        run: |
+          bandit -r api/ observability/ -l -i -f sarif -o bandit-app.sarif || true
+          bandit -r api/ observability/ -l -i
+      - name: Bandit - test code
+        run: |
+          bandit -r tests/ --severity-level low --confidence-level low --skip B101 -f sarif -o bandit-tests.sarif || true
+      - name: Upload Bandit SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: bandit-app.sarif
+      # FIXED: removed continue-on-error: true
+      - name: mypy type checking
+        run: mypy api/ observability/ --strict --ignore-missing-imports
+
+  test:
+    name: Tests + Coverage
+    runs-on: ubuntu-latest
+    needs: [sast, dependency-audit]
+    env:
+      # FIXED: secret now read from GitHub Actions secret, not echoed plaintext
+      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY }}
+      ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: pytest
+        run: pytest tests/ --cov=api --cov=observability --cov-report=xml --cov-fail-under=70 -v
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 30
+
+  container-scan:
+    name: Container Build + Trivy + SBOM
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ml-incident-api:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # ADDED: Trivy container vulnerability scan
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8
+        with:
+          image-ref: ml-incident-api:${{ github.sha }}
+          format: sarif
+          output: trivy-container.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-container.sarif
+      # ADDED: SBOM with syft (NTIA minimum elements, SPDX format)
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ml-incident-api:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-${{ github.sha }}.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom-${{ github.sha }}.spdx.json
+          retention-days: 365
+
+  deploy-gate:
+    name: Deployment Readiness Gate
+    runs-on: ubuntu-latest
+    needs: container-scan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: All gates passed
+        run: |
+          echo "secrets-scan: passed"
+          echo "dependency-audit: passed"
+          echo "sast (bandit + mypy): passed"
+          echo "tests (>= 70% coverage): passed"
+          echo "container-scan (trivy): passed"
+          echo "sbom: generated"
+          echo "Ready to deploy"
