@@ -10,13 +10,13 @@
 # ── Web framework ───────────────────────────────────────────────────────────────
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
-python-multipart==0.0.12
+python-multipart==0.0.27
 
 # ── Authentication ──────────────────────────────────────────────────────────────
 # python-jose REMOVED: CVE-2024-33663
 PyJWT[crypto]==2.9.0
 passlib[bcrypt]==1.7.4
-cryptography==43.0.1
+cryptography==46.0.7
 
 # ── Rate limiting ──────────────────────────────────────────────────────────────
 slowapi==0.1.9
@@ -59,7 +59,7 @@ scikit-learn==1.5.2
 # NOTE: Airflow is a heavy dependency. In production, install Airflow separately
 # in its own environment and deploy DAGs via git-sync. Do not install in the
 # API container (infrastructure/Dockerfile.hardened excludes it).
-apache-airflow==2.10.2
+apache-airflow==3.2.1rc1
 
 # ── AWS SDK ─────────────────────────────────────────────────────────────────────
 boto3==1.35.49
