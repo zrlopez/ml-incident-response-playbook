@@ -1,0 +1,4 @@
+flowchart TD
+  A[Data quality alert] --> B{Schema valid?}
+  B -- No --> C[Quarantine]
+  B -- Yes --> D[Review thresholds]

@@ -1,0 +1,7 @@
+version: 2
+
+sources:
+  - name: operational
+    schema: operational
+    tables:
+      - name: incident_events

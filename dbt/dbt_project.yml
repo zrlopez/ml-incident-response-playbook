@@ -1,0 +1,19 @@
+name: ml_incident_response
+version: 1.0.0
+config-version: 2
+profile: ml_incident_response
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+clean-targets: ["target", "dbt_packages"]
+models:
+  ml_incident_response:
+    +materialized: view
+    staging:
+      +schema: staging
+    intermediate:
+      +schema: intermediate
+    marts:
+      +schema: marts

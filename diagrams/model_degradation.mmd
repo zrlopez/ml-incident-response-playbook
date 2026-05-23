@@ -1,0 +1,4 @@
+flowchart TD
+  A[Alert] --> B{Recent deployment?}
+  B -- Yes --> C[Check release notes]
+  B -- No --> D[Check drift]

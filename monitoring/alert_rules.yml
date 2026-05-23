@@ -1,0 +1,5 @@
+alerts:
+  - name: incident_volume_spike
+    condition: incident_count > baseline * 1.5
+  - name: drift_breach
+    condition: drift_ratio > 0.2

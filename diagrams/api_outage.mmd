@@ -1,0 +1,4 @@
+flowchart TD
+  A[API outage] --> B{Service reachable?}
+  B -- No --> C[Check infra]
+  B -- Yes --> D[Inspect error rate]

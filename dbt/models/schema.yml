@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: stg_incidents
+    description: "Cleaned incident event source data."
+    columns:
+      - name: incident_id
+        tests:
+          - not_null
+          - unique
+      - name: severity
+        tests:
+          - not_null
+  - name: int_incident_rollup
+    description: "Incident counts grouped by category and severity."
+  - name: fct_incident_summary
+    description: "Final fact table for incident summaries."

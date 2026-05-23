@@ -1,0 +1,4 @@
+flowchart TD
+  A[Cost spike] --> B{Traffic spike?}
+  B -- Yes --> C[Throttle]
+  B -- No --> D[Inspect prompt/token growth]

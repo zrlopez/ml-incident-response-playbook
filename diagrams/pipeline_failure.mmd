@@ -1,0 +1,4 @@
+flowchart TD
+  A[Pipeline failure] --> B{Source available?}
+  B -- No --> C[Escalate upstream]
+  B -- Yes --> D[Inspect logs]

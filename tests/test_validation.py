@@ -1,0 +1,1 @@
+from src.incident_tracker import append_incident_log
