@@ -75,7 +75,7 @@ ml-incident-response-playbook/
 ### Local Development Setup
 
 ```bash
-git clone https://github.com/<your-org>/ml-incident-response-playbook.git
+git clone https://github.com/zrlopez/ml-incident-response-playbook.git
 cd ml-incident-response-playbook
 python -m venv .venv
 source .venv/bin/activate
@@ -115,15 +115,6 @@ Observability is represented through logging helpers, validation rules, sample i
 4. Diagnostic and mitigation steps are executed.
 5. The incident is logged and followed by a postmortem.
 
-## Screenshots
-
-Add screenshots here to show:
-
-- The README home section.
-- A runbook with a Mermaid diagram.
-- A sample incident template.
-- A dashboard or monitoring mockup.
-
 ## Deployment Instructions
 
 This project can be published as a static documentation site with GitHub Pages or MkDocs Material. The repo is also suitable for a lightweight internal-style deployment to mirror production documentation workflows.
@@ -150,10 +141,10 @@ The repo includes a GitHub Actions workflow template for validation, formatting,
 
 ## License
 
-MIT License recommended for a public portfolio repository.
+This project is licensed under the [MIT License](LICENSE).
 
 ## Contact
 
 Portfolio: https://zrl.dev
 
-GitHub: https://github.com/<your-username>
+GitHub: https://github.com/zrlopez
