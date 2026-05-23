@@ -24,7 +24,7 @@ import uuid
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, status
@@ -68,7 +68,7 @@ if JWT_ALGORITHM not in _ALLOWED_ALGORITHMS:
 
 # ── CORS ───────────────────────────────────────────────────────────────────
 _raw_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
-ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+ALLOWED_ORIGINS: List[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 # ── Rate limiter ───────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
@@ -148,7 +148,7 @@ if not _DEV_ADMIN_PW and ENVIRONMENT != "production":
     )
     _DEV_ADMIN_PW = "admin-dev-only"
 
-_USERS: dict[str, dict[str, Any]] = {
+_USERS: Dict[str, Dict[str, Any]] = {
     "admin": {
         "username": "admin",
         "hashed_password": pwd_context.hash(_DEV_ADMIN_PW),
@@ -246,9 +246,9 @@ class IncidentUpdate(BaseModel):
 # ── JWT helpers ────────────────────────────────────────────────────────────
 
 def create_access_token(
-     dict[str, Any],
+     Dict[str, Any],
     expires_delta: timedelta | None = None,
-) -> tuple[str, str, int]:
+) -> Tuple[str, str, int]:
     """
     Create a signed JWT access token.
 
@@ -281,8 +281,8 @@ def create_access_token(
 
 
 def create_refresh_token(
-     dict[str, Any],
-) -> tuple[str, str, int]:
+     Dict[str, Any],
+) -> Tuple[str, str, int]:
     """
     Create a signed JWT refresh token.
 
@@ -312,7 +312,7 @@ def create_refresh_token(
     return encoded, jti, int(delta.total_seconds())
 
 
-def decode_token(token: str) -> dict[str, Any]:
+def decode_token(token: str) -> Dict[str, Any]:
     """Decode and validate a JWT with an explicit algorithm allowlist."""
     try:
         payload = jwt.decode(
@@ -339,7 +339,7 @@ def decode_token(token: str) -> dict[str, Any]:
 
 # ── Auth helpers ───────────────────────────────────────────────────────────
 
-def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
+def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     user = _USERS.get(username)
     if not user:
         pwd_context.dummy_verify("dummy", pwd_context.hash("dummy"))  # constant-time: prevent username enumeration
@@ -354,7 +354,7 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     request: Request,
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     payload = decode_token(token)
     if payload.get("token_type") != "access":
         raise HTTPException(
@@ -548,7 +548,7 @@ async def liveness():
 @app.get("/ready", tags=["ops"], include_in_schema=False)
 async def readiness():
     """Kubernetes readiness probe — checks all critical dependencies."""
-    checks: dict[str, str] = {}
+    checks: Dict[str, str] = {}
     all_ok = True
 
     # JWT subsystem check
