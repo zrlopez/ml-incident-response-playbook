@@ -1,0 +1,55 @@
+# .github/CODEOWNERS
+# Remediation: R-13
+#
+# Enforces review requirements per directory and file type.
+# All rules are additive — a file matching multiple patterns requires
+# approval from ALL matching teams.
+#
+# Format: pattern   @team-or-user
+# Patterns are evaluated in order; last match wins for the default reviewer,
+# but GitHub shows ALL matching owners as required reviewers.
+#
+# IMPORTANT: Team slugs must match your GitHub organization's team names.
+# Update @your-org/... references to match your actual org and team slugs.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Global fallback — platform lead reviews anything unmatched ────────────────────
+*                                       @your-org/ml-platform-lead
+
+# ── Runbooks and decision trees (SRE review required) ───────────────────────────
+runbooks/                               @your-org/ml-platform-sre
+diagrams/                               @your-org/ml-platform-sre
+severity_matrix.md                      @your-org/ml-platform-sre
+incident_response_template.md           @your-org/ml-platform-sre
+
+# ── Governance (governance board approval required) ────────────────────────────
+governance.md                           @your-org/ml-governance-board
+docs/operational_principles.md          @your-org/ml-governance-board
+SECURITY.md                             @your-org/ml-governance-board @your-org/ml-security-team
+
+# ── CI/CD and infrastructure (security + platform lead) ─────────────────────────
+ci_cd/                                  @your-org/ml-security-team @your-org/ml-platform-lead
+.github/                                @your-org/ml-security-team @your-org/ml-platform-lead
+infrastructure/                         @your-org/ml-security-team @your-org/ml-platform-lead
+Dockerfile.dev                          @your-org/ml-security-team
+.dockerignore                           @your-org/ml-security-team
+requirements.txt                        @your-org/ml-security-team @your-org/ml-platform-engineering
+pyproject.toml                          @your-org/ml-platform-engineering
+
+# ── Application source (platform engineering review) ───────────────────────────
+api/                                    @your-org/ml-platform-engineering
+src/                                    @your-org/ml-platform-engineering
+pipelines/                              @your-org/ml-platform-engineering
+orchestration/                          @your-org/ml-platform-engineering
+
+# ── Monitoring and observability (SRE + ML engineers) ──────────────────────────
+monitoring/                             @your-org/ml-platform-sre @your-org/ml-engineers
+observability/                          @your-org/ml-platform-sre
+dashboards/                             @your-org/ml-platform-sre
+
+# ── dbt models (data engineering review) ───────────────────────────────────────
+dbt/                                    @your-org/ml-data-engineering
+configs/                                @your-org/ml-data-engineering @your-org/ml-platform-engineering
+
+# ── ML models (ML engineering review) ──────────────────────────────────────────
+ml_models/                              @your-org/ml-engineers

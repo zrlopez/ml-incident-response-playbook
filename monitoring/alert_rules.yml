@@ -1,5 +1,207 @@
-alerts:
-  - name: incident_volume_spike
-    condition: incident_count > baseline * 1.5
-  - name: drift_breach
-    condition: drift_ratio > 0.2
+# monitoring/alert_rules.yml
+# Remediation: R-04 — rewritten as valid Prometheus alerting rules.
+#
+# Previous version contained pseudocode comments masquerading as YAML
+# ("threshold: > 50", "trigger: if count > baseline") which would have
+# caused Prometheus to reject the entire rules file on load, silently
+# disabling all alerts.
+#
+# This file is valid Prometheus 2.x alerting rule syntax.
+# Load with: promtool check rules monitoring/alert_rules.yml
+#
+# Runbook references map to: runbooks/{slug}.md in this repository.
+# SLO references map to: severity_matrix.md SLO table.
+# ──────────────────────────────────────────────────────────────────────────────
+groups:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: ml_platform_api
+    interval: 60s
+    rules:
+
+      # ── API 5xx error rate ─────────────────────────────────────────────────────────
+      - alert: APIHighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5..",env="production"}[5m]))
+            /
+            sum(rate(http_requests_total{env="production"}[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: ml-platform
+          slo: ML-SLO-001
+        annotations:
+          summary: "API 5xx error rate exceeds 5% — SLO ML-SLO-001 at risk"
+          description: >
+            HTTP 5xx error rate is {{ $value | humanizePercentage }} over the
+            last 5 minutes. Target: < 1% over 28-day rolling window.
+            Runbook: runbooks/api_outage.md
+          runbook_url: "https://github.com/your-org/ml-incident-response-playbook/blob/main/runbooks/api_outage.md"
+
+      # ── API P99 latency ───────────────────────────────────────────────────────────
+      - alert: APILatencyP99Breach
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{env="production"}[5m])
+            )
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+          slo: ML-SLO-002
+        annotations:
+          summary: "API P99 latency exceeds 2 seconds — SLO ML-SLO-002 breach"
+          description: >
+            P99 API response latency is {{ $value | humanizeDuration }}.
+            SLO target: P99 < 2 seconds over 28-day rolling window.
+            Runbook: runbooks/api_outage.md
+          runbook_url: "https://github.com/your-org/ml-incident-response-playbook/blob/main/runbooks/api_outage.md"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: ml_platform_models
+    interval: 60s
+    rules:
+
+      # ── Model accuracy SLO breach ────────────────────────────────────────────────
+      - alert: ModelAccuracyDegradation
+        expr: ml_model_accuracy_p95{env="production"} < 0.92
+        for: 5m
+        labels:
+          severity: critical
+          team: ml-platform
+          slo: ML-SLO-003
+        annotations:
+          summary: "Model accuracy below SLO threshold — ML-SLO-003 breached"
+          description: >
+            Model {{ $labels.model_name }} P95 accuracy is {{ $value | humanize }}
+            (threshold: 0.92). SLO: ≥ 92% over 7-day rolling window.
+            Runbook: runbooks/model_degradation.md
+          runbook_url: "https://github.com/your-org/ml-incident-response-playbook/blob/main/runbooks/model_degradation.md"
+
+      # ── Feature drift breach ────────────────────────────────────────────────────────
+      - alert: FeatureDriftBreach
+        expr: ml_feature_drift_ratio{env="production"} > 0.20
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Feature drift ratio exceeds 20% threshold"
+          description: >
+            Feature {{ $labels.feature_name }} drift ratio is {{ $value | humanize }}
+            (threshold: 0.20). Investigate upstream data pipeline for schema
+            or distribution changes.
+            Runbook: runbooks/model_degradation.md
+          runbook_url: "https://github.com/your-org/ml-incident-response-playbook/blob/main/runbooks/model_degradation.md"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: ml_platform_pipelines
+    interval: 60s
+    rules:
+
+      # ── Pipeline SLA breach (no successful run in 2h) ───────────────────────────
+      - alert: PipelineSLABreach
+        expr: |
+          (time() - ml_pipeline_last_success_timestamp{env="production"}) > 7200
+        for: 0m
+        labels:
+          severity: critical
+          team: ml-platform
+          slo: ML-SLO-004
+        annotations:
+          summary: "ML pipeline has not completed successfully in > 2 hours"
+          description: >
+            Pipeline {{ $labels.pipeline_name }} last succeeded
+            {{ $value | humanizeDuration }} ago. SLO target: ≥ 99% of runs
+            complete within 2 hours. Runbook: runbooks/pipeline_failure.md
+          runbook_url: "https://github.com/your-org/ml-incident-response-playbook/blob/main/runbooks/pipeline_failure.md"
+
+      # ── Incident creation volume spike ────────────────────────────────────────────
+      - alert: IncidentVolumeSpike
+        expr: |
+          (
+            sum(increase(ml_incident_created_total{env="production"}[1h]))
+            /
+            (
+              sum(increase(ml_incident_created_total{env="production"}[1h] offset 24h))
+              + 1
+            )
+          ) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "Incident creation rate 50% above 24-hour baseline"
+          description: >
+            Incident creation volume in the last hour is {{ $value | humanizePercentage }}
+            above the 24-hour rolling baseline. This may indicate systemic
+            platform degradation or upstream failures cascading.
+
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: ml_platform_llm
+    interval: 60s
+    rules:
+
+      # ── LLM token cost spike ──────────────────────────────────────────────────────────
+      - alert: LLMCostSpike
+        expr: |
+          (
+            sum(increase(llm_tokens_consumed_total{env="production"}[1h]))
+            /
+            (
+              sum(increase(llm_tokens_consumed_total{env="production"}[1h] offset 24h))
+              + 1
+            )
+          ) > 2.0
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "LLM token consumption 2x above 24-hour baseline"
+          description: >
+            Token consumption rate is {{ $value }}x the 24-hour baseline.
+            Check for retry loops, prompt inflation, or unexpected traffic surge.
+            Runbook: runbooks/llm_cost_spike.md
+          runbook_url: "https://github.com/your-org/ml-incident-response-playbook/blob/main/runbooks/llm_cost_spike.md"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  - name: ml_platform_security
+    interval: 30s
+    rules:
+
+      # ── Redis denylist unavailable (token revocation non-functional) ───────────
+      - alert: RedisDenylistUnavailable
+        expr: up{job="redis",env="production"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: ml-platform
+        annotations:
+          summary: "Redis unavailable — JWT token revocation is non-functional"
+          description: >
+            The Redis instance providing the JWT denylist is unreachable.
+            Tokens that have been explicitly revoked (logout) may remain
+            valid across all API replicas until natural TTL expiry.
+            Immediate investigation required.
+
+      # ── High rate of revoked token access attempts ─────────────────────────
+      - alert: RevokedTokenAccessAttempts
+        expr: |
+          sum(increase(ml_revoked_token_access_total{env="production"}[10m])) > 10
+        for: 0m
+        labels:
+          severity: warning
+          team: ml-platform
+        annotations:
+          summary: "High rate of revoked token access attempts — possible credential stuffing"
+          description: >
+            {{ $value }} attempts to use revoked tokens in the last 10 minutes.
+            This may indicate credential theft or replay attack.
+            Investigate source IPs in security logs.

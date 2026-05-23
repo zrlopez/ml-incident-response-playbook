@@ -1,6 +1,12 @@
+<<<<<<< Updated upstream
 # =============================================================================
 # .dockerignore — prevent sensitive/unnecessary files from entering build context
 # =============================================================================
+=======
+# Root-level .dockerignore
+# Applies when building with: docker build -f infrastructure/Dockerfile.hardened .
+# Prevents secrets, test files, and dev artifacts from entering the build context.
+>>>>>>> Stashed changes
 
 # Version control
 .git
@@ -13,6 +19,7 @@
 !.env.example
 *.pem
 *.key
+<<<<<<< Updated upstream
 *.crt
 *.p12
 *.pfx
@@ -69,3 +76,78 @@ Makefile
 
 # Infrastructure configs
 infrastructure/
+=======
+*.p12
+
+# Python artifacts
+__pycache__
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.mypy_cache/
+
+# Dev tooling
+.vscode/
+.idea/
+*.swp
+*~
+Makefile
+
+# Documentation (not needed in container)
+docs/
+examples/
+architecture.md
+README.md
+CHANGELOG.md
+changelog.md
+deployment.md
+api_reference.md
+monitoring.md
+data_dictionary.md
+governance.md
+SECURITY.md
+
+# CI/CD config
+ci_cd/
+
+# dbt (not executed inside API container)
+dbt/
+
+# Diagrams and runbooks
+diagrams/
+runbooks/
+
+# macOS
+.DS_Store
+._*
+
+# Logs and databases
+*.log
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# SBOM and scan outputs
+sbom.spdx.json
+trivy-results.sarif
+bandit-report.json
+
+# Dev Dockerfile (only Dockerfile.hardened goes in production)
+Dockerfile.dev
+>>>>>>> Stashed changes

@@ -1,9 +1,23 @@
+<<<<<<< Updated upstream
 # Python
+=======
+# ──────────────────────────────────────────────────────────────────────────────
+# .gitignore — ML Incident Response Platform
+# Maintained by: ml-platform-sre
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Python bytecode ───────────────────────────────────────────────────────────
+>>>>>>> Stashed changes
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+<<<<<<< Updated upstream
+=======
+
+# ── Build / distribution ──────────────────────────────────────────────────────
+>>>>>>> Stashed changes
 build/
 develop-eggs/
 dist/
@@ -17,6 +31,7 @@ sdist/
 var/
 wheels/
 *.egg-info/
+<<<<<<< Updated upstream
 .installed.cfg
 *.egg
 MANIFEST
@@ -24,15 +39,37 @@ MANIFEST
 # Virtual environments
 .env
 .venv
+=======
+.eggs/
+*.whl
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+>>>>>>> Stashed changes
 env/
 venv/
 ENV/
+.env.local
+.env.staging
+.env.production
 
+<<<<<<< Updated upstream
 # Secrets — NEVER commit real secrets
+=======
+# ── Secrets and environment files ─────────────────────────────────────────────
+# .env.example is intentionally committed; actual .env files are not
+.env
+*.env
+!.env.example
+
+# ── JWT keys (never commit) ───────────────────────────────────────────────────
+>>>>>>> Stashed changes
 *.pem
 *.key
 *.p12
 *.pfx
+<<<<<<< Updated upstream
 secrets/
 .secrets/
 
@@ -52,10 +89,31 @@ Icon
 .com.apple.timemachine.donotpresent
 
 # IDEs
+=======
+jwt_private.pem
+jwt_public.pem
+
+# ── Testing artifacts ─────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# ── Type checking ─────────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ── IDE / editor ─────────────────────────────────────────────────────────────
+.vscode/
+>>>>>>> Stashed changes
 .idea/
 .vscode/
 *.swp
 *.swo
+<<<<<<< Updated upstream
 *.iml
 
 # Testing
@@ -75,9 +133,64 @@ logs/
 .ipynb_checkpoints
 
 # Database
+=======
+*~
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+*.jsonl
+
+# ── Database files (local dev only — use Postgres in staging/production) ──────
+>>>>>>> Stashed changes
 *.db
 *.sqlite
 *.sqlite3
 
+<<<<<<< Updated upstream
 # Docker
 .dockerignore
+=======
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Root Dockerfile is retired (R-01). Use infrastructure/Dockerfile.hardened.
+# Re-adding a root Dockerfile will be caught by the CI hygiene gate.
+Dockerfile
+
+# ── dbt ───────────────────────────────────────────────────────────────────────
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+
+# ── Airflow ───────────────────────────────────────────────────────────────────
+airflow.cfg
+airflow.db
+airflow/logs/
+airflow/plugins/
+standalone_admin_password.txt
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── SBOM / security scan outputs ─────────────────────────────────────────────
+sbom.spdx.json
+trivy-results.sarif
+bandit-report.json
+
+# ── Terraform (if infrastructure-as-code added later) ────────────────────────
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+>>>>>>> Stashed changes

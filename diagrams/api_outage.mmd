@@ -1,4 +1,52 @@
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#1e293b',
+      'primaryTextColor': '#f8fafc',
+      'primaryBorderColor': '#475569',
+      'lineColor': '#94a3b8'
+    }
+  }
+}%%
 flowchart TD
-  A[API outage] --> B{Service reachable?}
-  B -- No --> C[Check infra]
-  B -- Yes --> D[Inspect error rate]
+    A(["\uD83D\uDD34 ALERT: API Outage\nhttp_requests_total 5xx > 5% or service unreachable"])
+    A --> B{"Service reachable?\ncurl https://api.internal/health"}
+
+    B -- "Unreachable" --> C{"Infrastructure\nstatus?"}
+    B -- "Reachable but degraded" --> D{"Error rate > 5%\nor P99 latency > 2s?"}
+
+    C -- "Node/pod failure" --> E["kubectl get pods -n ml-platform\nRestart unhealthy pods\nkubectl rollout restart deployment/ml-incident-api"]
+    C -- "Dependency failure" --> F["Check: DB, Redis, LLM provider\nRun: kubectl logs -l app=ml-incident-api"]
+    C -- "Network / DNS / Ingress" --> G["Check ingress controller\nVerify DNS resolution\nCheck service mesh sidecar health"]
+
+    D -- "High error rate" --> H["Inspect structured logs\nfor top error classes\nkubectl logs | grep level=error"]
+    D -- "High latency" --> I["Check resource saturation\nCPU/memory/connection pool exhaustion\nCheck DB slow query log"]
+
+    E --> J{"Pods healthy\nafter restart?"}
+    F --> J
+    G --> J
+    H --> R{"Recent deployment\nin last 2 hours?"}
+    I --> R
+
+    J -- "Yes" --> L["Monitor error rate\nfor 10 consecutive minutes"]
+    J -- "No" --> M(["\uD83D\uDEA8 ESCALATE: SEV-1\nInfra Lead + Platform Lead\nActivate incident bridge"])
+
+    R -- "Yes" --> N["kubectl rollout undo\ndeployment/ml-incident-api\nConfirm rollback successful"]
+    R -- "No" --> O["Scale replicas if saturation\nEnable circuit breaker\nCheck upstream dependencies"]
+
+    N --> P{"SLO restored\nafter rollback?"}
+    O --> P
+    L --> P
+
+    P -- "Yes" --> Q["Send stakeholder update\nContinue monitoring 30 min\nEvery 15 min if SEV-1"]
+    P -- "No" --> M
+
+    Q --> S{"Stable for\n30 consecutive minutes?"}
+    S -- "No, degraded again" --> A
+    S -- "Yes" --> T["Document timeline\nAssign preventive actions\nwith owners + due dates"]
+    T --> U(["\u2705 RESOLVE INCIDENT\nUpdate ticket: status=resolved\nSchedule postmortem"])
+
+    style A fill:#dc2626,color:#fff,stroke:#991b1b
+    style M fill:#ea580c,color:#fff,stroke:#c2410c
+    style U fill:#16a34a,color:#fff,stroke:#15803d
