@@ -1,78 +1,83 @@
-# ============================================================
-# .gitignore — ml-incident-response-playbook
-# ============================================================
-
-# ── SECRETS & CREDENTIALS (never commit) ────────────────────
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.p12
-*.pfx
-*.crt
-*.cer
-*.der
-secrets/
-credentials/
-token.json
-*_secret.json
-service_account*.json
-*_credentials*
-*_token*
-jwt_secret*
-airflow_connections*
-
-# ── Python ───────────────────────────────────────────────
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
 *.egg
+MANIFEST
 
-# ── Virtual environments ────────────────────────────────
+# Virtual environments
+.env
 .venv
-venv/
 env/
+venv/
 ENV/
 
-# ── Testing & coverage ─────────────────────────────────
-.pytest_cache/
-.coverage
-htmlcov/
-coverage.xml
-*.cover
-.hypothesis/
+# Secrets — NEVER commit real secrets
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.secrets/
 
-# ── Airflow ────────────────────────────────────────────
-logs/
-airflow.db
-airflow.cfg
-unittests.cfg
-*.pid
+# macOS metadata — must never be committed
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
 
-# ── ML artifacts (large files / model weights) ───────────────
-*.pkl
-*.joblib
-*.h5
-*.pt
-*.pth
-*.onnx
-models/
-checkpoints/
-
-# ── IDEs & editors ────────────────────────────────────
-.vscode/
+# IDEs
 .idea/
+.vscode/
 *.swp
 *.swo
-*~
-.DS_Store
+*.iml
 
-# ── Logs & runtime output ──────────────────────────────
+# Testing
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+
+# Logs
+logs/
 *.log
-run_logs/
-output/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+.dockerignore
