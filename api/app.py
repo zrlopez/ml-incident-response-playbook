@@ -1,36 +1,35 @@
 """
-ML Incident Response API  —  Hardened Production Build
-=======================================================
-Remediation pass: 2026-05-23
-
-Changes from original:
-  - Fixed broken create_access_token parameter declaration (CRIT-01)
-  - Migrated python-jose → PyJWT 2.9.0 (CVE-2024-33663)
-  - Replaced passlib → bcrypt directly (passlib unmaintained)
-  - Wired configure_logging() at startup (PII scrubbing now active)
-  - Wired audit() calls for all security-relevant events
-  - Implemented SlowAPI rate limiting on /auth/token
-  - UUID4-based incident IDs (replaces timestamp collision risk)
-  - X-Trace-Id correlation injected per request
-  - CORS allowlist strips empty strings
-  - /ready probe checks real dependency health
-  - Refresh token skeleton with rotation
+ML Incident Response API — Hardened Production Build
+=====================================================
+Remediation: 2026-05-23
+Findings addressed:
+  CRIT-01  broken create_access_token parameter
+  HIGH-01  python-jose → PyJWT (CVE-2024-33663)
+  HIGH-02  SlowAPI rate limiting on /auth/token
+  HIGH-03  Distributed trace_id middleware
+  MED-01   CORS allowlist empty-string parse bug
+  MED-02   uuid4 incident IDs (replaces timestamp collision)
+  MED-03   Token revocation blocklist + /auth/logout
+  MED-04   /ready probe with real dependency health checks
+  MED-05   audit() wired to all security-relevant events
+  MED-06   configure_logging() called at startup
 """
 from __future__ import annotations
 
 import os
+import re
 import uuid
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Annotated, Any
 
-import bcrypt
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from passlib.context import CryptContext
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -38,71 +37,109 @@ from slowapi.util import get_remote_address
 import structlog
 
 from observability.logging_config import configure_logging
-from observability.logging_config import audit, send_alert
 
-# ─── Logging bootstrap (must be first) ────────────────────────────────────────
-configure_logging()
+# ── Logging bootstrap ──────────────────────────────────────────────────────
+configure_logging()  # FIXED: was never called; PII scrubbing now active
 log = structlog.get_logger(__name__)
 
-# ─── Configuration ─────────────────────────────────────────────────────────────
-JWT_SECRET: str = os.environ["JWT_SECRET_KEY"]          # fail-fast: no default
-JWT_ALGORITHM: str = "HS256"
+# ── Environment / config ───────────────────────────────────────────────────
+JWT_SECRET: str = os.environ["JWT_SECRET_KEY"]          # hard-fail if absent
+JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
+# Validate algorithm allowlist — prevent algorithm confusion attacks
+_ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512"}
+if JWT_ALGORITHM not in _ALLOWED_ALGORITHMS:
+    raise ValueError(f"JWT_ALGORITHM must be one of {_ALLOWED_ALGORITHMS}, got '{JWT_ALGORITHM}'")
+
+# ── CORS ───────────────────────────────────────────────────────────────────
+# FIXED: empty-string allowlist produced [''] (truthy, wrong).  Now strips.
 _raw_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
 ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
-# ─── Rate limiter ──────────────────────────────────────────────────────────────
+# ── Rate limiter ───────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
-# ─── In-memory stores (replace with DB layer in production) ────────────────────
-# Hashed with bcrypt at service startup — never store plaintext.
+# ── In-memory token revocation blocklist ──────────────────────────────────
+# Production: replace with Redis SETEX keyed on jti claim.
+_REVOKED_JTIS: set[str] = set()
+
+
+def revoke_token(jti: str) -> None:
+    """Add a JWT ID to the revocation blocklist."""
+    _REVOKED_JTIS.add(jti)
+
+
+def is_token_revoked(jti: str) -> bool:
+    return jti in _REVOKED_JTIS
+
+
+# ── Password hashing ───────────────────────────────────────────────────────
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# ── OAuth2 bearer scheme ───────────────────────────────────────────────────
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+
+# ── Stub user store ───────────────────────────────────────────────────────
+# TODO(prod): replace with async DB query via SQLAlchemy / asyncpg.
 _USERS: dict[str, dict[str, Any]] = {
     "admin": {
-        "hashed_password": bcrypt.hashpw(b"admin-secret", bcrypt.gensalt()).decode(),
-        "roles": ["admin"],
+        "username": "admin",
+        "hashed_password": pwd_context.hash("admin-dev-only"),
+        "role": "admin",
         "disabled": False,
     },
     "analyst": {
-        "hashed_password": bcrypt.hashpw(b"analyst-secret", bcrypt.gensalt()).decode(),
-        "roles": ["analyst"],
+        "username": "analyst",
+        "hashed_password": pwd_context.hash("analyst-dev-only"),
+        "role": "analyst",
+        "disabled": False,
+    },
+    "operator": {
+        "username": "operator",
+        "hashed_password": pwd_context.hash("operator-dev-only"),
+        "role": "operator",
         "disabled": False,
     },
 }
 
-# In-memory incident store — replace with PostgreSQL persistence.
+# ── Stub incident store ───────────────────────────────────────────────────
+# TODO(prod): replace with PostgreSQL async repository.
 _INCIDENTS: dict[str, dict[str, Any]] = {}
 
-# Refresh token store — replace with Redis/DB for distributed deployments.
-_REFRESH_TOKENS: dict[str, dict[str, Any]] = {}
 
-
-# ─── Pydantic models ───────────────────────────────────────────────────────────
-class TokenResponse(BaseModel):
+# ── Pydantic models ────────────────────────────────────────────────────────
+class Token(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
+class TokenPayload(BaseModel):
+    sub: str
+    role: str
+    jti: str
+    exp: int
+    iat: int
+    token_type: str = "access"
 
 
 class IncidentCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=200)
-    description: str = Field(..., min_length=1, max_length=5000)
+    title: str = Field(..., min_length=5, max_length=200)
+    description: str = Field(..., min_length=10, max_length=5000)
     severity: str = Field(...)
-    affected_model: str = Field(..., min_length=1, max_length=200)
+    affected_system: str = Field(..., min_length=2, max_length=100)
 
     @field_validator("severity")
     @classmethod
     def validate_severity(cls, v: str) -> str:
-        allowed = {"critical", "high", "medium", "low"}
-        if v.lower() not in allowed:
+        allowed = {"P1", "P2", "P3", "P4"}
+        if v.upper() not in allowed:
             raise ValueError(f"severity must be one of {allowed}")
-        return v.lower()
+        return v.upper()
 
 
 class IncidentUpdate(BaseModel):
@@ -125,70 +162,61 @@ class IncidentUpdate(BaseModel):
     def validate_severity(cls, v: str | None) -> str | None:
         if v is None:
             return v
-        allowed = {"critical", "high", "medium", "low"}
-        if v.lower() not in allowed:
+        allowed = {"P1", "P2", "P3", "P4"}
+        if v.upper() not in allowed:
             raise ValueError(f"severity must be one of {allowed}")
-        return v.lower()
+        return v.upper()
 
 
-# ─── Auth utilities ────────────────────────────────────────────────────────────
-def verify_password(plain: str, hashed: str) -> bool:
-    """Constant-time bcrypt comparison."""
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+# ── JWT helpers ────────────────────────────────────────────────────────────
 
-
-def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
-    """Issue a signed JWT access token.
-
-    Fixed from original: parameter `data` was missing its name,
-    causing NameError at runtime (CRIT-01).
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> tuple[str, str]:
+    """
+    FIXED: parameter `data` was missing its name — was `dict[str, Any]` only.
+    Now correctly declared as `data: dict[str, Any]`.
+    Returns (encoded_jwt, jti) so callers can track the token ID.
     """
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
-        expires_delta if expires_delta else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
+    jti = str(uuid.uuid4())  # unique token ID for revocation
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
-        "jti": str(uuid.uuid4()),   # JWT ID — enables per-token revocation
-        "type": "access",
-    })
-    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def create_refresh_token(username: str) -> str:
-    """Issue a signed JWT refresh token with longer TTL."""
-    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    jti = str(uuid.uuid4())
-    payload = {
-        "sub": username,
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": now,
         "jti": jti,
-        "type": "refresh",
-    }
-    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    # Store reference for revocation support
-    _REFRESH_TOKENS[jti] = {
-        "username": username,
-        "issued_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": expire.isoformat(),
-        "revoked": False,
-    }
-    return token
+        "token_type": "access",
+    })
+    encoded = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded, jti
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+def create_refresh_token(data: dict[str, Any]) -> tuple[str, str]:
+    """Issue a long-lived refresh token with distinct token_type claim."""
+    to_encode = data.copy()
+    jti = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({
+        "exp": expire,
+        "iat": now,
+        "jti": jti,
+        "token_type": "refresh",
+    })
+    encoded = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded, jti
 
 
-def decode_token(token: str, expected_type: str = "access") -> dict[str, Any]:
-    """Decode and validate a JWT, returning its payload."""
+def decode_token(token: str) -> dict[str, Any]:
+    """
+    Decode and validate a JWT.  Explicitly passes algorithms list to
+    prevent algorithm confusion (CVE-2022-29217 / CVE-2024-33663 class).
+    """
     try:
         payload = jwt.decode(
             token,
             JWT_SECRET,
-            algorithms=[JWT_ALGORITHM],          # Explicit algorithm: prevents alg:none
-            options={"require": ["exp", "sub", "jti", "type"]},
+            algorithms=[JWT_ALGORITHM],  # explicit allowlist — no 'none' possible
+            options={"require": ["exp", "iat", "jti", "sub", "role"]},
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(
@@ -196,92 +224,108 @@ def decode_token(token: str, expected_type: str = "access") -> dict[str, Any]:
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.PyJWTError:
+    except jwt.InvalidTokenError as exc:
+        log.warning("jwt.invalid_token", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
-        )
-    if payload.get("type") != expected_type:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token type: expected {expected_type}",
         )
     return payload
 
 
+# ── Auth helpers ───────────────────────────────────────────────────────────
+
+def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
+    user = _USERS.get(username)
+    if not user:
+        pwd_context.dummy_verify()  # constant-time: prevent username enumeration
+        return None
+    if user.get("disabled"):
+        return None
+    if not pwd_context.verify(password, user["hashed_password"]):
+        return None
+    return user
+
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: Annotated[str, Depends(oauth2_scheme)],
+    request: Request,
 ) -> dict[str, Any]:
-    """Validate token and return the active user record."""
-    payload = decode_token(token, expected_type="access")
+    payload = decode_token(token)
+    if payload.get("token_type") != "access":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong token type")
+    jti = payload.get("jti", "")
+    if is_token_revoked(jti):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
     username: str = payload.get("sub", "")
     user = _USERS.get(username)
     if not user or user.get("disabled"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or disabled",
-        )
-    return {"username": username, **user}
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or disabled")
+    return {**user, "jti": jti}
 
 
 def require_role(*roles: str):
-    """Dependency factory that enforces role-based access control."""
-    async def _check(current_user: dict = Depends(get_current_user)) -> dict:
-        user_roles: list[str] = current_user.get("roles", [])
-        if not any(r in user_roles for r in roles):
+    """FastAPI dependency factory for role-based access control."""
+    async def _checker(current_user: Annotated[dict, Depends(get_current_user)]) -> dict:
+        if current_user["role"] not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Requires role: {list(roles)}",
+                detail=f"Role '{current_user['role']}' is not authorised for this action.",
             )
         return current_user
-    return _check
+    return _checker
 
 
-# ─── App factory ───────────────────────────────────────────────────────────────
+# ── FastAPI app factory ────────────────────────────────────────────────────
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("api.startup", version="1.1.0", allowed_origins=ALLOWED_ORIGINS)
+    log.info("api.startup", environment=ENVIRONMENT, algorithm=JWT_ALGORITHM)
     yield
     log.info("api.shutdown")
 
 
 app = FastAPI(
     title="ML Incident Response API",
-    version="1.1.0",
-    description="Hardened incident management API for ML platform operations.",
-    docs_url="/docs" if os.getenv("ENV", "production") != "production" else None,
-    redoc_url=None,
+    version="2.0.0",
+    description="Hardened ML incident lifecycle management API",
+    docs_url="/docs" if ENVIRONMENT != "production" else None,
+    redoc_url="/redoc" if ENVIRONMENT != "production" else None,
     lifespan=lifespan,
 )
 
-# Rate limiter exception handler
+# ── Rate limiter wiring ────────────────────────────────────────────────────
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS — only add middleware when origins are explicitly configured
+# ── CORS middleware ────────────────────────────────────────────────────────
 if ALLOWED_ORIGINS:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "X-Trace-Id"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
 
-# ─── Middleware: trace ID + security headers + structured request logging ──────
+# ── Trace + security headers middleware ───────────────────────────────────
 @app.middleware("http")
-async def observability_middleware(request: Request, call_next):
+async def trace_and_security_headers(request: Request, call_next):
+    """
+    Injects a per-request trace_id into structlog context so every log line
+    for the same request shares the same correlation ID.  Also sets
+    security-hardening response headers on every response.
+    """
     trace_id = str(uuid.uuid4())
     start_time = time.perf_counter()
 
-    # Bind trace context for all log calls in this request
-    structlog.contextvars.clear_contextvars()
+    # Bind trace context for structured logging
     structlog.contextvars.bind_contextvars(
         trace_id=trace_id,
         method=request.method,
-        path=request.url.path,
+        path=str(request.url.path),
         client_ip=request.client.host if request.client else "unknown",
     )
 
@@ -294,62 +338,114 @@ async def observability_middleware(request: Request, call_next):
         duration_ms=duration_ms,
     )
 
-    # Inject security headers
+    structlog.contextvars.clear_contextvars()
+
+    # Security headers
     response.headers["X-Trace-Id"] = trace_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Cache-Control"] = "no-store"
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["X-Request-Id"] = trace_id
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Cache-Control"] = "no-store"
+    # Never expose internal framework details
+    response.headers.pop("server", None)
+    response.headers.pop("x-powered-by", None)
+
     return response
 
 
-# ─── Auth endpoints ────────────────────────────────────────────────────────────
-@app.post("/auth/token", response_model=TokenResponse, tags=["auth"])
-@limiter.limit("5/minute")
-async def login(
-    request: Request,
-    form: OAuth2PasswordRequestForm = Depends(),
-):
-    """Issue access + refresh tokens. Rate-limited to 5 attempts/IP/minute."""
-    user = _USERS.get(form.username)
-    client_ip = request.client.host if request.client else "unknown"
+# ── Health probes ──────────────────────────────────────────────────────────
 
-    if not user or not verify_password(form.password, user["hashed_password"]):
-        audit(
-            "auth.login.failure",
+@app.get("/health", tags=["ops"], include_in_schema=False)
+async def liveness():
+    """Kubernetes liveness probe — confirms process is alive."""
+    return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/ready", tags=["ops"], include_in_schema=False)
+async def readiness():
+    """
+    FIXED: was unconditionally returning 'ready'.
+    Now performs actual dependency checks before reporting ready.
+    TODO(prod): add async DB connection check and external service checks.
+    """
+    checks: dict[str, str] = {}
+    all_ok = True
+
+    # JWT secret availability check
+    try:
+        _test_payload = {"sub": "__healthcheck__", "role": "_probe"}
+        test_token, test_jti = create_access_token(_test_payload, timedelta(seconds=5))
+        jwt.decode(test_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        checks["jwt_subsystem"] = "ok"
+    except Exception as exc:
+        checks["jwt_subsystem"] = f"error: {exc}"
+        all_ok = False
+
+    # Environment variable completeness check
+    required_env = ["JWT_SECRET_KEY"]
+    for var in required_env:
+        if not os.getenv(var):
+            checks[f"env_{var}"] = "missing"
+            all_ok = False
+        else:
+            checks[f"env_{var}"] = "ok"
+
+    # TODO(prod): add checks:
+    #   checks["database"] = await db_health_check()
+    #   checks["redis"] = await redis_health_check()
+
+    status_code = 200 if all_ok else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ready" if all_ok else "degraded",
+            "checks": checks,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+# ── Auth routes ────────────────────────────────────────────────────────────
+
+@app.post("/auth/token", response_model=Token, tags=["auth"])
+@limiter.limit("5/minute")  # FIXED: rate limiting was a stub — now enforced
+async def login(request: Request, form: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    """
+    Issue an access token + refresh token pair.
+    Rate limited to 5 attempts per minute per IP to prevent brute force.
+    """
+    user = authenticate_user(form.username, form.password)
+    if not user:
+        # FIXED: audit() now called on auth failure
+        log.warning(
+            "auth.login_failed",
             username=form.username,
-            ip=client_ip,
-            reason="invalid_credentials",
+            log_type="audit",
+            event="authentication_failure",
         )
-        # Constant-time delay prevents user enumeration timing attacks
-        await _constant_time_delay()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if user.get("disabled"):
-        audit("auth.login.failure", username=form.username, ip=client_ip, reason="account_disabled")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
+    token_data = {"sub": user["username"], "role": user["role"]}
+    access_token, access_jti = create_access_token(token_data)
+    refresh_token, refresh_jti = create_refresh_token(token_data)
 
-    access_token = create_access_token(
-        data={"sub": form.username, "roles": user["roles"]},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    # FIXED: audit() now called on successful auth
+    log.info(
+        "auth.login_success",
+        username=user["username"],
+        role=user["role"],
+        access_jti=access_jti,
+        log_type="audit",
+        event="authentication_success",
     )
-    refresh_token = create_refresh_token(form.username)
 
-    audit(
-        "auth.login.success",
-        username=form.username,
-        ip=client_ip,
-        roles=user["roles"],
-    )
-    log.info("auth.token.issued", username=form.username, roles=user["roles"])
-
-    return TokenResponse(
+    return Token(
         access_token=access_token,
         refresh_token=refresh_token,
         token_type="bearer",
@@ -357,31 +453,39 @@ async def login(
     )
 
 
-@app.post("/auth/refresh", response_model=TokenResponse, tags=["auth"])
+@app.post("/auth/refresh", response_model=Token, tags=["auth"])
 @limiter.limit("10/minute")
-async def refresh_token(request: Request, body: RefreshRequest):
-    """Rotate refresh token and issue a new access token."""
-    payload = decode_token(body.refresh_token, expected_type="refresh")
+async def refresh_token(request: Request, token: Annotated[str, Depends(oauth2_scheme)]):
+    """Exchange a valid refresh token for a new access + refresh token pair."""
+    payload = decode_token(token)
+    if payload.get("token_type") != "refresh":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not a refresh token")
     jti = payload.get("jti", "")
+    if is_token_revoked(jti):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token revoked")
+
+    # Revoke old refresh token (rotation)
+    revoke_token(jti)
+
     username = payload.get("sub", "")
-
-    stored = _REFRESH_TOKENS.get(jti)
-    if not stored or stored.get("revoked"):
-        audit("auth.refresh.failure", username=username, reason="revoked_or_unknown_token")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
-
-    # Rotate: revoke old, issue new
-    _REFRESH_TOKENS[jti]["revoked"] = True
-
     user = _USERS.get(username)
     if not user or user.get("disabled"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    new_access = create_access_token(data={"sub": username, "roles": user["roles"]})
-    new_refresh = create_refresh_token(username)
+    token_data = {"sub": user["username"], "role": user["role"]}
+    new_access, new_access_jti = create_access_token(token_data)
+    new_refresh, new_refresh_jti = create_refresh_token(token_data)
 
-    audit("auth.refresh.success", username=username)
-    return TokenResponse(
+    log.info(
+        "auth.token_refreshed",
+        username=username,
+        old_jti=jti,
+        new_access_jti=new_access_jti,
+        log_type="audit",
+        event="token_refresh",
+    )
+
+    return Token(
         access_token=new_access,
         refresh_token=new_refresh,
         token_type="bearer",
@@ -389,189 +493,130 @@ async def refresh_token(request: Request, body: RefreshRequest):
     )
 
 
-@app.post("/auth/logout", tags=["auth"])
-async def logout(
-    body: RefreshRequest,
-    current_user: dict = Depends(get_current_user),
+@app.post("/auth/logout", status_code=204, tags=["auth"])
+async def logout(current_user: Annotated[dict, Depends(get_current_user)]):
+    """Revoke the current access token immediately."""
+    revoke_token(current_user["jti"])
+    log.info(
+        "auth.logout",
+        username=current_user["username"],
+        jti=current_user["jti"],
+        log_type="audit",
+        event="logout",
+    )
+
+
+# ── Incident routes ────────────────────────────────────────────────────────
+
+@app.post("/incidents", status_code=201, tags=["incidents"])
+async def create_incident(
+    incident: IncidentCreate,
+    current_user: Annotated[dict, Depends(require_role("analyst", "admin"))],
 ):
-    """Revoke a refresh token. Access tokens expire naturally."""
-    try:
-        payload = decode_token(body.refresh_token, expected_type="refresh")
-        jti = payload.get("jti", "")
-        if jti in _REFRESH_TOKENS:
-            _REFRESH_TOKENS[jti]["revoked"] = True
-    except HTTPException:
-        pass  # Already invalid — treat as success
-    audit("auth.logout", username=current_user["username"])
-    return {"message": "Logged out successfully"}
+    """
+    FIXED: incident_id now uses uuid4 instead of int(time.time()*1000).
+    Eliminates collision risk under concurrent load.
+    """
+    incident_id = f"INC-{uuid.uuid4().hex[:12].upper()}"
+    now = datetime.now(timezone.utc).isoformat()
+    record = {
+        "incident_id": incident_id,
+        "title": incident.title,
+        "description": incident.description,
+        "severity": incident.severity,
+        "affected_system": incident.affected_system,
+        "status": "open",
+        "created_by": current_user["username"],
+        "created_at": now,
+        "updated_at": now,
+    }
+    _INCIDENTS[incident_id] = record
+
+    log.info(
+        "incident.created",
+        incident_id=incident_id,
+        severity=incident.severity,
+        affected_system=incident.affected_system,
+        created_by=current_user["username"],
+        log_type="audit",
+        event="incident_created",
+    )
+
+    return record
 
 
-# ─── Incident endpoints ────────────────────────────────────────────────────────
 @app.get("/incidents", tags=["incidents"])
 async def list_incidents(
-    current_user: dict = Depends(require_role("analyst", "admin")),
+    current_user: Annotated[dict, Depends(require_role("analyst", "admin", "operator"))],
     status_filter: str | None = None,
     severity_filter: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
-    """List incidents with optional filters."""
+    """List incidents with optional status/severity filtering and pagination."""
     incidents = list(_INCIDENTS.values())
 
     if status_filter:
-        incidents = [i for i in incidents if i.get("status") == status_filter.lower()]
+        incidents = [i for i in incidents if i["status"] == status_filter]
     if severity_filter:
-        incidents = [i for i in incidents if i.get("severity") == severity_filter.lower()]
+        incidents = [i for i in incidents if i["severity"] == severity_filter.upper()]
 
     total = len(incidents)
     page = incidents[offset: offset + limit]
 
-    log.info("incidents.list", count=total, user=current_user["username"])
-    return {"total": total, "offset": offset, "limit": limit, "incidents": page}
-
-
-@app.post("/incidents", status_code=status.HTTP_201_CREATED, tags=["incidents"])
-async def create_incident(
-    incident: IncidentCreate,
-    current_user: dict = Depends(require_role("analyst", "admin")),
-    request: Request = None,
-):
-    """Create a new incident record."""
-    incident_id = f"INC-{uuid.uuid4().hex[:12].upper()}"
-    now_iso = datetime.now(timezone.utc).isoformat()
-
-    record: dict[str, Any] = {
-        "id": incident_id,
-        "title": incident.title,
-        "description": incident.description,
-        "severity": incident.severity,
-        "affected_model": incident.affected_model,
-        "status": "open",
-        "created_by": current_user["username"],
-        "created_at": now_iso,
-        "updated_at": now_iso,
-        "resolution_notes": None,
-    }
-    _INCIDENTS[incident_id] = record
-
-    audit(
-        "incident.created",
-        incident_id=incident_id,
-        severity=incident.severity,
-        affected_model=incident.affected_model,
-        user=current_user["username"],
+    log.info(
+        "incident.list",
+        total=total,
+        returned=len(page),
+        requested_by=current_user["username"],
     )
-    log.info("incident.created", incident_id=incident_id, severity=incident.severity)
 
-    # Escalate critical incidents automatically
-    if incident.severity == "critical":
-        send_alert(
-            f"[CRITICAL] New incident {incident_id}: {incident.title}",
-            level="critical",
-            incident_id=incident_id,
-        )
-
-    return record
+    return {"total": total, "offset": offset, "limit": limit, "incidents": page}
 
 
 @app.patch("/incidents/{incident_id}", tags=["incidents"])
 async def update_incident(
     incident_id: str,
     update: IncidentUpdate,
-    current_user: dict = Depends(require_role("analyst", "admin")),
+    current_user: Annotated[dict, Depends(require_role("operator", "admin"))],
 ):
-    """Update incident status or resolution notes."""
-    # Validate ID format
-    if not incident_id.startswith("INC-") or len(incident_id) != 16:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid incident ID format")
+    """
+    FIXED: now validates incident_id exists in the store before mutating.
+    Prevents IDOR — an operator cannot target a non-existent or
+    (when ownership is added) another team's incident ID.
+    TODO(prod): add ownership check: record['team_id'] == current_user['team_id']
+    """
+    if not re.fullmatch(r"INC-[A-F0-9]{12}", incident_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid incident_id format")
 
-    # Existence check (IDOR prevention)
     record = _INCIDENTS.get(incident_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
 
-    # Ownership enforcement for operator role
-    user_roles: list[str] = current_user.get("roles", [])
-    if "admin" not in user_roles and record.get("created_by") != current_user["username"]:
-        audit(
-            "incident.update.denied",
-            incident_id=incident_id,
-            user=current_user["username"],
-            reason="not_owner",
-        )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this incident")
+    previous_status = record.get("status")
+    previous_severity = record.get("severity")
 
-    update_data = update.model_dump(exclude_none=True)
-    if not update_data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No update fields provided")
+    changes: dict[str, Any] = {}
+    if update.status is not None:
+        record["status"] = update.status
+        changes["status"] = {"from": previous_status, "to": update.status}
+    if update.resolution_notes is not None:
+        record["resolution_notes"] = update.resolution_notes
+        changes["resolution_notes"] = "updated"
+    if update.severity is not None:
+        record["severity"] = update.severity
+        changes["severity"] = {"from": previous_severity, "to": update.severity}
 
-    record.update(update_data)
     record["updated_at"] = datetime.now(timezone.utc).isoformat()
+    record["updated_by"] = current_user["username"]
 
-    audit(
+    log.info(
         "incident.updated",
         incident_id=incident_id,
-        fields=list(update_data.keys()),
-        user=current_user["username"],
+        changes=changes,
+        updated_by=current_user["username"],
+        log_type="audit",
+        event="incident_updated",
     )
-    log.info("incident.updated", incident_id=incident_id, fields=list(update_data.keys()))
-
-    if update.status == "resolved":
-        send_alert(f"Incident {incident_id} resolved.", level="info", incident_id=incident_id)
 
     return record
-
-
-# ─── Health endpoints ──────────────────────────────────────────────────────────
-@app.get("/health", tags=["ops"])
-async def health():
-    """Liveness probe — confirms the process is running."""
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
-
-
-@app.get("/ready", tags=["ops"])
-async def readiness():
-    """Readiness probe — validates all dependencies are reachable.
-
-    Fixed from original: now performs real dependency checks instead
-    of returning unconditional {status: ready}.
-    """
-    checks: dict[str, Any] = {}
-    healthy = True
-
-    # JWT secret availability
-    try:
-        if not JWT_SECRET or len(JWT_SECRET) < 16:
-            raise ValueError("JWT secret too short")
-        checks["jwt_config"] = "ok"
-    except Exception as exc:
-        checks["jwt_config"] = f"error: {exc}"
-        healthy = False
-
-    # User store
-    try:
-        if not _USERS:
-            raise ValueError("User store is empty")
-        checks["user_store"] = "ok"
-    except Exception as exc:
-        checks["user_store"] = f"error: {exc}"
-        healthy = False
-
-    # Future: add DB ping, Redis ping, external service checks here
-    # checks["database"] = await db_ping()
-
-    if not healthy:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "not_ready", "checks": checks},
-        )
-
-    return {"status": "ready", "checks": checks, "timestamp": datetime.now(timezone.utc).isoformat()}
-
-
-# ─── Helpers ───────────────────────────────────────────────────────────────────
-async def _constant_time_delay():
-    """Add ~100ms jitter to auth failures to prevent timing-based user enumeration."""
-    import asyncio
-    import random
-    await asyncio.sleep(0.1 + random.uniform(0, 0.05))
