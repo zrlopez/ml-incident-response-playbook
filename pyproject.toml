@@ -9,10 +9,18 @@ line-length = 88
 minversion = "8.0"
 addopts = "-q --tb=short"
 asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "unit: fast, zero-dependency unit tests",
+    "integration: tests requiring a live DB or Redis (use fixtures/conftest)",
+    "contract: API contract tests against a running application instance",
+]
 
 [tool.coverage.run]
-source = ["api", "observability", "pipelines"]
-omit = ["tests/*"]
+# src included so domain policy, ORM, and config modules are measured.
+# Raise CI floor incrementally: 85 now, target 90 by Q3-2026.
+source = ["api", "observability", "pipelines", "src"]
+omit = ["tests/*", "migrations/*"]
 
 [tool.coverage.report]
 fail_under = 85
