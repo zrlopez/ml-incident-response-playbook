@@ -41,6 +41,13 @@ import structlog
 from observability.logging_config import configure_logging
 from observability.otel_setup import configure_otel, shutdown_otel
 from api.redis_denylist import RedisDenylist
+from src.incident_tracker import (
+    IncidentRepository,
+    IncidentStatus,
+    SeverityLevel,
+    get_session,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── Logging bootstrap ──────────────────────────────────────────────────────
 configure_logging()  # PII scrubbing and JSON rendering active

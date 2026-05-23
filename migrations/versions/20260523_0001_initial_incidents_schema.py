@@ -23,22 +23,26 @@ def upgrade() -> None:
         sa.Column("title", sa.String(length=255), nullable=False),
         sa.Column(
             "severity",
-            sa.Enum("SEV1", "SEV2", "SEV3", "SEV4", name="severity_level"),
+            # Values MUST match SeverityLevel.value in src/domain/incident_lifecycle.py
+            # SAEnum uses .value for native DB enums; SeverityLevel values are "SEV-1".."SEV-4"
+            sa.Enum("SEV-1", "SEV-2", "SEV-3", "SEV-4", name="severity_level"),
             nullable=False,
-            server_default="SEV3",
+            server_default="SEV-3",
         ),
         sa.Column(
             "status",
+            # Values MUST match IncidentStatus.value in src/domain/incident_lifecycle.py
+            # IncidentStatus values are lowercase strings (open, investigating, etc.)
             sa.Enum(
-                "OPEN",
-                "INVESTIGATING",
-                "MITIGATING",
-                "RESOLVED",
-                "CLOSED",
+                "open",
+                "investigating",
+                "mitigating",
+                "resolved",
+                "closed",
                 name="incident_status",
             ),
             nullable=False,
-            server_default="OPEN",
+            server_default="open",
         ),
         sa.Column("category", sa.String(length=100), nullable=False),
         sa.Column("owner", sa.String(length=255), nullable=True),
