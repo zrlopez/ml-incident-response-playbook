@@ -14,6 +14,7 @@ Security controls active in this build:
   - Hardened HTTP security headers on every response
   - CORS restricted to explicit allowlist (empty = deny all)
   - Incident persistence via async SQLAlchemy repository (not in-process dict)
+  - Prometheus counters for incident creation and revoked-token access attempts
 
 Environment variables (all consumed via src/config.py Settings):
   JWT_SECRET_KEY          Required. Min 32 chars. Hard-fail if absent.
@@ -62,6 +63,47 @@ from sqlalchemy.ext.asyncio import AsyncSession
 configure_logging()
 log = structlog.get_logger(__name__)
 
+# ── Prometheus counters (optional — app runs without prometheus_client) ────
+#
+# The counters are initialised once at module load. If prometheus_client is
+# not installed (e.g. in minimal test environments) the _prom_available flag
+# is False and every increment call is a no-op. This keeps the API fully
+# functional without the monitoring dependency.
+#
+# Counters defined here match the metric names documented in:
+#   monitoring/metrics.md
+#   monitoring/alert_rules.yml (ml_incident_created_total, ml_revoked_token_access_total)
+
+try:
+    from prometheus_client import Counter, make_asgi_app
+
+    _INCIDENT_CREATED = Counter(
+        "ml_incident_created_total",
+        "Total number of ML incidents created via POST /incidents",
+        ["severity", "category"],
+    )
+    _REVOKED_TOKEN_ACCESS = Counter(
+        "ml_revoked_token_access_total",
+        "Total number of requests rejected because the JWT was on the denylist",
+        ["reason"],
+    )
+    _prom_available = True
+except ImportError:  # pragma: no cover
+    _prom_available = False
+
+
+def _inc_incident_created(severity: str, category: str) -> None:
+    """Increment ml_incident_created_total. No-op if prometheus_client absent."""
+    if _prom_available:
+        _INCIDENT_CREATED.labels(severity=severity, category=category).inc()
+
+
+def _inc_revoked_token_access(reason: str) -> None:
+    """Increment ml_revoked_token_access_total. No-op if prometheus_client absent."""
+    if _prom_available:
+        _REVOKED_TOKEN_ACCESS.labels(reason=reason).inc()
+
+
 # ── Environment / config ───────────────────────────────────────────────────
 JWT_SECRET: str = os.environ["JWT_SECRET_KEY"]
 JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
@@ -102,8 +144,6 @@ def revoke_token(jti: str, expires_in: int) -> None:
 def is_token_revoked(jti: str) -> bool:
     if _denylist is None:
         # Denylist not available: deny access rather than fail open.
-        # This is a deliberate availability trade-off — a degraded Redis
-        # connection causes token verification to fail closed.
         log.error(
             "denylist.not_initialised",
             jti=jti,
@@ -130,9 +170,6 @@ def verify_password(plain: str, hashed: bytes | str) -> bool:
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 # ── Development-only user fixture ──────────────────────────────────────────
-# This block is intentionally excluded from production.
-# In production, users must come from a database (UserRepository).
-# A RuntimeError fires at startup if this fixture is somehow reached in prod.
 if ENVIRONMENT == "production":
     _DEV_USERS: dict[str, dict[str, Any]] = {}
 else:
@@ -181,7 +218,6 @@ class IncidentCreate(BaseModel):
     description: str = Field(..., min_length=10, max_length=5000)
     severity: str = Field(...)
     affected_system: str = Field(..., min_length=2, max_length=100)
-    # Optional fields that align with the ORM schema
     category: str = Field(default="general", min_length=2, max_length=100)
     owner: str | None = Field(default=None, max_length=255)
 
@@ -340,6 +376,8 @@ async def get_current_user(
         )
     jti = payload.get("jti", "")
     if is_token_revoked(jti):
+        # ── Prometheus: count every revoked-token access attempt ─────────
+        _inc_revoked_token_access(reason="jwt_denylisted")
         log.warning(
             "auth.revoked_token_access",
             jti=jti,
@@ -439,6 +477,17 @@ if ALLOWED_ORIGINS:
         allow_headers=["Authorization", "Content-Type"],
     )
 
+# ── Prometheus /metrics endpoint ──────────────────────────────────────────
+#
+# Mounted only when prometheus_client is available. The endpoint is excluded
+# from the OpenAPI schema and should be firewalled from public traffic —
+# scrape it from within the cluster or via a sidecar.
+if _prom_available:
+    from prometheus_client import make_asgi_app as _make_prom_asgi
+    _metrics_app = _make_prom_asgi()
+    app.mount("/metrics", _metrics_app)
+    log.info("prometheus.metrics_endpoint_mounted", path="/metrics")
+
 
 # ── Trace + security headers middleware ───────────────────────────────────
 
@@ -519,6 +568,8 @@ async def readiness():
         checks[f"env_{var}"] = "ok" if os.getenv(var) else "missing"
         if not os.getenv(var):
             all_ok = False
+
+    checks["prometheus"] = "available" if _prom_available else "not_installed"
 
     return JSONResponse(
         status_code=200 if all_ok else 503,
@@ -676,6 +727,21 @@ async def create_incident(
         owner=payload.owner or current_user["username"],
         description=payload.description,
     )
+
+    # ── Prometheus: count every successfully created incident ────────────
+    # Labels allow Grafana to break down volume by severity and category.
+    # Alert rule ml_incident_created_total fires in alert_rules.yml when
+    # SEV-1 rate exceeds threshold.
+    _inc_incident_created(severity=payload.severity, category=payload.category)
+
+    log.info(
+        "incident.created",
+        incident_id=incident.id,
+        severity=payload.severity,
+        category=payload.category,
+        owner=payload.owner or current_user["username"],
+    )
+
     return {
         "incident_id": incident.id,
         **incident.to_dict(),

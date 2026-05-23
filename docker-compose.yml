@@ -1,32 +1,42 @@
 # docker-compose.yml — local development + integration-test stack
 #
 # Services:
-#   api     — FastAPI application (reloads on code changes)
-#   redis   — JWT denylist backing store
-#   otel    — OpenTelemetry Collector (receives traces from the API)
-#   jaeger  — Trace UI reachable at http://localhost:16686
+#   api      — FastAPI application (reloads on code changes)
+#   postgres — Incident database (async SQLAlchemy backend)
+#   redis    — JWT denylist backing store
+#   otel     — OpenTelemetry Collector (receives traces from the API)
+#   jaeger   — Trace UI reachable at http://localhost:16686
 #
 # Quick start:
 #   cp .env.example .env   # fill in JWT_SECRET_KEY at minimum
 #   docker compose up
+#
+# Endpoints:
+#   API         http://localhost:8080
+#   API docs    http://localhost:8080/docs   (development only)
+#   Metrics     http://localhost:8080/metrics
+#   Jaeger UI   http://localhost:16686
 
 services:
 
   api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     ports:
       - "8080:8080"
     env_file:
       - .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://mlapi:mlapi@postgres:5432/mlapi
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: ml-incident-api
       OTEL_SDK_DISABLED: "false"
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     volumes:
       - .:/app
@@ -36,6 +46,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: mlapi
+      POSTGRES_PASSWORD: mlapi
+      POSTGRES_DB: mlapi
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlapi -d mlapi"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
       start_period: 10s
     restart: unless-stopped
 
@@ -45,7 +73,7 @@ services:
       - "6379:6379"
     command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
     volumes:
-      - redis_/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -74,4 +102,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  redis_
+  postgres_data:
+  redis_data:
