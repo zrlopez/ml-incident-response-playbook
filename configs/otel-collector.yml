@@ -1,0 +1,41 @@
+# configs/otel-collector.yml — OpenTelemetry Collector configuration
+#
+# Receives traces from the API via OTLP gRPC and forwards them to Jaeger.
+# In production, replace the jaeger exporter with your observability backend
+# (e.g. Grafana Tempo, Datadog, Honeycomb, or Lightstep).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  # Redact sensitive span attributes before export
+  attributes:
+    actions:
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+  # Uncomment to also log spans to stdout (useful for local debugging)
+  # logging:
+  #   verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, attributes]
+      exporters: [otlp/jaeger]

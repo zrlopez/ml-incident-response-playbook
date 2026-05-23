@@ -7,4 +7,26 @@ line-length = 88
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-q"
+addopts = "-q --tb=short"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["api", "observability", "pipelines"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "S", "B"]
+ignore = ["S101"]  # assert is fine in tests
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
