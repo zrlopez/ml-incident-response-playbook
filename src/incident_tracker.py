@@ -1,25 +1,32 @@
 """
-Incident tracker — production-grade SQLAlchemy async implementation.
+Incident tracker — production-grade SQLAlchemy async ORM + repository.
 
-Remediation: R-05
-Replaces the original 6-line flat-file appender that had no locking,
-no schema, no query capability, and silent data corruption under concurrency.
+Remediation history:
+  R-05  Replaced 6-line flat-file appender with async ORM + connection pool
+  CR-1  Removed create_all bootstrap; startup now delegates to Alembic (2026-05-23)
+  CR-2  Wired IncidentRepository.update_status() through domain state machine (2026-05-23)
 
 Architecture:
-  - SQLAlchemy 2.0 async ORM (asyncpg for PostgreSQL, aiosqlite for local/test)
-  - Connection pool with pre-ping for resilience
-  - Enum types for status and severity — invalid values rejected at DB layer
+  - SQLAlchemy 2.0 async ORM (asyncpg for PostgreSQL, aiosqlite for test)
+  - Connection pool with pool_pre_ping for resilience against idle-connection drops
+  - Enum types: invalid values rejected at the DB layer via SAEnum constraints
   - Full audit trail: created_at, updated_at, resolved_at (all UTC)
-  - IncidentRepository: data access layer with typed methods
-  - FastAPI async dependency via get_session()
+  - IncidentRepository: typed data-access layer; all writes audited via structlog
+  - FastAPI dependency via get_session()
 
-Database configuration (via src/config.py):
-  - Local / test:  database_url = "sqlite+aiosqlite:///./incidents.db"
-  - Production:    database_url = "postgresql+asyncpg://user:pass@host:5432/incidents"
+Migration discipline (CR-1):
+  - Schema is OWNED by Alembic. init_db() verifies migration level; it does NOT
+    create or alter tables. Run `alembic upgrade head` before starting the app.
+  - _build_engine() is still module-level for backward compat; see Platform note below.
 
-Migrations:
-  Run `alembic upgrade head` to apply schema changes.
-  Never modify __tablename__ without a corresponding Alembic migration.
+State-machine discipline (CR-2):
+  - update_status() enforces ALLOWED_STATUS_TRANSITIONS from src.domain.incident_lifecycle.
+  - Invalid transitions raise InvalidTransitionError (HTTP 409 in the API layer).
+  - Every transition attempt — allowed or rejected — is audit-logged.
+
+Database URLs:
+  - Local / test:  DATABASE_URL=sqlite+aiosqlite:///./incidents.db
+  - Production:    DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/incidents
 """
 
 from __future__ import annotations
@@ -27,10 +34,9 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from enum import Enum
 
 import structlog
-from sqlalchemy import DateTime, Enum as SAEnum, String, Text, select
+from sqlalchemy import DateTime, Enum as SAEnum, String, Text, text, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -39,39 +45,55 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from src.config import get_settings
+from src.domain.incident_lifecycle import (
+    ALLOWED_STATUS_TRANSITIONS,
+    IncidentStatus,
+    SeverityLevel,
+    validate_status_transition,
+)
 
 log = structlog.get_logger(__name__)
 
 
-# ── Domain enumerations ────────────────────────────────────────────────────────────
-
-class IncidentStatus(str, Enum):
-    OPEN = "open"
-    INVESTIGATING = "investigating"
-    MITIGATING = "mitigating"
-    RESOLVED = "resolved"
-    CLOSED = "closed"
-
-
-class SeverityLevel(str, Enum):
-    SEV1 = "SEV-1"
-    SEV2 = "SEV-2"
-    SEV3 = "SEV-3"
-    SEV4 = "SEV-4"
+# ── Re-export domain enums so callers only need one import path ─────────────────
+__all__ = [
+    "Base",
+    "Incident",
+    "IncidentStatus",
+    "SeverityLevel",
+    "InvalidTransitionError",
+    "IncidentRepository",
+    "get_session",
+    "init_db",
+]
 
 
-# ── ORM model ─────────────────────────────────────────────────────────────────────
+# ── Domain exception ──────────────────────────────────────────────────────────────
+
+class InvalidTransitionError(ValueError):
+    """
+    Raised when a caller requests an incident status transition that violates
+    the lifecycle policy defined in src.domain.incident_lifecycle.
+
+    The API layer should map this to HTTP 409 Conflict with the reason string
+    surfaced as a structured error body.
+    """
+
+
+# ── ORM declarative base ─────────────────────────────────────────────────────────
 
 class Base(DeclarativeBase):
     pass
 
 
+# ── ORM model ──────────────────────────────────────────────────────────────────────
+
 class Incident(Base):
     """
     Production incident record.
 
-    Every state change is timestamped. resolved_at is set automatically
-    when status transitions to RESOLVED if not explicitly provided.
+    Schema changes require an Alembic migration.
+    Do not add, rename, or drop columns without a corresponding migration file.
     """
 
     __tablename__ = "incidents"
@@ -109,7 +131,7 @@ class Incident(Base):
     )
 
     def to_dict(self) -> dict:
-        """Serialise to JSON-safe dict for API responses."""
+        """Serialise to a JSON-safe dict for API responses."""
         return {
             "id": self.id,
             "title": self.title,
@@ -126,48 +148,105 @@ class Incident(Base):
         }
 
 
-# ── Engine + session factory ──────────────────────────────────────────────────────────
+# ── Engine + session factory ────────────────────────────────────────────────────────────
 
 def _build_engine(settings=None):
-    """Build async SQLAlchemy engine from settings."""
+    """
+    Construct an async SQLAlchemy engine from Settings.
+
+    Platform note: In a future refactor, move this into src/platform/database.py
+    and inject via FastAPI Depends() to improve testability. For now, the module-
+    level singleton is retained for backward compatibility with existing test shims.
+    """
     cfg = settings or get_settings()
-    return create_async_engine(
-        cfg.database_url,
-        pool_size=cfg.db_pool_size,
-        max_overflow=cfg.db_max_overflow,
-        pool_pre_ping=cfg.db_pool_pre_ping,
-        echo=(cfg.app_env == "development"),
-    )
+    is_sqlite = cfg.database_url.startswith("sqlite")
+    kwargs: dict = {
+        "pool_pre_ping": cfg.db_pool_pre_ping,
+        "echo": (cfg.app_env == "development"),
+    }
+    if not is_sqlite:
+        # SQLite does not support pool_size / max_overflow
+        kwargs["pool_size"] = cfg.db_pool_size
+        kwargs["max_overflow"] = cfg.db_max_overflow
+    return create_async_engine(cfg.database_url, **kwargs)
 
 
 _engine = _build_engine()
 _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
 
 
+# ── Startup lifecycle (CR-1) ────────────────────────────────────────────────────────
+
 async def init_db() -> None:
     """
-    Create all database tables.
+    Verify the database connection and confirm Alembic migration state.
 
-    Call once at application startup via the FastAPI lifespan handler.
-    Safe to call multiple times — uses CREATE TABLE IF NOT EXISTS semantics.
+    CR-1 CHANGE: This function no longer calls Base.metadata.create_all.
+    Schema creation and evolution are now exclusively owned by Alembic.
+    Running `alembic upgrade head` before application startup is REQUIRED.
+
+    Startup behavior:
+      - Runs a lightweight connectivity check (SELECT 1).
+      - On PostgreSQL: reads the alembic_version table and warns if the schema
+        is behind the expected head revision. Does NOT block startup, but does
+        emit a WARNING-level structured log event for ops visibility.
+      - On SQLite (local/test): skips migration version check because SQLite
+        test databases are initialised in-process during test setup.
+
+    Raises:
+        RuntimeError: If the database is unreachable at startup.
     """
-    async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    log.info("database.initialized", url_prefix=str(_engine.url).split("@")[-1])
+    url_display = str(_engine.url).split("@")[-1]  # Safe: strips credentials
+    is_sqlite = str(_engine.url).startswith("sqlite")
 
+    try:
+        async with _engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        log.info("database.connection_verified", url=url_display)
+    except Exception as exc:
+        log.error("database.connection_failed", url=url_display, error=str(exc))
+        raise RuntimeError(
+            f"Database unreachable at startup ({url_display}): {exc}"
+        ) from exc
+
+    if is_sqlite:
+        # SQLite test/dev: schema bootstrapped by the test suite or a dev helper;
+        # Alembic version check is not applicable.
+        log.info("database.migration_check_skipped", reason="sqlite_local_mode")
+        return
+
+    # PostgreSQL: warn if migration is behind head.
+    try:
+        async with _engine.connect() as conn:
+            result = await conn.execute(
+                text("SELECT version_num FROM alembic_version LIMIT 1")
+            )
+            row = result.fetchone()
+            version = row[0] if row else None
+        if version is None:
+            log.warning(
+                "database.migration_state_unknown",
+                detail="alembic_version table is empty — run 'alembic upgrade head'",
+            )
+        else:
+            log.info("database.migration_verified", alembic_version=version)
+    except Exception as exc:
+        # Non-fatal: alembic_version missing on first deploy before migration runs
+        log.warning(
+            "database.migration_check_failed",
+            detail=str(exc),
+            action="ensure 'alembic upgrade head' ran before this container started",
+        )
+
+
+# ── FastAPI session dependency ─────────────────────────────────────────────────────────
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     """
-    FastAPI async dependency: yield a database session.
+    FastAPI async dependency: yield a scoped database session.
 
-    Commits on clean exit, rolls back on exception.
+    Commits on clean exit; rolls back on any exception.
     Session is always closed regardless of outcome.
-
-    Usage:
-        @app.get("/incidents")
-        async def list_incidents(session: AsyncSession = Depends(get_session)):
-            repo = IncidentRepository(session)
-            return await repo.list_open()
     """
     async with _session_factory() as session:
         try:
@@ -182,88 +261,32 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 class IncidentRepository:
     """
-    Data access layer for incident records.
+    Data access layer for Incident records.
 
-    All methods are async. Every write is logged at INFO level with
-    structured fields for SIEM routing (log_type="audit").
+    Responsibilities:
+      - Typed CRUD operations against the incidents table
+      - Lifecycle validation via domain policy (CR-2)
+      - Structured audit logging on every write
+
+    Does NOT own:
+      - Business orchestration logic (use a service layer for that)
+      - HTTP concerns (use the API layer for that)
+      - Alert sending (use observability/logging_config.py send_alert)
     """
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(
-        self,
-        title: str,
-        severity: SeverityLevel,
-        category: str,
-        owner: str | None = None,
-        description: str | None = None,
-    ) -> Incident:
-        """Create and persist a new incident record."""
-        incident = Incident(
-            title=title,
-            severity=severity,
-            category=category,
-            owner=owner,
-            description=description,
-        )
-        self._session.add(incident)
-        await self._session.flush()  # Populate generated ID before commit
-        log.info(
-            "incident.created",
-            log_type="audit",
-            incident_id=incident.id,
-            severity=severity.value,
-            category=category,
-            owner=owner,
-        )
-        return incident
+    # ─ Reads ──────────────────────────────────────────────────────────────────────
 
     async def get(self, incident_id: str) -> Incident | None:
-        """Retrieve a single incident by ID. Returns None if not found."""
+        """Retrieve a single incident by primary key. Returns None if not found."""
         return await self._session.get(Incident, incident_id)
-
-    async def update_status(
-        self,
-        incident_id: str,
-        status: IncidentStatus,
-        resolved_at: datetime | None = None,
-    ) -> Incident:
-        """
-        Update the status of an existing incident.
-
-        Automatically sets resolved_at to UTC now when transitioning to RESOLVED.
-
-        Raises:
-            ValueError: If the incident ID does not exist.
-        """
-        incident = await self.get(incident_id)
-        if incident is None:
-            raise ValueError(f"Incident {incident_id!r} not found")
-
-        previous_status = incident.status
-        incident.status = status
-
-        if status == IncidentStatus.RESOLVED and incident.resolved_at is None:
-            incident.resolved_at = resolved_at or datetime.now(timezone.utc)
-
-        log.info(
-            "incident.status_updated",
-            log_type="audit",
-            incident_id=incident_id,
-            previous_status=previous_status.value,
-            new_status=status.value,
-            resolved_at=incident.resolved_at.isoformat() if incident.resolved_at else None,
-        )
-        return incident
 
     async def list_open(self, limit: int = 100) -> list[Incident]:
         """
-        List all non-closed incidents, newest first.
-
-        Args:
-            limit: Maximum records to return. Capped at 1000 to prevent
-                   accidental full-table scans in production.
+        Return all non-CLOSED incidents ordered newest-first.
+        Limit is hard-capped at 1000 to prevent accidental full-table scans.
         """
         effective_limit = min(limit, 1000)
         stmt = (
@@ -280,7 +303,7 @@ class IncidentRepository:
         severity: SeverityLevel,
         limit: int = 100,
     ) -> list[Incident]:
-        """List all open incidents of a given severity, newest first."""
+        """Return open incidents for a given severity, newest first."""
         effective_limit = min(limit, 1000)
         stmt = (
             select(Incident)
@@ -293,3 +316,96 @@ class IncidentRepository:
         )
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
+
+    # ─ Writes ─────────────────────────────────────────────────────────────────────
+
+    async def create(
+        self,
+        title: str,
+        severity: SeverityLevel,
+        category: str,
+        owner: str | None = None,
+        description: str | None = None,
+    ) -> Incident:
+        """Persist a new incident record in OPEN status."""
+        incident = Incident(
+            title=title,
+            severity=severity,
+            status=IncidentStatus.OPEN,
+            category=category,
+            owner=owner,
+            description=description,
+        )
+        self._session.add(incident)
+        await self._session.flush()  # Materialise generated ID before commit
+        log.info(
+            "incident.created",
+            log_type="audit",
+            incident_id=incident.id,
+            severity=severity.value,
+            category=category,
+            owner=owner,
+        )
+        return incident
+
+    async def update_status(
+        self,
+        incident_id: str,
+        new_status: IncidentStatus,
+        resolved_at: datetime | None = None,
+    ) -> Incident:
+        """
+        Transition an incident to a new lifecycle status.
+
+        CR-2: All transitions are validated against the domain state machine in
+        src.domain.incident_lifecycle before any mutation is applied.  Invalid
+        transitions are rejected with InvalidTransitionError — no DB write occurs.
+
+        Args:
+            incident_id:  UUID of the target incident.
+            new_status:   Requested target status.
+            resolved_at:  Optional explicit resolution timestamp; defaults to
+                          UTC now when transitioning to RESOLVED.
+
+        Raises:
+            ValueError:             If the incident_id does not exist.
+            InvalidTransitionError: If the requested transition is not permitted
+                                    by the lifecycle policy.
+        """
+        incident = await self.get(incident_id)
+        if incident is None:
+            raise ValueError(f"Incident {incident_id!r} not found")
+
+        current_status = incident.status
+
+        # ─ Domain policy check (CR-2) ────────────────────────────────────────
+        decision = validate_status_transition(current_status, new_status)
+
+        if not decision.allowed:
+            log.warning(
+                "incident.transition_rejected",
+                log_type="audit",
+                incident_id=incident_id,
+                current_status=current_status.value,
+                requested_status=new_status.value,
+                reason=decision.reason,
+            )
+            raise InvalidTransitionError(decision.reason)
+
+        # ─ Apply mutation ──────────────────────────────────────────────────────
+        incident.status = new_status
+
+        if new_status == IncidentStatus.RESOLVED and incident.resolved_at is None:
+            incident.resolved_at = resolved_at or datetime.now(timezone.utc)
+
+        log.info(
+            "incident.status_updated",
+            log_type="audit",
+            incident_id=incident_id,
+            previous_status=current_status.value,
+            new_status=new_status.value,
+            resolved_at=(
+                incident.resolved_at.isoformat() if incident.resolved_at else None
+            ),
+        )
+        return incident

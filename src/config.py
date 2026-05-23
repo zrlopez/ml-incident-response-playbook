@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         default="INFO",
         pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
     )
-    api_host: str = Field(default="0.0.0.0")
+    api_host: str = Field(default="127.0.0.1")  # Override via API_HOST=0.0.0.0 in orchestrated runtime
     api_port: int = Field(default=8000, ge=1, le=65535)
     api_workers: int = Field(default=1, ge=1, le=32)
 

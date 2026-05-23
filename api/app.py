@@ -405,6 +405,14 @@ async def lifespan(app: FastAPI):
     # ── Startup ────────────────────────────────────────────────────────────
     log.info("api.startup", environment=ENVIRONMENT, algorithm=JWT_ALGORITHM)
 
+    # CR-1: Verify DB connectivity + Alembic migration state (no create_all)
+    try:
+        from src.incident_tracker import init_db  # noqa: E402
+        await init_db()
+    except Exception as _db_exc:
+        log.error("api.startup.db_check_failed", error=str(_db_exc))
+        raise
+
     # Initialise Redis-backed JWT denylist (R-03)
     _denylist = RedisDenylist(redis_url=REDIS_URL)
     await _denylist.connect()
@@ -437,6 +445,30 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# -- CR-2: Map InvalidTransitionError -> HTTP 409 Conflict -------------------
+# InvalidTransitionError is raised by IncidentRepository.update_status() when
+# a caller requests a transition forbidden by the domain state machine.
+# Returning 409 (not 422) is intentional: the request is syntactically valid
+# but semantically conflicts with the current resource state (RFC 9110 s15.5.10).
+try:
+    from src.incident_tracker import InvalidTransitionError  # noqa: E402
+
+    @app.exception_handler(InvalidTransitionError)
+    async def _invalid_transition_handler(
+        request: Request, exc: InvalidTransitionError
+    ):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "invalid_transition",
+                "detail": str(exc),
+                "hint": "Check the allowed_transitions for the current incident status.",
+            },
+        )
+except ImportError:
+    pass  # Graceful: incident_tracker not yet imported at module load in some test configs
 
 # ── CORS middleware ────────────────────────────────────────────────────────
 if ALLOWED_ORIGINS:
