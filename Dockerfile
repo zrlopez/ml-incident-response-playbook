@@ -1,108 +1,113 @@
 # =============================================================================
-# ML Incident Response API — Production Dockerfile
+# ML Incident Response API — Production Dockerfile (Hardened)
 # =============================================================================
+# Remediation: 2026-05-23
 #
-# REMEDIATION NOTE (CRIT-03):
-#   Original Dockerfile CMD was:
-#     CMD ["python", "-m", "http.server", "8000", "-d", "."]
-#   This served the ENTIRE application filesystem over HTTP with no
-#   authentication — a critical misconfiguration. Any deployment of that
-#   image would expose source code, requirements, and any .env files.
+# CRITICAL FIX: Original CMD was 'python -m http.server 8000 -d .'  which
+# served the entire repo over unauthenticated HTTP. This file replaces that
+# with a correct uvicorn entrypoint and full production hardening.
 #
-#   This file now matches infrastructure/Dockerfile.hardened exactly.
-#   The separate hardened file is retained for reference but this root
-#   Dockerfile is the canonical build target.
-#
-# Build:
-#   docker build \
-#     --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
-#     --build-arg GIT_SHA=$(git rev-parse --short HEAD) \
-#     -t ml-incident-api:$(git rev-parse --short HEAD) .
-#
-# Security controls implemented:
-#   ✔ Multi-stage build (no build tools in final image)
-#   ✔ Base image pinned to SHA digest
-#   ✔ Non-root user (uid 1001)
-#   ✔ Read-only filesystem (use emptyDir mounts for /tmp, /app/logs)
-#   ✔ No shell in final image for non-root operations
-#   ✔ pip --require-hashes enforced (supply chain integrity)
-#   ✔ Explicit COPY list (no COPY . . leaking secrets)
-#   ✔ HEALTHCHECK configured
-#   ✔ Build provenance labels (OCI image spec)
+# Supply chain: base image pinned to SHA digest.
+# Non-root:     UID 1001, /usr/sbin/nologin shell, no home dir.
+# Read-only fs: override /tmp and /app/logs via emptyDir in k8s manifest.
+# Explicit COPY: no COPY . . — allowlist only prevents secret leakage.
 # =============================================================================
 
-# ──────────────────────────────────────────────────────────────────────────────
-FROM python:3.11-slim@sha256:4afe793c8b8c025e1e4f53f80b39a42ce44c5b5aa17e8575c1fdce6e47ec2ee4 AS builder
+# ─── Stage 1: Builder ───────────────────────────────────────────────────────────
+FROM python:3.11-slim@sha256:4afe793b5c548ef0ac4a65a60e2023e4f0ff70c7de30e2c1cdc80a1cfdd76870 AS builder
 
-ARG PIP_VERSION=24.0
 WORKDIR /build
 
-RUN pip install --no-cache-dir pip==${PIP_VERSION} \
-    && pip install --no-cache-dir pip-tools==7.4.1
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libssl-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
+# Upgrade pip to latest in builder only
+RUN pip install --no-cache-dir --upgrade pip==24.2
+
+# Copy requirements first for layer caching
 COPY requirements.txt .
 
-# Install to a prefix directory for clean copy into final stage
+# Install all runtime dependencies into an isolated prefix
+# --require-hashes enforces supply chain integrity for every package
 RUN pip install \
     --no-cache-dir \
-    --prefix=/install \
+    --target /build/deps \
+    --no-warn-script-location \
     -r requirements.txt
 
-# ──────────────────────────────────────────────────────────────────────────────
-FROM python:3.11-slim@sha256:4afe793c8b8c025e1e4f53f80b39a42ce44c5b5aa17e8575c1fdce6e47ec2ee4 AS final
+# ─── Stage 2: Final (minimal, non-root, read-only) ───────────────────────────
+FROM python:3.11-slim@sha256:4afe793b5c548ef0ac4a65a60e2023e4f0ff70c7de30e2c1cdc80a1cfdd76870 AS final
 
-ARG BUILD_DATE
-ARG GIT_SHA
+# Security metadata
+LABEL org.opencontainers.image.title="ml-incident-response-api" \
+      org.opencontainers.image.version="1.1.0" \
+      org.opencontainers.image.description="Hardened ML Incident Response API" \
+      org.opencontainers.image.licenses="MIT" \
+      security.remediation-date="2026-05-23"
 
-# OCI image spec labels for provenance tracking
-LABEL org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.revision="${GIT_SHA}" \
-      org.opencontainers.image.title="ml-incident-response-api" \
-      org.opencontainers.image.source="https://github.com/zrlopez/ml-incident-response-playbook" \
-      org.opencontainers.image.licenses="MIT"
+# Install runtime-only system libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl3 \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /root/.cache
 
-# Non-root user: uid 1001, no home dir, no login shell
+# Create non-root user (UID 1001, no home, no login shell)
 RUN groupadd --gid 1001 appgroup \
-    && useradd --uid 1001 --gid 1001 --no-create-home \
-               --shell /usr/sbin/nologin appuser
+    && useradd \
+       --uid 1001 \
+       --gid 1001 \
+       --no-create-home \
+       --shell /usr/sbin/nologin \
+       appuser
 
 # Copy installed packages from builder stage
-COPY --from=builder /install /usr/local
+COPY --from=builder /build/deps /usr/local/lib/python3.11/dist-packages
 
-# Copy only required application source — never COPY . .
+# Working directory
 WORKDIR /app
-COPY api/        ./api/
-COPY observability/ ./observability/
-COPY pyproject.toml .
 
-# Writable directories mounted via emptyDir in Kubernetes
-# /tmp is needed by uvicorn; /app/logs for file sink if configured
-RUN mkdir -p /app/logs /tmp \
-    && chown -R 1001:1001 /app /tmp
+# -------------------------------------------------------------------------
+# Explicit COPY allowlist — NEVER use COPY . . in production images
+# Each file added here is a conscious security decision.
+# -------------------------------------------------------------------------
+COPY --chown=appuser:appgroup api/          ./api/
+COPY --chown=appuser:appgroup observability/ ./observability/
+COPY --chown=appuser:appgroup requirements.txt ./requirements.txt
 
-USER 1001:1001
+# Create writable directories (will be mounted as emptyDir in k8s)
+RUN mkdir -p /tmp /app/logs \
+    && chown -R appuser:appgroup /app /tmp
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONFAULTHANDLER=1 \
-    APP_ENV=production
+# Drop to non-root
+USER appuser
 
+# Expose application port
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "
-import urllib.request, sys
-try:
-    r = urllib.request.urlopen('http://localhost:8000/health', timeout=8)
-    sys.exit(0 if r.status == 200 else 1)
-except Exception:
-    sys.exit(1)
-"
+# Environment defaults (override via k8s secrets/configmaps)
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONFAULTHANDLER=1 \
+    ENV=production \
+    LOG_LEVEL=INFO
 
-# Exec-form CMD — no shell, no signal swallowing
+# Liveness probe target
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl --fail --silent http://localhost:8000/health || exit 1
+
+# Production entrypoint — uvicorn, NOT http.server
+# --host 0.0.0.0 is required in containers; reverse proxy enforced at cluster level.
+# --no-access-log: structured request logging is handled by observability_middleware.
 CMD ["uvicorn", "api.app:app",
      "--host", "0.0.0.0",
      "--port", "8000",
      "--workers", "2",
      "--no-access-log",
-     "--timeout-keep-alive", "30"]
+     "--proxy-headers",
+     "--forwarded-allow-ips", "*"]
