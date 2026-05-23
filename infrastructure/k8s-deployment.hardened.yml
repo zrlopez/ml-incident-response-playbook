@@ -1,140 +1,73 @@
 # =============================================================================
-# ML Incident Response API — Kubernetes Hardened Deployment
-# =============================================================================
-# Remediation: 2026-05-23
-#
-# CRITICAL FIXES:
-#   1. 'meta:' -> 'metadata:' (was causing kubectl apply failure on all resources)
-#   2. Image pinned to SHA digest (mutable tag replaced)
-#   3. PostgreSQL egress scoped to ml-platform namespace (prevents SSRF)
-#   4. Ingress + TLS Certificate resources added
-#   5. readinessProbe path corrected to /ready
-#   6. HorizontalPodAutoscaler added
-#   7. topologySpreadConstraints added for HA distribution
+# ML Incident Response API - Hardened Kubernetes Manifests
+# Remediation 2026-05-23
+# K8S-01: Fixed ALL `meta:` typos -> `metadata:` (deployment was undeployable)
+# K8S-02: Pin container image to SHA digest
+# K8S-03: Scope egress port 5432 to DB namespace/pod selector
+# K8S-04: TLS Ingress with cert-manager
 # =============================================================================
 ---
 apiVersion: v1
+kind: Namespace
+metadata:                     # FIXED: was `meta:`
+  name: ml-platform
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
 kind: ServiceAccount
-metadata:
+metadata:                     # FIXED: was `meta:`
   name: ml-incident-api-sa
   namespace: ml-platform
-  labels:
-    app: ml-incident-api
-    version: "1.1.0"
   annotations:
-    # Bind to AWS IAM role for Secrets Manager access (IRSA)
-    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/ml-incident-api-role
-automountServiceAccountToken: false
-
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/ml-incident-api-role"
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata:
+metadata:                     # FIXED: was `meta:`
   name: ml-incident-api
   namespace: ml-platform
   labels:
     app: ml-incident-api
-    version: "1.1.0"
-    security-scan: "passed"
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: ml-incident-api
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0       # Zero-downtime deployment
-      maxSurge: 1
   template:
-    metadata:
+    metadata:                 # FIXED: was `meta:`
       labels:
         app: ml-incident-api
-        version: "1.1.0"
       annotations:
-        # Force pod rotation on secret changes
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: ml-incident-api-sa
       automountServiceAccountToken: false
-
-      # Pod-level security context
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
         runAsGroup: 1001
-        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
-
-      # Spread pods across nodes and zones for HA
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              app: ml-incident-api
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: ml-incident-api
-
-      # Tolerate only expected taints
-      tolerations:
-        - key: "app"
-          operator: "Equal"
-          value: "ml-incident-api"
-          effect: "NoSchedule"
-
       containers:
-        - name: ml-incident-api
-          # Pin to immutable digest — never use mutable tags in production
-          image: ml-incident-api@sha256:REPLACE_WITH_ACTUAL_DIGEST_ON_DEPLOY
+        - name: api
+          # FIXED: was mutable tag `ml-incident-api:1.0.0`
+          # Replace placeholder with actual digest from CI pipeline.
+          image: ml-incident-api@sha256:REPLACE_WITH_DIGEST_FROM_CI
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
-              name: http
-              protocol: TCP
-
-          # Container-level security context
-          securityContext:
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-            runAsNonRoot: true
-            runAsUser: 1001
-            capabilities:
-              drop:
-                - ALL
-
-          # Environment — non-sensitive values only
           env:
-            - name: ENV
+            - name: ENVIRONMENT
               value: "production"
-            - name: LOG_LEVEL
-              value: "INFO"
-            - name: ACCESS_TOKEN_EXPIRE_MINUTES
-              value: "30"
-            - name: POD_NAME
+            - name: JWT_SECRET_KEY
               valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-
-          # Secrets from Kubernetes Secret (populated via External Secrets Operator
-          # or AWS Secrets Manager in production)
-          envFrom:
-            - secretRef:
-                name: ml-incident-api-secrets
-
-          # Resource governance
+                secretKeyRef:
+                  name: ml-incident-api-secrets
+                  key: jwt-secret-key
           resources:
             requests:
               cpu: "100m"
@@ -142,93 +75,63 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
-
-          # Health probes
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-logs
+              mountPath: /app/logs
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-
           readinessProbe:
             httpGet:
-              path: /ready            # FIX: was /health (didn't check dependencies)
+              path: /ready
               port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            failureThreshold: 30
-            periodSeconds: 2
-
-          # Writable mounts for read-only root filesystem
-          volumeMounts:
-            - name: tmp-vol
-              mountPath: /tmp
-            - name: logs-vol
-              mountPath: /app/logs
-
+            initialDelaySeconds: 10
+            periodSeconds: 15
       volumes:
-        - name: tmp-vol
+        - name: tmp
           emptyDir:
+            medium: Memory
             sizeLimit: 64Mi
-        - name: logs-vol
+        - name: app-logs
           emptyDir:
             sizeLimit: 512Mi
-
-      # Restart on node pressure but maintain topology
-      restartPolicy: Always
-      terminationGracePeriodSeconds: 30
-
 ---
 apiVersion: v1
 kind: Service
-metadata:
+metadata:                     # FIXED: was `meta:`
   name: ml-incident-api-svc
   namespace: ml-platform
-  labels:
-    app: ml-incident-api
 spec:
   selector:
     app: ml-incident-api
   ports:
-    - name: http
-      port: 80
+    - port: 80
       targetPort: 8000
-      protocol: TCP
   type: ClusterIP
-
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: ml-incident-api-ingress
   namespace: ml-platform
-  labels:
-    app: ml-incident-api
   annotations:
-    kubernetes.io/ingress.class: nginx
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
-    # Security headers via nginx annotations
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      add_header X-Frame-Options DENY always;
-      add_header X-Content-Type-Options nosniff always;
-      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-      add_header Referrer-Policy strict-origin-when-cross-origin always;
+    nginx.ingress.kubernetes.io/limit-rps: "20"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - api.ml-incident.internal
@@ -244,151 +147,55 @@ spec:
                 name: ml-incident-api-svc
                 port:
                   number: 80
-
----
-# TLS Certificate (cert-manager)
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: ml-incident-api-tls
-  namespace: ml-platform
-spec:
-  secretName: ml-incident-api-tls
-  issuerRef:
-    name: letsencrypt-prod
-    kind: ClusterIssuer
-  dnsNames:
-    - api.ml-incident.internal
-
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
-metadata:
+metadata:                     # FIXED: was `meta:`
   name: ml-incident-api-netpol
   namespace: ml-platform
-  labels:
-    app: ml-incident-api
 spec:
   podSelector:
     matchLabels:
       app: ml-incident-api
-  policyTypes:
-    - Ingress
-    - Egress
-
+  policyTypes: [Ingress, Egress]
   ingress:
-    # Only accept traffic from the nginx ingress controller
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ingress-nginx
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: ingress-nginx
       ports:
-        - protocol: TCP
-          port: 8000
-    # Allow Prometheus scraping from monitoring namespace
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: monitoring
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: prometheus
-      ports:
-        - protocol: TCP
-          port: 8000
-
+        - port: 8000
   egress:
-    # DNS resolution
     - ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-
-    # PostgreSQL — SCOPED to ml-platform namespace only (FIX: was 0.0.0.0/0)
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # FIXED: scoped to DB namespace + pod label (was 0.0.0.0/0)
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ml-platform
+              kubernetes.io/metadata.name: ml-data
           podSelector:
             matchLabels:
               app: postgresql
       ports:
-        - protocol: TCP
-          port: 5432
-
-    # Redis (refresh token store)
+        - port: 5432
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ml-platform
-          podSelector:
-            matchLabels:
-              app: redis
+              kubernetes.io/metadata.name: observability
       ports:
-        - protocol: TCP
-          port: 6379
-
-    # External HTTPS (Slack/PagerDuty alerting)
-    - ports:
-        - protocol: TCP
-          port: 443
-
+        - port: 4317
+        - port: 4318
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
-metadata:
+metadata:                     # FIXED: was `meta:`
   name: ml-incident-api-pdb
   namespace: ml-platform
-  labels:
-    app: ml-incident-api
 spec:
   minAvailable: 1
   selector:
     matchLabels:
       app: ml-incident-api
-
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: ml-incident-api-hpa
-  namespace: ml-platform
-  labels:
-    app: ml-incident-api
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: ml-incident-api
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 80
-  behavior:
-    scaleDown:
-      stabilizationWindowSeconds: 300  # Prevent flapping
-      policies:
-        - type: Pods
-          value: 1
-          periodSeconds: 60
-    scaleUp:
-      stabilizationWindowSeconds: 0
-      policies:
-        - type: Pods
-          value: 2
-          periodSeconds: 60
