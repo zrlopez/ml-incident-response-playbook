@@ -19,6 +19,8 @@
 #   2026-05-24 v15 CI-28: fix TruffleHog on push — base/head diff fails when
 #                  there is no PR context; use since-commit on push events
 #                  and base/head diff only on pull_request events.
+#   2026-05-24 v16 CI-29: pin codeql/upload-sarif back to v3 — v4 breaks
+#                  sarif path resolution (Path does not exist: ./bandit-app.sarif)
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -122,7 +124,7 @@ jobs:
           rm -f ./bandit-tests.sarif.tmp
 
       - name: Upload Bandit SARIF
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: ./bandit-app.sarif
@@ -255,7 +257,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-container.sarif
