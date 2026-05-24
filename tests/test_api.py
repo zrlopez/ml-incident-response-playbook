@@ -27,6 +27,16 @@ import os
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-at-least-32-characters-long")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+# CRIT-A REMEDIATION: Test passwords read from env so CI can inject them via
+# secrets. Defaults are only used for local dev; never match production values.
+# In CI: set DEV_ADMIN_PASSWORD etc. in the test job env (see ci_cd/secure-ci.yml).
+os.environ.setdefault("DEV_ADMIN_PASSWORD",    "test-admin-pw-32chars-aaaaaaaaaa")
+os.environ.setdefault("DEV_ANALYST_PASSWORD",  "test-analyst-pw-32chars-aaaaaaaaa")
+os.environ.setdefault("DEV_OPERATOR_PASSWORD", "test-operator-pw-32chars-aaaaaaaa")
+
+_TEST_ADMIN_PW    = os.environ["DEV_ADMIN_PASSWORD"]
+_TEST_ANALYST_PW  = os.environ["DEV_ANALYST_PASSWORD"]
+_TEST_OPERATOR_PW = os.environ["DEV_OPERATOR_PASSWORD"]
 
 
 # ── Mock Redis denylist so tests run without a live Redis ────────────────────
@@ -77,7 +87,7 @@ async def client():
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-async def _login(client: AsyncClient, username: str = "analyst", password: str = "analyst-dev-only") -> str:
+async def _login(client: AsyncClient, username: str = "analyst", password: str = _TEST_ANALYST_PW) -> str:
     """Return an access token for the given user."""
     resp = await client.post(
         "/auth/token",
@@ -87,7 +97,7 @@ async def _login(client: AsyncClient, username: str = "analyst", password: str =
     return resp.json()["access_token"]
 
 
-async def _auth_headers(client: AsyncClient, username: str = "analyst", password: str = "analyst-dev-only") -> dict:
+async def _auth_headers(client: AsyncClient, username: str = "analyst", password: str = _TEST_ANALYST_PW) -> dict:
     token = await _login(client, username, password)
     return {"Authorization": f"Bearer {token}"}
 
@@ -98,7 +108,7 @@ async def _auth_headers(client: AsyncClient, username: str = "analyst", password
 async def test_login_returns_token_pair(client):
     resp = await client.post(
         "/auth/token",
-        data={"username": "analyst", "password": "analyst-dev-only"},
+        data={"username": "analyst", "password": _TEST_ANALYST_PW},
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -145,7 +155,7 @@ async def test_logout_revokes_access_token(client):
 async def test_refresh_token_rotation(client):
     login_resp = await client.post(
         "/auth/token",
-        data={"username": "admin", "password": "admin-dev-only"},
+        data={"username": "admin", "password": _TEST_ADMIN_PW},
     )
     refresh_token = login_resp.json()["refresh_token"]
 
@@ -177,7 +187,7 @@ async def test_protected_route_requires_auth(client):
 
 @pytest.mark.anyio
 async def test_analyst_can_create_incident(client):
-    headers = await _auth_headers(client, "analyst", "analyst-dev-only")
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
     resp = await client.post(
         "/incidents",
         json={
@@ -196,7 +206,7 @@ async def test_analyst_can_create_incident(client):
 
 @pytest.mark.anyio
 async def test_operator_cannot_create_incident(client):
-    headers = await _auth_headers(client, "operator", "operator-dev-only")
+    headers = await _auth_headers(client, "operator", _TEST_OPERATOR_PW)
     resp = await client.post(
         "/incidents",
         json={
@@ -213,7 +223,7 @@ async def test_operator_cannot_create_incident(client):
 @pytest.mark.anyio
 async def test_operator_can_update_incident(client):
     # Admin creates; operator updates
-    admin_headers = await _auth_headers(client, "admin", "admin-dev-only")
+    admin_headers = await _auth_headers(client, "admin", _TEST_ADMIN_PW)
     create_resp = await client.post(
         "/incidents",
         json={
@@ -226,7 +236,7 @@ async def test_operator_can_update_incident(client):
     )
     incident_id = create_resp.json()["incident_id"]
 
-    op_headers = await _auth_headers(client, "operator", "operator-dev-only")
+    op_headers = await _auth_headers(client, "operator", _TEST_OPERATOR_PW)
     update_resp = await client.patch(
         f"/incidents/{incident_id}",
         json={"status": "investigating"},
@@ -238,7 +248,7 @@ async def test_operator_can_update_incident(client):
 
 @pytest.mark.anyio
 async def test_analyst_cannot_update_incident(client):
-    admin_headers = await _auth_headers(client, "admin", "admin-dev-only")
+    admin_headers = await _auth_headers(client, "admin", _TEST_ADMIN_PW)
     create_resp = await client.post(
         "/incidents",
         json={
@@ -251,7 +261,7 @@ async def test_analyst_cannot_update_incident(client):
     )
     incident_id = create_resp.json()["incident_id"]
 
-    analyst_headers = await _auth_headers(client, "analyst", "analyst-dev-only")
+    analyst_headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
     resp = await client.patch(
         f"/incidents/{incident_id}",
         json={"status": "resolved"},
@@ -264,7 +274,7 @@ async def test_analyst_cannot_update_incident(client):
 
 @pytest.mark.anyio
 async def test_get_incident_by_id(client):
-    headers = await _auth_headers(client, "analyst", "analyst-dev-only")
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
     create_resp = await client.post(
         "/incidents",
         json={
@@ -298,7 +308,7 @@ async def test_get_incident_invalid_id_format(client):
 
 @pytest.mark.anyio
 async def test_list_incidents_pagination(client):
-    headers = await _auth_headers(client, "analyst", "analyst-dev-only")
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
     # Create 3 incidents
     for i in range(3):
         await client.post(
@@ -322,7 +332,7 @@ async def test_list_incidents_pagination(client):
 
 @pytest.mark.anyio
 async def test_invalid_severity_rejected(client):
-    headers = await _auth_headers(client, "analyst", "analyst-dev-only")
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
     resp = await client.post(
         "/incidents",
         json={
@@ -338,7 +348,7 @@ async def test_invalid_severity_rejected(client):
 
 @pytest.mark.anyio
 async def test_short_title_rejected(client):
-    headers = await _auth_headers(client, "analyst", "analyst-dev-only")
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
     resp = await client.post(
         "/incidents",
         json={
@@ -354,7 +364,7 @@ async def test_short_title_rejected(client):
 
 @pytest.mark.anyio
 async def test_invalid_status_update_rejected(client):
-    admin_headers = await _auth_headers(client, "admin", "admin-dev-only")
+    admin_headers = await _auth_headers(client, "admin", _TEST_ADMIN_PW)
     create_resp = await client.post(
         "/incidents",
         json={
@@ -367,7 +377,7 @@ async def test_invalid_status_update_rejected(client):
     )
     incident_id = create_resp.json()["incident_id"]
 
-    op_headers = await _auth_headers(client, "operator", "operator-dev-only")
+    op_headers = await _auth_headers(client, "operator", _TEST_OPERATOR_PW)
     resp = await client.patch(
         f"/incidents/{incident_id}",
         json={"status": "deleted"},  # Not a valid status

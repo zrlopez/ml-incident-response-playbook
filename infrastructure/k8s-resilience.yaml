@@ -1,0 +1,163 @@
+# =============================================================================
+# ML Incident Response API - Kubernetes Resilience Objects
+# =============================================================================
+# This file provisions the availability and scheduling controls that ensure
+# the Incident Response API remains operational during rolling deployments,
+# node failures, and autoscaling events.
+#
+# Included resources:
+#   1. HorizontalPodAutoscaler  - CPU/memory-driven autoscaling (2-10 replicas)
+#   2. PodDisruptionBudget      - Guarantees >= 2 pods available during voluntary
+#                                  disruptions (node drains, rolling deployments)
+#   3. TopologySpreadConstraints - Distributes pods across zones and nodes to
+#                                  prevent correlated failures
+#
+# Prerequisites:
+#   - metrics-server must be installed for HPA CPU/memory metrics
+#   - Application Deployment must have resources.requests defined
+#   - Pods must carry labels: app=ml-incident-api, tier=api
+#
+# Apply:
+#   kubectl apply -f infrastructure/k8s-resilience.yaml -n <namespace>
+# =============================================================================
+
+---
+# ────────────────────────────────────────────────────────────────────────────────
+# HorizontalPodAutoscaler
+#
+# Scales the API deployment between 2 and 10 replicas.
+# Primary metric: CPU utilisation >= 70% triggers scale-out.
+# Secondary metric: Memory utilisation >= 80% (prevents OOM cascades).
+#
+# Stabilisation windows:
+#   scaleDown: 5 minutes  - prevents thrashing after a traffic spike
+#   scaleUp:   30 seconds - fast response to sudden load (incident storms)
+# ────────────────────────────────────────────────────────────────────────────────
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+meta
+  name: ml-incident-api-hpa
+  labels:
+    app: ml-incident-api
+    tier: api
+    managed-by: platform-engineering
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ml-incident-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 minutes
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30   # fast scale-out for incident storms
+      policies:
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+      selectPolicy: Max
+
+---
+# ────────────────────────────────────────────────────────────────────────────────
+# PodDisruptionBudget
+#
+# Guarantees at least 2 pods are available at all times during voluntary
+# disruptions. This means:
+#   - Node drains during maintenance cannot proceed if fewer than 2 pods would
+#     remain available.
+#   - Rolling deployments must maintain 2 available pods at each step.
+#
+# minAvailable: 2 (absolute, not percentage) chosen because:
+#   - With minReplicas=2, percentage-based policies can compute to 0.
+#   - For an incident response tool, zero-downtime is a hard requirement.
+# ────────────────────────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+meta
+  name: ml-incident-api-pdb
+  labels:
+    app: ml-incident-api
+    tier: api
+    managed-by: platform-engineering
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ml-incident-api
+      tier: api
+
+---
+# ────────────────────────────────────────────────────────────────────────────────
+# Deployment patch: TopologySpreadConstraints
+#
+# This patch adds spread constraints to the existing Deployment. Apply with:
+#   kubectl patch deployment ml-incident-api --patch-file infra/k8s-resilience.yaml
+# Or merge into the primary Deployment manifest.
+#
+# Two constraints ensure:
+#   1. Zone spread  - pods are distributed across availability zones
+#      (maxSkew: 1 means at most 1 more pod in any zone vs. the least-loaded zone)
+#   2. Node spread  - pods are distributed across distinct worker nodes
+#      (prevents correlated failure from single-node loss)
+#
+# whenUnsatisfiable: DoNotSchedule means the scheduler waits rather than
+# placing pods that would violate the constraint. This is intentional: a
+# cluster that cannot satisfy zone distribution likely has an infra problem
+# that should alert, not silently concentrate pods.
+# ────────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+meta
+  name: ml-incident-api
+spec:
+  template:
+    spec:
+      # Distribute pods evenly across availability zones
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: ml-incident-api
+              tier: api
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: ml-incident-api
+              tier: api
+      # Anti-affinity as a belt-and-suspenders measure alongside TSC
+      # Soft preference: don't co-locate pods on the same node
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: ml-incident-api
+                topologyKey: kubernetes.io/hostname

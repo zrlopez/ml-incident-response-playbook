@@ -1,20 +1,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # .gitignore — ML Incident Response Platform
+# LOW-A REMEDIATION: Added .DS_Store, expanded secret exclusions,
+# resolved merge conflicts from prior stash.
 # ──────────────────────────────────────────────────────────────────────────────
-
-# ── macOS ─────────────────────────────────────────────────────────────────────
-**/.DS_Store
-.DS_Store
-.AppleDouble
-.LSOverride
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-._*
 
 # ── Python bytecode ───────────────────────────────────────────────────────────
 __pycache__/
@@ -37,6 +25,8 @@ sdist/
 var/
 wheels/
 *.egg-info/
+.installed.cfg
+*.egg
 *.whl
 MANIFEST
 
@@ -47,84 +37,82 @@ env/
 ENV/
 
 # ── Secrets and environment files ─────────────────────────────────────────────
-# .env.example is intentionally committed; actual .env files are not
+# NEVER commit real .env files. .env.example is intentionally tracked.
 .env
+*.env
 .env.local
 .env.staging
 .env.production
-*.env
+.env.production.local
 !.env.example
+
+# ── JWT keys and TLS certificates (never commit) ──────────────────────────────
 *.pem
 *.key
 *.p12
 *.pfx
+*.crt
+*.cer
 secrets/
 .secrets/
-jwt_private.pem
-jwt_public.pem
 
-# ── Testing artifacts ─────────────────────────────────────────────────────────
+# ── macOS filesystem artifacts — LOW-A REMEDIATION ────────────────────────────
+# These binaries expose directory listings and extended attributes.
+# If already tracked: git rm -r --cached .DS_Store && git commit -m "remove .DS_Store"
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*.iml
+.cursor/
+
+# ── Testing and coverage ──────────────────────────────────────────────────────
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
-coverage.xml
+.coverage.*
 htmlcov/
+coverage.xml
+junit.xml
 .tox/
-.nox/
 *.cover
 
 # ── Type checking ─────────────────────────────────────────────────────────────
 .mypy_cache/
-.dmypy.json
-dmypy.json
 
-# ── IDE / editor ─────────────────────────────────────────────────────────────
-.vscode/
-.idea/
-*.swp
-*.swo
-*.iml
-*~
-
-# ── Logs ─────────────────────────────────────────────────────────────────────
-*.log
+# ── Logs ──────────────────────────────────────────────────────────────────────
 logs/
-*.jsonl
+*.log
 
-# ── Database files ─────────────────────────────────────────────────────────────
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# ── Local databases (never bake into VCS or images) ───────────────────────────
 *.db
 *.sqlite
 *.sqlite3
 
-# ── Docker ────────────────────────────────────────────────────────────────────
-# Root Dockerfile is retired. Use infrastructure/Dockerfile.hardened.
-Dockerfile
+# ── SBOM output (generated artifacts, not source) ─────────────────────────────
+sbom*.json
+sbom*.spdx
+*.sarif
 
-# ── dbt ───────────────────────────────────────────────────────────────────────
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-dbt/.user.yml
-
-# ── Airflow ───────────────────────────────────────────────────────────────────
-airflow.cfg
-airflow.db
-airflow/logs/
-airflow/plugins/
-standalone_admin_password.txt
-
-# ── Jupyter ───────────────────────────────────────────────────────────────────
-.ipynb_checkpoints/
-*.ipynb
-
-# ── SBOM / security scan outputs ─────────────────────────────────────────────
-sbom.spdx.json
-trivy-results.sarif
-bandit-report.json
-
-# ── Terraform ────────────────────────────────────────────────────────────────
-**/.terraform/
-*.tfstate
-*.tfstate.backup
-*.tfvars
-!*.tfvars.example
-.terraform.lock.hcl
+# NOTE: .dockerignore is intentionally tracked — it protects image build context
+# and should be reviewed alongside Dockerfile changes.

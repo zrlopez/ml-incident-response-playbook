@@ -131,13 +131,102 @@ The repo includes a GitHub Actions workflow template for validation, formatting,
 - Add a richer observability demo.
 - Add automated Mermaid rendering in CI.
 
-## Contribution Guidelines
+## Contributing
 
-- Keep changes focused and small.
-- Use clear commit messages.
-- Preserve the existing documentation style.
-- Keep examples synthetic and professional.
-- Update the changelog when structure changes.
+Full contributing guidelines live in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md).
+
+Contributions are welcome — bug fixes, documentation improvements, new runbook
+templates, and security hardening are all in scope.
+
+### Before You Start
+
+- Check [open issues](https://github.com/zrlopez/ml-incident-response-playbook/issues)
+  to avoid duplicating work.
+- For significant changes, open an issue first to discuss the approach.
+- All contributors are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md)
+  and the [Security Policy](SECURITY.md).
+
+### Development Setup
+
+```bash
+git clone https://github.com/zrlopez/ml-incident-response-playbook.git
+cd ml-incident-response-playbook
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # Fill in required values
+alembic upgrade head           # Apply DB migrations
+python scripts/seed_users.py --dry-run  # Verify seed config
+```
+
+Run the test suite before opening a pull request:
+
+```bash
+pytest tests/ -v --tb=short
+```
+
+### Branching and Commits
+
+- Branch from `main` using the pattern `type/short-description`:
+  `fix/auth-rate-limit`, `feat/rs256-jwks`, `docs/postmortem-template`.
+- Keep commits atomic — one logical change per commit.
+- Use [Conventional Commits](https://www.conventionalcommits.org/) format:
+
+  ```
+  type(scope): short imperative summary
+
+  Optional body explaining WHY, not what.
+  Closes #123
+  ```
+
+  Valid types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`.
+
+### Pull Request Checklist
+
+Before marking your PR ready for review, confirm:
+
+- [ ] `pytest tests/ -v` passes locally with no new failures.
+- [ ] New code paths have corresponding tests in `tests/`.
+- [ ] Docstrings added for any new public functions or classes.
+- [ ] No secrets, credentials, or real PII appear in any file
+  (the CI TruffleHog scan will block the merge if found).
+- [ ] `REMEDIATION_LOG.md` updated if your change addresses a tracked finding.
+- [ ] `SECURITY.md` updated if you change the security control surface.
+- [ ] `.env.example` updated if you add new environment variables.
+- [ ] Markdown runbooks or templates follow the existing style
+  (heading hierarchy, Mermaid diagram syntax, table formatting).
+
+### Code Style
+
+- Python: follow [PEP 8](https://peps.python.org/pep-0008/).
+  Line length: 100 characters. Format with `ruff format .` before committing.
+- Type hints required on all new function signatures.
+- Structured logging via `structlog` — no bare `print()` in application code.
+- Pydantic models for all API request/response shapes.
+- No `TODO` comments without a tracking issue number: `# TODO(#42): description`.
+
+### Security Contributions
+
+If your change touches authentication, authorization, secrets handling, or
+dependency versions:
+
+- Reference the relevant `ARCH-*` or `CRIT-*` finding ID from `REMEDIATION_LOG.md`.
+- Add or update tests in `tests/test_api.py` covering the security behavior.
+- For vulnerability reports, follow the [Security Policy](SECURITY.md) —
+  **do not open a public issue for unpatched vulnerabilities**.
+
+### Documentation Contributions
+
+Runbooks, postmortem templates, and policy docs live in `runbooks/`, `templates/`,
+and `docs/`. When adding or updating them:
+
+- Keep all examples synthetic — no real hostnames, IPs, usernames, or incident data.
+- Mermaid diagrams should render cleanly in GitHub's Markdown preview.
+- Link new documents from the relevant index or parent document.
+
+### Maintainer Review SLA
+
+Expect an initial review within **5 business days**. A second review or merge
+follows within **10 business days** of the last substantive update.
 
 ## License
 

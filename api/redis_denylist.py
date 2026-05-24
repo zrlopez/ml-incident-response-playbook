@@ -1,27 +1,37 @@
 """
 api/redis_denylist.py — Redis-backed JWT denylist
 ==================================================
-Replaces the process-local set[str] denylist so revocations survive
-process restarts and are shared across horizontally-scaled API pods.
+Remediation: CRIT-B (Phase 0)
 
-Design:
-  - SETEX per-JTI key: key  = "jwt:denied:{jti}"
-                        TTL  = remaining token lifetime (seconds)
-  - TTL ensures the key is automatically garbage-collected when the
-    token would have expired anyway — no background cleanup job needed.
-  - Uses aioredis (redis-py >= 4.2 asyncio driver) for compatibility
-    with FastAPI’s async event loop.
+Root cause fixed: The original implementation used asyncio.get_event_loop()
+and loop.run_until_complete() inside an already-running async event loop
+(FastAPI's). This causes RuntimeError in Python 3.10+ and silently breaks
+token revocation — a security-critical path.
 
-Production considerations:
-  - Run Redis with AUTH + TLS (REDIS_URL = rediss://user:pass@host:6380/0)
-  - Enable Redis persistence (AOF) if strict no-gap guarantees required.
-  - Consider Redis Sentinel or Cluster for HA.
+Fix strategy:
+  - ALL methods are now natively async. Sync wrappers completely removed.
+  - `revoke()` is now `await revoke()` — callers MUST await it. This
+    guarantees the SETEX is confirmed written before the response returns.
+  - `is_revoked()` is now `await is_revoked()` — no loop gymnastics.
+  - Fail-CLOSED semantics preserved: if Redis is unreachable, raise
+    DenylistUnavailableError and the caller returns HTTP 503.
+  - Structured logging via structlog for observability continuity.
+  - Connection health tracked via _connected flag for clean error messages.
+
+Production requirements:
+  - REDIS_URL must use AUTH + TLS: rediss://:password@host:6380/0
+  - Enable Redis AOF persistence for revocation durability across restarts.
+  - Use Redis Sentinel or Cluster for HA in production.
+
+Remediations applied:
+  CRIT-B  async/sync boundary fully removed — all callers must use await
+  HIGH-A  documented AUTH+TLS requirement; enforced via settings validation
 """
 from __future__ import annotations
 
-import logging
+import structlog
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 try:
     import redis.asyncio as aioredis
@@ -32,80 +42,191 @@ except ImportError:  # pragma: no cover
 _KEY_PREFIX = "jwt:denied:"
 
 
+class DenylistUnavailableError(RuntimeError):
+    """
+    Raised when the denylist cannot be consulted.
+    Callers must treat this as a security failure and return HTTP 503
+    (fail-closed) rather than allowing the request through.
+    """
+
+
 class RedisDenylist:
-    """Async Redis-backed JWT ID denylist with TTL garbage collection."""
+    """
+    Async-native Redis-backed JWT ID denylist with TTL garbage collection.
+
+    All public methods are coroutines. Call them with ``await``.
+
+    Lifecycle (FastAPI lifespan):
+        startup:  await denylist.connect()
+        shutdown: await denylist.close()
+
+    Usage in route handlers:
+        await denylist.revoke(jti, ttl_seconds)      # logout
+        revoked = await denylist.is_revoked(jti)     # auth check
+    """
 
     def __init__(self, redis_url: str = "redis://localhost:6379/0") -> None:
+        if not redis_url:
+            raise ValueError("redis_url must not be empty")
         self._url = redis_url
         self._client: "aioredis.Redis | None" = None
+        self._connected: bool = False
+
+    # ── Lifecycle ────────────────────────────────────────────────────────────
 
     async def connect(self) -> None:
-        """Create the async Redis connection. Called in FastAPI lifespan startup."""
+        """
+        Establish the async Redis connection pool.
+        Called once during FastAPI lifespan startup.
+        Raises RuntimeError if redis package is missing.
+        Raises ConnectionError if Redis is unreachable (fail-fast).
+        """
         if not _REDIS_AVAILABLE:  # pragma: no cover
             raise RuntimeError(
-                "redis package not installed.  Add 'redis[asyncio]' to requirements."
+                "redis package not installed. "
+                "Add 'redis[hiredis]>=5.0' to requirements.txt."
             )
         self._client = aioredis.from_url(
             self._url,
             encoding="utf-8",
             decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            retry_on_timeout=True,
+            health_check_interval=30,
         )
-        await self.ping()  # Fail fast if Redis unreachable at startup
-        log.info("redis_denylist.connected", extra={"url": self._url})
+        await self.ping()  # Fail fast at startup rather than at first request
+        self._connected = True
+        log.info(
+            "redis_denylist.connected",
+            url=self._url.split("@")[-1],  # strip credentials from log
+        )
 
     async def close(self) -> None:
-        """Gracefully close the Redis connection. Called in lifespan shutdown."""
-        if self._client:
+        """
+        Gracefully close the connection pool.
+        Called during FastAPI lifespan shutdown.
+        """
+        if self._client is not None:
             await self._client.aclose()
             self._client = None
+            self._connected = False
+            log.info("redis_denylist.disconnected")
+
+    # ── Health ────────────────────────────────────────────────────────────────
 
     async def ping(self) -> bool:
-        """Return True if Redis is reachable; raise otherwise."""
+        """
+        Return True if Redis responds to PING.
+        Raises ConnectionError if unreachable.
+        Used by /ready health probe.
+        """
         if self._client is None:
-            raise RuntimeError("Not connected — call connect() first")
-        return await self._client.ping()  # raises ConnectionError if unreachable
+            raise DenylistUnavailableError(
+                "Denylist client not initialised — call connect() first."
+            )
+        return bool(await self._client.ping())
 
-    def revoke(self, jti: str, ttl_seconds: int) -> None:
+    # ── Core operations ───────────────────────────────────────────────────────
+
+    async def revoke(self, jti: str, ttl_seconds: int) -> None:
         """
-        Synchronously queue a SETEX command.
+        Add a JTI to the denylist with a TTL matching the token's remaining
+        lifetime. The key is automatically garbage-collected by Redis when
+        the TTL expires — no background cleanup job required.
 
-        Note: This is intentionally sync so callers don’t need to be
-        async (e.g. from a sync test harness).  Internally we use
-        execute_command which is safe from an async context too, because
-        redis-py’s aioredis client is thread-safe for single commands.
+        SECURITY: This method is awaited to CONFIRM the write before the
+        calling route handler returns its HTTP 200 logout response.
+        Fire-and-forget revocation (the old pattern) created a race window
+        where the revoked token remained usable if Redis was briefly slow.
 
-        For pure async callers, use ``await revoke_async()`` instead.
+        Args:
+            jti:         JWT ID claim value from the token being revoked.
+            ttl_seconds: Remaining lifetime of the token in seconds (>= 1).
+
+        Raises:
+            DenylistUnavailableError: If Redis is not connected or write fails.
+            ValueError: If ttl_seconds < 1.
         """
-        import asyncio
-        loop = asyncio.get_event_loop()
-        loop.create_task(self.revoke_async(jti, ttl_seconds))
-
-    async def revoke_async(self, jti: str, ttl_seconds: int) -> None:
-        """Async version — awaitable for use inside async route handlers."""
+        if ttl_seconds < 1:
+            raise ValueError(f"ttl_seconds must be >= 1, got {ttl_seconds}")
         if self._client is None:
-            raise RuntimeError("Not connected")
-        key = f"{_KEY_PREFIX}{jti}"
-        await self._client.setex(key, ttl_seconds, "1")
-        log.debug("jwt.revoked", extra={"jti": jti, "ttl": ttl_seconds})
+            raise DenylistUnavailableError(
+                "Cannot revoke token — Redis denylist not connected."
+            )
+        try:
+            key = f"{_KEY_PREFIX}{jti}"
+            await self._client.setex(key, ttl_seconds, "1")
+            log.info(
+                "jwt.revoked",
+                log_type="audit",
+                jti=jti,
+                ttl_seconds=ttl_seconds,
+            )
+        except Exception as exc:
+            log.error(
+                "redis_denylist.revoke_failed",
+                jti=jti,
+                error=str(exc),
+            )
+            raise DenylistUnavailableError(
+                f"Failed to write revocation for jti={jti}: {exc}"
+            ) from exc
 
-    def is_revoked(self, jti: str) -> bool:
+    async def is_revoked(self, jti: str) -> bool:
         """
-        Synchronous check — performs a blocking EXISTS call.
-        Suitable for use inside FastAPI dependency injection which can
-        call sync functions from an async context via run_in_threadpool.
+        Return True if the JTI is present in the denylist (i.e., token
+        has been explicitly revoked and has not yet expired).
 
-        For pure async contexts prefer ``await is_revoked_async()``.
+        SECURITY: Fail-CLOSED. If Redis is unavailable, raise
+        DenylistUnavailableError rather than returning False (which
+        would allow revoked tokens through). The caller must respond
+        with HTTP 503 so the client retries.
+
+        Args:
+            jti: JWT ID claim value to check.
+
+        Returns:
+            True if revoked, False if not found in denylist.
+
+        Raises:
+            DenylistUnavailableError: If Redis is not connected or check fails.
         """
-        import asyncio
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(self.is_revoked_async(jti))
-
-    async def is_revoked_async(self, jti: str) -> bool:
-        """Return True if the JTI is present in the denylist."""
         if self._client is None:
-            return False
-        key = f"{_KEY_PREFIX}{jti}"
-        result = await self._client.exists(key)
-        return bool(result)
+            raise DenylistUnavailableError(
+                "Cannot check revocation — Redis denylist not connected."
+            )
+        try:
+            key = f"{_KEY_PREFIX}{jti}"
+            result = await self._client.exists(key)
+            return bool(result)
+        except Exception as exc:
+            log.error(
+                "redis_denylist.check_failed",
+                jti=jti,
+                error=str(exc),
+            )
+            raise DenylistUnavailableError(
+                f"Denylist check failed for jti={jti}: {exc}"
+            ) from exc
+
+    # ── Diagnostics ───────────────────────────────────────────────────────────
+
+    async def revocation_count(self) -> int:
+        """
+        Return the number of currently active revocations (for /metrics).
+        Best-effort — returns -1 on error rather than raising.
+        """
+        if self._client is None:
+            return -1
+        try:
+            # SCAN-based count to avoid blocking with KEYS *
+            count = 0
+            async for _ in self._client.scan_iter(
+                match=f"{_KEY_PREFIX}*", count=100
+            ):
+                count += 1
+            return count
+        except Exception as exc:
+            log.warning("redis_denylist.count_failed", error=str(exc))
+            return -1

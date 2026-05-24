@@ -1,2 +1,135 @@
-project_name: ml-incident-response-playbook
-severity_default: SEV-3
+# settings.yml
+# Application-level configuration for the ML Incident Response API.
+#
+# USAGE
+#   Values here are defaults. Override any key via environment variables
+#   using the pattern ML_<SECTION>_<KEY> (all caps, underscores).
+#   Example: ML_API_PAGE_SIZE_MAX=200
+#
+#   Secrets (tokens, passwords, private keys) are NEVER stored here.
+#   They are loaded exclusively from .env or a secrets manager.
+#   See .env.example for the full list of required secret names.
+#
+# SECTIONS
+#   api        - FastAPI request / response behaviour
+#   database   - Connection pool and query tuning
+#   redis      - Cache and JWT denylist behaviour
+#   monitoring - Prometheus and health-check settings
+#   incidents  - Business rules for incident lifecycle
+#   logging    - Structured log output settings
+
+# ---------------------------------------------------------------------------
+# api
+# ---------------------------------------------------------------------------
+api:
+  # Human-readable service name surfaced in OpenAPI docs and log output.
+  title: "ML Incident Response API"
+
+  # Semantic version. Bump on every release; mirrors pyproject.toml.
+  version: "0.1.0"
+
+  # Maximum number of incidents returned by GET /incidents without explicit
+  # pagination. Prevents accidental full-table scans.
+  page_size_default: 20
+  page_size_max: 100
+
+  # CORS origins allowed in non-production environments.
+  # In production, this list must be restricted to known client domains.
+  cors_origins:
+    - "http://localhost:3000"   # Grafana dev
+    - "http://localhost:8080"   # Internal dashboard dev
+
+  # Set to false to disable the /docs and /redoc endpoints in production.
+  docs_enabled: true
+
+# ---------------------------------------------------------------------------
+# database
+# ---------------------------------------------------------------------------
+database:
+  # SQLAlchemy async pool settings. Tune for your Postgres instance size.
+  pool_size: 10
+  max_overflow: 5
+  pool_timeout_seconds: 30
+
+  # Enable slow-query logging for any query exceeding this threshold.
+  slow_query_threshold_ms: 200
+
+  # Number of times to retry a transient connection error before raising.
+  connect_retries: 3
+  connect_retry_delay_seconds: 2
+
+# ---------------------------------------------------------------------------
+# redis
+# ---------------------------------------------------------------------------
+redis:
+  # Default TTL for JWT denylist entries. Should match the JWT expiry so
+  # keys expire automatically and do not accumulate indefinitely.
+  jwt_denylist_ttl_seconds: 3600  # 1 hour
+
+  # Connection pool size for async Redis client.
+  pool_size: 10
+
+  # Prefix applied to all keys written by this service.
+  # Prevents collision when the Redis instance is shared with other services.
+  key_prefix: "ml_ir:"
+
+# ---------------------------------------------------------------------------
+# monitoring
+# ---------------------------------------------------------------------------
+monitoring:
+  # Prometheus scrape endpoint. Exposed on the main API port.
+  metrics_path: "/metrics"
+
+  # Health and readiness check paths consumed by Docker / Kubernetes.
+  health_path: "/health"
+  ready_path: "/ready"
+
+  # Number of seconds between readiness probe database pings.
+  readiness_db_timeout_seconds: 2
+
+# ---------------------------------------------------------------------------
+# incidents
+# ---------------------------------------------------------------------------
+incidents:
+  # Ordered list of valid severity values. The API rejects anything outside
+  # this list. Align with severity_matrix.md.
+  valid_severities:
+    - SEV-1
+    - SEV-2
+    - SEV-3
+    - SEV-4
+
+  # Valid category values. Align with runbooks/ directory names.
+  valid_categories:
+    - api
+    - data-quality
+    - model-drift
+    - cost-spike
+    - pipeline-failure
+    - security
+
+  # Valid lifecycle statuses.
+  valid_statuses:
+    - open
+    - triaged
+    - mitigated
+    - resolved
+    - closed
+
+  # SEV-1 incidents require a postmortem within this many hours.
+  postmortem_due_hours_sev1: 48
+  postmortem_due_hours_sev2: 48
+
+# ---------------------------------------------------------------------------
+# logging
+# ---------------------------------------------------------------------------
+logging:
+  # Log level applied to the root logger.
+  # Valid values: DEBUG | INFO | WARNING | ERROR | CRITICAL
+  level: INFO
+
+  # Emit logs as JSON (true = production) or human-readable (false = dev).
+  json_output: true
+
+  # Include request IDs in every log line for distributed tracing.
+  include_request_id: true

@@ -1,153 +1,83 @@
-<<<<<<< Updated upstream
-# =============================================================================
-# .dockerignore — prevent sensitive/unnecessary files from entering build context
-# =============================================================================
-=======
-# Root-level .dockerignore
-# Applies when building with: docker build -f infrastructure/Dockerfile.hardened .
-# Prevents secrets, test files, and dev artifacts from entering the build context.
->>>>>>> Stashed changes
+# .dockerignore — ML Incident Response API
+# =========================================
+# MED-B REMEDIATION: Prevents sensitive files, dev artifacts, and VCS
+# history from entering the Docker build context and image layers.
+#
+# Critical entries:
+#   .env / .env.*   — secrets must NEVER be baked into an image
+#   .git            — VCS history is irrelevant and may contain secrets
+#   tests/          — test code and fixtures have no runtime role
+#   __pycache__     — bytecode from host Python must not bleed into image
 
-# Version control
+# ── Secrets and environment files ────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Version control ───────────────────────────────────────────────
 .git
 .gitignore
 .github
 
-# Secrets and environment files
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-<<<<<<< Updated upstream
-*.crt
-*.p12
-*.pfx
-secrets/
-
-# Python artifacts
+# ── Python bytecode and caches ──────────────────────────────────────
 __pycache__
+**/__pycache__
 *.pyc
 *.pyo
 *.pyd
-.Python
-*.egg-info
-dist/
-build/
-.eggs/
-
-# Virtual environments
-.venv
-venv
-env
-
-# Test suite — never in production image
-tests/
-test_*
-*_test.py
 .pytest_cache
-.coverage
-htmlcov/
-coverage.xml
-
-# Development tools
 .mypy_cache
 .ruff_cache
-.bandit
-
-# Documentation
-docs/
-runbooks/
-diagrams/
-README.md
-*.md
-
-# IDE
-.vscode
-.idea
-*.iml
-
-# macOS
-.DS_Store
-
-# CI/CD configs (not needed in image)
-ci_cd/
-Makefile
-
-# Infrastructure configs
-infrastructure/
-=======
-*.p12
-
-# Python artifacts
-__pycache__
-*.py[cod]
-*.so
-.Python
-build/
-dist/
-*.egg-info/
-.eggs/
-.venv/
-venv/
-env/
-
-# Testing
-tests/
-.pytest_cache/
-.coverage
+**/.coverage
 coverage.xml
-htmlcov/
-.tox/
-.mypy_cache/
 
-# Dev tooling
-.vscode/
-.idea/
-*.swp
-*~
-Makefile
+# ── Test artifacts ─────────────────────────────────────────────────
+tests/
+test_*.py
+*_test.py
+junit.xml
 
-# Documentation (not needed in container)
+# ── Development tooling ────────────────────────────────────────────
+.venv
+venv
+.tox
+requirements-dev.txt
+requirements-airflow.txt
+requirements-dbt.txt
+requirements*.txt
+!requirements.txt
+
+# ── Documentation ─────────────────────────────────────────────────
 docs/
-examples/
-architecture.md
-README.md
-CHANGELOG.md
-changelog.md
-deployment.md
-api_reference.md
-monitoring.md
-data_dictionary.md
-governance.md
+*.md
+!README.md
+LICENSE
+CONTRIBUTING*
+CHANGELOG*
 SECURITY.md
 
-# CI/CD config
+# ── CI/CD configs (not needed at runtime) ───────────────────────────
 ci_cd/
+.pre-commit-config.yaml
+pyproject.toml
+setup.cfg
+Makefile
+tox.ini
 
-# dbt (not executed inside API container)
-dbt/
-
-# Diagrams and runbooks
-diagrams/
-runbooks/
-
-# macOS
+# ── macOS / IDE artifacts ──────────────────────────────────────────
 .DS_Store
-._*
+**/.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
 
-# Logs and databases
-*.log
-logs/
+# ── Local database files (never bake into image) ─────────────────────
 *.db
 *.sqlite
 *.sqlite3
 
-# SBOM and scan outputs
-sbom.spdx.json
-trivy-results.sarif
-bandit-report.json
-
-# Dev Dockerfile (only Dockerfile.hardened goes in production)
-Dockerfile.dev
->>>>>>> Stashed changes
+# ── Build output ──────────────────────────────────────────────────
+dist/
+build/
+*.egg-info
