@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # requirements-dev.txt — development and testing dependencies
 # Install: pip install -r requirements-dev.txt
-# Last reviewed: 2026-05-23
+# Last reviewed: 2026-05-24
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Production deps are a prerequisite
@@ -10,9 +10,8 @@
 # ── Test runner ──────────────────────────────────────────────────────────────
 pytest==9.0.3
 pytest-cov==6.1.0
-# pytest-asyncio: required by conftest.py (import pytest_asyncio) and any
-# @pytest.mark.asyncio test. Without this, conftest.py fails at collection time.
-pytest-asyncio==0.24.0
+# pytest-asyncio 0.25.x supports pytest>=9; 0.24.x requires pytest<9.
+pytest-asyncio==0.25.3
 # anyio provides the async test runner for @pytest.mark.anyio in test_api.py.
 # trio backend is used (faster for unit tests than asyncio in most pytest setups).
 anyio[trio]==4.9.0
