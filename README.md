@@ -4,6 +4,7 @@
 ![Docs](https://img.shields.io/badge/docs-Markdown%20%2B%20Mermaid-0A66C2)
 ![Stack](https://img.shields.io/badge/stack-GitHub%20%2B%20Python%20%2B%20Docker-111827)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+[![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/ci.yml)
 
 A production-style operational documentation repo for ML and AI incident response.
 
