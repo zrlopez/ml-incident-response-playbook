@@ -94,7 +94,7 @@ jobs:
 
       - name: Bandit SARIF (api/ + observability/ + src/)
         run: |
-          echo '{"version":"2.1.0","runs":[]}' > bandit-app.sarif
+          echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Bandit","rules":[]}},"results":[]}]}' > bandit-app.sarif
           bandit -r api/ observability/ src/ -l -i -f sarif -o bandit-app.sarif.tmp && mv bandit-app.sarif.tmp bandit-app.sarif || true
 
       - name: Bandit hard gate (api/ + observability/ + src/)
