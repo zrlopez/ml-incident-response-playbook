@@ -259,7 +259,7 @@ def create_access_token(
     Raises:
         ValueError: If payload is missing required claims.
     """
-    if "sub" not in data or "role" not in 
+    if "sub" not in data or "role" not in
         raise ValueError("Token payload must include 'sub' and 'role' claims")
     to_encode = data.copy()
     jti = str(uuid.uuid4())
