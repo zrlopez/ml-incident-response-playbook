@@ -8,9 +8,11 @@
 -r requirements.txt
 
 # ── Test runner ──────────────────────────────────────────────────────────────
-pytest==9.0.3
+# pytest 9.x is incompatible with all pytest-asyncio 0.x releases (requires pytest<9).
+# pytest-asyncio 1.0.0 adds pytest 9 support but is a major version bump;
+# downgrading pytest to 8.3.x (latest stable 8.x) is the safer fix.
+pytest==8.3.5
 pytest-cov==6.1.0
-# pytest-asyncio 0.26.x is the first series that supports pytest>=9.
 pytest-asyncio==0.26.0
 # anyio provides the async test runner for @pytest.mark.anyio in test_api.py.
 # trio backend is used (faster for unit tests than asyncio in most pytest setups).
