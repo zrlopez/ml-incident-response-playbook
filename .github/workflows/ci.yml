@@ -92,17 +92,19 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
 
-      - name: Bandit - application code (api/ + observability/ + src/)
+      - name: Bandit SARIF (api/ + observability/ + src/)
         run: |
-          echo '{"version":"2.1.0","runs":[]}' > bandit-app.sarif
           bandit -r api/ observability/ src/ -l -i -f sarif -o bandit-app.sarif || true
-          bandit -r api/ observability/ src/ -l -i
+          [ -s bandit-app.sarif ] || echo '{"version":"2.1.0","runs":[]}' > bandit-app.sarif
+
+      - name: Bandit hard gate (api/ + observability/ + src/)
+        run: bandit -r api/ observability/ src/ -l -i
 
       - name: Bandit - test code
         run: |
-          echo '{"version":"2.1.0","runs":[]}' > bandit-tests.sarif
           bandit -r tests/ --severity-level low --confidence-level low \
             --skip B101 -f sarif -o bandit-tests.sarif || true
+          [ -s bandit-tests.sarif ] || echo '{"version":"2.1.0","runs":[]}' > bandit-tests.sarif
 
       - name: Upload Bandit SARIF
         uses: github/codeql-action/upload-sarif@v4
