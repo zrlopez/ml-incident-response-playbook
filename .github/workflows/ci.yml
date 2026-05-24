@@ -16,11 +16,35 @@
 #   2026-05-24 v12 CI-25b: fix setup-trivy tag v0.2.2->v0.2.6
 #   2026-05-24 v13 CI-26: exit-code->0 to unblock merge; trivy crashes TBD
 #   2026-05-24 v14 CI-27: remove if condition from deploy-gate
-#   2026-05-24 v15 CI-28: fix TruffleHog on push — base/head diff fails when
-#                  there is no PR context; use since-commit on push events
-#                  and base/head diff only on pull_request events.
-#   2026-05-24 v16 CI-29: pin codeql/upload-sarif back to v3 — v4 breaks
-#                  sarif path resolution (Path does not exist: ./bandit-app.sarif)
+#   2026-05-24 v15 CI-28: fix TruffleHog on push
+#   2026-05-24 v16 CI-29: pin codeql/upload-sarif back to v3
+#   2026-05-24 v17 P1-04/05/06/07: SHA-pin all actions, Trivy gate, pip-audit, secret guard
+#   2026-05-24 v18 P1-fix-01: fix invalid job ID emoji -> integration-tests
+#   2026-05-24 v19 P1-fix-02: correct codeql-action SHA to verified commit digest
+#   2026-05-24 v20 P1-fix-03: TruffleHog SHA verified; others rolled to tag refs
+#   2026-05-24 v21 P1-04-complete: all 6 remaining actions SHA-pinned via API
+#                  P1-04 CLOSED.
+# =============================================================================
+#
+# ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
+#   actions/checkout@v4.2.2
+#     -> 11bd71901bbe5b1630ceea73d27597364c9af683
+#   actions/setup-python@v5.6.0
+#     -> a26af69be951a213d495a4c3e4e4022e16d87065
+#   actions/upload-artifact@v4.6.2
+#     -> ea165f8d65b6e75b540449e92b4886f43607fa02
+#   docker/setup-buildx-action@v3.10.0
+#     -> b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2
+#   docker/build-push-action@v5.4.0
+#     -> ca052bb54ab0790a636c9b5f226502c73d547a25
+#   aquasecurity/trivy-action@v0.31.0
+#     -> 76071ef0d7ec797419534a183b498b4d6366cf37
+#   anchore/sbom-action@v0.18.0
+#     -> f325610c9f50a54015d37c8d16cb3b0e2c8f4de0
+#   trufflesecurity/trufflehog@v3.95.3
+#     -> 37b77001d0174ebec2fcca2bd83ff83a6d45a3ab
+#   github/codeql-action/*@v3.28.15
+#     -> 45775bd8235c68ba998cffa5171334d58593da47
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -42,16 +66,16 @@ concurrency:
 jobs:
 
   secrets-scan:
-    name: TruffleHog Secret Scan
+    name: secrets-scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
 
       - name: TruffleHog OSS (pull request)
         if: github.event_name == 'pull_request'
-        uses: trufflesecurity/trufflehog@v3.95.3
+        uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab  # v3.95.3
         with:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
@@ -60,7 +84,7 @@ jobs:
 
       - name: TruffleHog OSS (push)
         if: github.event_name == 'push'
-        uses: trufflesecurity/trufflehog@v3.95.3
+        uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab  # v3.95.3
         with:
           path: ./
           base: ${{ github.event.before }}
@@ -68,38 +92,43 @@ jobs:
           extra_args: --only-verified
 
   dependency-audit:
-    name: pip-audit
+    name: dependency-audit
     runs-on: ubuntu-latest
     needs: secrets-scan
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.11'
           cache: pip
-      - name: Install dependencies first
+      - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: pip-audit
+
+      - name: pip-audit -- generate JSON artifact
         run: |
           pip install pip-audit==2.7.3
           pip-audit --requirement requirements.txt --format json \
             --output pip-audit-report.json || true
-          pip-audit --requirement requirements.txt \
-            --ignore-vuln PYSEC-2026-161
-      - uses: actions/upload-artifact@v4
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: always()
         with:
           name: pip-audit-report
           path: pip-audit-report.json
           retention-days: 90
 
+      - name: pip-audit -- hard gate (no || true)
+        run: |
+          pip-audit --requirement requirements.txt \
+            --ignore-vuln PYSEC-2026-161
+
   sast:
     name: SAST - Bandit + mypy
     runs-on: ubuntu-latest
     needs: secrets-scan
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.11'
           cache: pip
@@ -124,7 +153,7 @@ jobs:
           rm -f ./bandit-tests.sarif.tmp
 
       - name: Upload Bandit SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
         if: always()
         with:
           sarif_file: ./bandit-app.sarif
@@ -132,8 +161,8 @@ jobs:
       - name: mypy type checking (api/ + observability/ + src/)
         run: mypy api/ observability/ src/
 
-  unit-tests:
-    name: Unit Tests
+  test:
+    name: test
     runs-on: ubuntu-latest
     needs: [sast, dependency-audit]
     env:
@@ -141,8 +170,8 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./test_incidents.db
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.11'
           cache: pip
@@ -153,14 +182,14 @@ jobs:
             --cov=src/domain --cov=src.domain.incident_lifecycle \
             --cov-report=xml:coverage-unit.xml \
             -v
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: coverage-unit
           path: coverage-unit.xml
           retention-days: 30
 
   integration-tests:
-    name: Integration Tests (Postgres)
+    name: "\U0001F9EA Tests (Python 3.11)"
     runs-on: ubuntu-latest
     needs: [sast, dependency-audit]
 
@@ -189,12 +218,21 @@ jobs:
       DEV_OPERATOR_PASSWORD: ${{ secrets.DEV_OPERATOR_PASSWORD }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.11'
           cache: pip
       - run: pip install -r requirements-dev.txt
+
+      - name: Verify required CI secrets are present
+        run: |
+          if [ -z "${{ secrets.CI_JWT_SECRET_KEY }}" ]; then
+            echo "ERROR: CI_JWT_SECRET_KEY secret is not configured."
+            echo "Go to Settings -> Secrets and variables -> Actions -> New repository secret"
+            echo "and add CI_JWT_SECRET_KEY with the output of: openssl rand -hex 32"
+            exit 1
+          fi
 
       - name: Run Alembic migrations
         run: |
@@ -218,7 +256,7 @@ jobs:
             --cov-fail-under=40 \
             -v
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: coverage-integration
           path: coverage-integration.xml
@@ -227,17 +265,17 @@ jobs:
   container-scan:
     name: Container Build + Trivy + SBOM
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests]
+    needs: [test, integration-tests]
     permissions:
       contents: read
       security-events: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2  # v3.10.0
 
       - name: Build image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5.4.0
         with:
           context: .
           push: false
@@ -247,29 +285,29 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy container vulnerability scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37  # v0.31.0
         with:
           image-ref: ml-incident-api:${{ github.sha }}
           format: sarif
           output: trivy-container.sarif
           severity: CRITICAL,HIGH
-          exit-code: '0'
+          exit-code: '1'
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
         if: always()
         with:
           sarif_file: trivy-container.sarif
 
       - name: Generate SBOM (SPDX)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0  # v0.18.0
         with:
           image: ml-incident-api:${{ github.sha }}
           format: spdx-json
           output-file: sbom-${{ github.sha }}.spdx.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: sbom-${{ github.sha }}
           path: sbom-${{ github.sha }}.spdx.json
@@ -282,17 +320,17 @@ jobs:
     steps:
       - name: Summarise gate results
         run: |
-          echo "======================================"
+          echo "========================================"
           echo "  DEPLOYMENT READINESS GATE SUMMARY"
-          echo "======================================"
-          echo "secrets-scan ............. passed"
-          echo "dependency-audit ......... passed"
-          echo "sast (bandit+mypy) ....... passed"
-          echo "unit-tests ............... passed"
-          echo "integration-tests ........ passed"
-          echo "container-scan (trivy) ... non-blocking (CI-26)"
-          echo "sbom ..................... generated (SPDX, 365-day retention)"
-          echo "======================================"
+          echo "========================================"
+          echo "secrets-scan ................. passed"
+          echo "dependency-audit ............. passed"
+          echo "SAST - Bandit + mypy ......... passed"
+          echo "test (unit) .................. passed"
+          echo "Tests (Python 3.11) .......... passed"
+          echo "container-scan (trivy) ....... passed (hard gate - P1-05)"
+          echo "sbom ......................... generated (SPDX, 365-day retention)"
+          echo "========================================"
           echo "  Branch: ${{ github.ref }}"
           echo "  SHA:    ${{ github.sha }}"
-          echo "======================================"
+          echo "========================================"

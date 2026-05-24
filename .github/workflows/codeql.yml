@@ -1,0 +1,73 @@
+# =============================================================================
+# CodeQL Semantic SAST Analysis
+# =============================================================================
+# Why this is a separate workflow from ci.yml:
+#   - Requires different permissions (security-events:write)
+#   - Runs on a weekly schedule in addition to push/PR
+#   - Findings surface as Security tab alerts, not CI gate failures
+#   - Longer timeout (30 min) shouldn't block the main CI feedback loop
+#
+# What CodeQL catches that Bandit does not:
+#   - Taint-flow from HTTP input to sensitive sinks (SQL, shell, file path)
+#   - Insecure redirect chains (CWE-601)
+#   - Path traversal via user-controlled input (CWE-022)
+#   - SQL injection via ORM query construction (CWE-089)
+#   - XSS via template rendering (CWE-079)
+#   - Cryptographic weakness patterns
+#
+# Remediation:
+#   P1-08: CodeQL semantic SAST added (2026-05-24)
+#   P1-04: codeql-action steps SHA-pinned to verified commit digest (2026-05-24)
+#
+# ACTION SHA DIGEST REFERENCE:
+#   github/codeql-action/init@v3.28.15
+#   github/codeql-action/autobuild@v3.28.15
+#   github/codeql-action/analyze@v3.28.15
+#     -> 45775bd8235c68ba998cffa5171334d58593da47  (commit SHA, not tag object SHA)
+#
+# NOTE: Default Setup must be DISABLED in Settings -> Code security -> Code scanning
+# for this advanced workflow to upload SARIF without conflict.
+# =============================================================================
+name: CodeQL Analysis
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly - Monday 06:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql-analyze:
+    name: CodeQL - Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
+        with:
+          languages: python
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
+        with:
+          category: "/language:python"
+          upload: true

@@ -3,63 +3,98 @@
 ## Supported Versions
 
 | Version | Supported |
-|---------|------------------|
+|---------|-----------|
 | `main`  | ✅ Active support |
 
 Only the latest commit on `main` receives security fixes.
+
+---
 
 ## Reporting a Vulnerability
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please report security issues via one of the following channels:
+Use GitHub's native **Private Vulnerability Reporting** (encrypted, maintainer-only):
 
-- **GitHub Private Vulnerability Reporting** (preferred):
-  Navigate to **Security → Advisories → Report a vulnerability** in this repository.
-- **Email:** noreply@users.noreply.github.com
+👉 [Submit a confidential security advisory](https://github.com/zrlopez/ml-incident-response-playbook/security/advisories/new)
 
-You will receive an acknowledgment within **72 hours** and a status update within **7 days**.
+This channel is encrypted and visible only to repository maintainers.
+Private Vulnerability Reporting is enabled on this repository.
+
+**Response SLAs:**
+
+| Severity | Acknowledgment | Initial Triage | Resolution Target |
+|---|---|---|---|
+| Critical | 24 hours | 48 hours | 7 days |
+| High | 48 hours | 5 business days | 30 days |
+| Medium | 72 hours | 7 business days | 90 days |
+| Low | 7 days | Next review cycle | Best effort |
+
+Reporters are credited in release notes unless anonymity is requested.
+
+---
 
 ## Scope
 
-In-scope for this policy:
-- Authentication and authorization weaknesses in `api/app.py`
-- Secret exposure or credential leakage
+**In-scope:**
+- Authentication and authorization weaknesses (`api/app.py`, `src/auth/`)
+- Secret exposure or credential leakage (any file)
 - Injection vulnerabilities (SQL, template, command)
-- CI/CD pipeline security issues
-- Dependency vulnerabilities in `requirements.txt`
-- Airflow DAG privilege escalation
-- Container escape vectors in `Dockerfile`
+- CI/CD pipeline security (`.github/workflows/`)
+- Dependency vulnerabilities (`requirements.txt`, `pyproject.toml`)
+- Container escape vectors (`Dockerfile`)
+- JWT algorithm confusion or token forgery
+- Redis denylist bypass conditions
+- RBAC privilege escalation paths
 
-Out-of-scope:
+**Out-of-scope:**
 - Theoretical attacks without demonstrated impact
-- Issues in dependencies not directly used by this project
-- Automated scanner reports without manual triage
+- Issues in transitive dependencies not directly imported by this project
+- Automated scanner reports submitted without manual triage
+- Vulnerabilities in development-only tooling (`requirements-dev.txt`) with no production path
 
-## Security Controls Active in This Repository
+---
 
-| Control | Implementation |
-|---------|---------------|
-| Authentication | OAuth2 Bearer JWT with RBAC (`api/app.py`) |
-| Secret scanning | TruffleHog in CI (`ci_cd/secure-ci.yml`) |
-| Dependency CVE scan | pip-audit in CI with `--strict` flag |
-| SAST | Bandit in CI |
-| Branch protection | PRs required; CI must pass before merge |
-| Input validation | Pydantic models on all API endpoints |
-| Template injection | Jinja2 autoescape enforced |
-| Structured logging | structlog throughout ETL, API, anomaly detection |
+## Security Controls
+
+| Control | Implementation | Status |
+|---|---|---|
+| Authentication | OAuth2 Bearer JWT (HS256/RS256) with RBAC | ✅ Active |
+| Token revocation | Redis-backed JWT denylist with TTL expiry | ✅ Active |
+| Password hashing | argon2id via argon2-cffi (OWASP 2024) | ✅ Active |
+| Secret scanning | TruffleHog v3 in CI (push + PR events) | ✅ Active |
+| Dependency CVE scan | pip-audit with strict gate | ✅ Active |
+| SAST | Bandit (medium/medium gate) + mypy + CodeQL | ✅ Active |
+| Container scanning | Trivy (CRITICAL/HIGH, ignore-unfixed) | ✅ Active |
+| SBOM generation | anchore/sbom-action (SPDX-JSON, 365-day retention) | ✅ Active |
+| Input validation | Pydantic v2 models on all API endpoints | ✅ Active |
+| Security headers | HSTS, CSP, X-Frame-Options, X-Content-Type-Options, nosniff | ✅ Active |
+| Rate limiting | SlowAPI per-IP on `/auth/token`; per-user sliding window via Redis | ✅ Active |
+| Audit logging | structlog with `log_type="audit"` on all state-changing operations | ✅ Active |
+| Vulnerability disclosure | GitHub Private Vulnerability Reporting (encrypted) | ✅ Active |
+| Branch protection | Ruleset enforced on `main`: PR required, CI must pass, force-push blocked, deletions restricted | ✅ Active |
+| Actions SHA pinning | GitHub Actions workflows pinned to commit SHA digests | ✅ Active |
+| Commit signing | GPG/SSH signed commits enforced via branch ruleset | ✅ Active |
+| Cosign artifact signing | Container image signing via Sigstore | 🔲 Planned |
+
+---
 
 ## Dependency Update Policy
 
-Dependency security updates are applied within:
-- **Critical CVE:** 24 hours
-- **High CVE:** 72 hours
-- **Medium CVE:** 7 days
-- **Low CVE:** Next scheduled release
+| Severity | Response Time |
+|---|---|
+| Critical CVE | 24 hours |
+| High CVE | 72 hours |
+| Medium CVE | 7 days |
+| Low CVE | Next scheduled update |
 
-Dependabot is configured to monitor Python and GitHub Actions dependencies.
+Dependabot monitors Python packages and GitHub Actions dependencies weekly.
+pip-audit runs in CI on every push and PR with a hard gate on Critical and High findings.
+
+---
 
 ## Disclosure Policy
 
-This project follows **coordinated disclosure**. Reporters are credited in the release notes
-(unless they request anonymity) after the fix is released.
+This project follows **coordinated disclosure**. Security advisories are published
+after a fix is released and the reporter is notified. Reporters are credited by name
+or handle unless they request anonymity.
