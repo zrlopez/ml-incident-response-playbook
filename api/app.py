@@ -392,7 +392,6 @@ async def get_current_user(
             "auth.revoked_token_access",
             jti=jti,
             log_type="audit",
-            event="revoked_token_access_attempt",
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -425,7 +424,6 @@ def require_role(*roles: str) -> Callable[..., Any]:
                 role=current_user["role"],
                 required_roles=roles,
                 log_type="audit",
-                event="access_denied",
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -679,7 +677,6 @@ async def login(
             "auth.login_failed",
             username=form.username,
             log_type="audit",
-            event="authentication_failure",
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -697,7 +694,6 @@ async def login(
         role=user["role"],
         jti=access_jti,
         log_type="audit",
-        event="authentication_success",
     )
 
     return Token(
@@ -764,7 +760,6 @@ async def refresh_token_endpoint(
         old_jti=old_jti,
         new_jti=access_jti,
         log_type="audit",
-        event="token_rotated",
     )
 
     return Token(
@@ -794,7 +789,6 @@ async def logout(
         username=current_user["username"],
         jti=jti,
         log_type="audit",
-        event="logout",
     )
 
 
@@ -840,7 +834,6 @@ async def create_incident(
         category=record.category,
         created_by=current_user["username"],
         log_type="audit",
-        event="incident_created",
     )
     return record.to_dict()
 
@@ -923,7 +916,6 @@ async def update_incident_status(
         new_status=record.status.value,
         updated_by=current_user["username"],
         log_type="audit",
-        event="incident_status_updated",
     )
     return record.to_dict()
 
@@ -965,6 +957,5 @@ async def update_incident_metadata(
         incident_id=incident_id,
         updated_by=current_user["username"],
         log_type="audit",
-        event="incident_metadata_updated",
     )
     return record.to_dict()
