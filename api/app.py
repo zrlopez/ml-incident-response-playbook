@@ -242,14 +242,14 @@ class IncidentUpdate(BaseModel):
 # ── JWT helpers ────────────────────────────────────────────────────────────
 
 def create_access_token(
-    payload: Dict[str, Any],
+    data: Dict[str, Any],
     expires_delta: timedelta | None = None,
 ) -> Tuple[str, str, int]:
     """
     Create a signed JWT access token.
 
     Args:
-         Payload claims to encode. Must include 'sub' and 'role'.
+        data: Payload claims to encode. Must include 'sub' and 'role'.
         expires_delta: Override default expiry window.
 
     Returns:
@@ -259,7 +259,7 @@ def create_access_token(
     Raises:
         ValueError: If payload is missing required claims.
     """
-    if "sub" not in data or "role" not in
+    if "sub" not in data or "role" not in data:
         raise ValueError("Token payload must include 'sub' and 'role' claims")
     to_encode = data.copy()
     jti = str(uuid.uuid4())
@@ -277,13 +277,13 @@ def create_access_token(
 
 
 def create_refresh_token(
-     Dict[str, Any],
+    data: Dict[str, Any],
 ) -> Tuple[str, str, int]:
     """
     Create a signed JWT refresh token.
 
     Args:
-         Payload claims to encode. Must include 'sub'.
+        data: Payload claims to encode. Must include 'sub'.
 
     Returns:
         Tuple of (encoded_jwt, jti, ttl_seconds).
@@ -291,7 +291,7 @@ def create_refresh_token(
     Raises:
         ValueError: If payload is missing 'sub' claim.
     """
-    if "sub" not in 
+    if "sub" not in data:
         raise ValueError("Refresh token payload must include 'sub' claim")
     to_encode = data.copy()
     jti = str(uuid.uuid4())
