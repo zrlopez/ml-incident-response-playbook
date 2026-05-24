@@ -53,7 +53,7 @@ ignore_missing_imports = true
 #
 # Removal order (easiest → hardest):
 #   [x] src/config.py              — step 1 (done 2026-05-24)
-#   [ ] src/auth/jwt_rs256.py      — step 2
+#   [x] src/auth/jwt_rs256.py      — step 2 (done 2026-05-24)
 #   [ ] api/dependencies.py        — step 3
 #   [ ] api/incidents.py           — step 4
 #   [ ] api/auth_routes.py         — step 5
@@ -67,10 +67,6 @@ ignore_missing_imports = true
 #   3. Commit with message: "mypy: reintroduce <module> to full type checking"
 #   4. Update the checklist above (mark [x]).
 # ---------------------------------------------------------------------------
-
-[[tool.mypy.overrides]]
-module = "src.auth.jwt_rs256"
-ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "api.dependencies"

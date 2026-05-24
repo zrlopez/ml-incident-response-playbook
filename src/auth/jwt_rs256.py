@@ -54,7 +54,7 @@ import json
 import math
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import jwt
 from cryptography.hazmat.primitives import serialization
@@ -147,7 +147,7 @@ def sign_token(
     payload: dict[str, Any],
     expires_delta: timedelta,
     token_type: str = "access",
-) -> tuple[str, str, int]:
+) -> Tuple[str, str, int]:
     """
     Sign a JWT with RS256. Returns (encoded_token, jti, ttl_seconds).
 
@@ -197,7 +197,7 @@ def verify_token(token: str) -> dict[str, Any]:
     unverified_header = jwt.get_unverified_header(token)
     token_kid = unverified_header.get("kid", "")
 
-    verification_key: RSAPublicKey | None = None
+    verification_key: "RSAPublicKey | None" = None
     if token_kid == _key_id:
         verification_key = _public_key
     elif _old_public_key and token_kid == _old_key_id:
@@ -217,12 +217,12 @@ def verify_token(token: str) -> dict[str, Any]:
 
 # ── JWKS endpoint ────────────────────────────────────────────────────────────────
 
-def _rsa_public_key_to_jwk(public_key: RSAPublicKey, kid: str) -> dict[str, str]:
+def _rsa_public_key_to_jwk(public_key: RSAPublicKey, kid: str) -> Dict[str, str]:
     """
     Convert an RSA public key to a JWK (JSON Web Key) dict.
     Uses the standard Base64url-encoded n (modulus) and e (exponent) representation.
     """
-    pub_numbers = public_key.public_key().public_numbers() if hasattr(public_key, 'public_key') else public_key.public_numbers()  # type: ignore
+    pub_numbers = public_key.public_numbers()
 
     def _int_to_base64url(n: int) -> str:
         byte_length = math.ceil(n.bit_length() / 8)
@@ -249,7 +249,7 @@ jwks_router = APIRouter(tags=["Security / JWKS"])
     include_in_schema=True,
     response_description="JWKS document containing active and rotation-window public keys",
 )
-async def jwks_endpoint() -> dict:
+async def jwks_endpoint() -> Dict[str, List[Dict[str, str]]]:
     """
     Serve the JSON Web Key Set (JWKS) for RS256 JWT verification.
 
