@@ -13,7 +13,7 @@
 #   2026-05-24 v3  CI-13: Fix bandit-app.sarif path (write to GITHUB_WORKSPACE)
 #                  CI-14: pip-audit: drop --strict, use exit-code gate instead
 #   2026-05-24 v4  CI-15: Preserve seed SARIF on bandit failure (cp not mv)
-#                         so upload-sarif never errors on missing file.
+#   2026-05-24 v5  CI-16: bandit[sarif] extra; relative ./bandit-app.sarif paths
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -56,8 +56,6 @@ jobs:
   # ---------------------------------------------------------------------------
   # Gate 2a: Dependency vulnerability audit
   # CI-14: Removed --strict flag; pip-audit exits non-zero only on real vulns.
-  #        --strict also fails on packages it cannot resolve metadata for,
-  #        which causes false-positive CI failures unrelated to actual CVEs.
   # ---------------------------------------------------------------------------
   dependency-audit:
     name: pip-audit
@@ -86,11 +84,10 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Gate 2b: SAST - Bandit + mypy
-  # CI-13: Write bandit-app.sarif to $GITHUB_WORKSPACE so upload-sarif can find it.
-  #        Seed an empty-results SARIF first so upload never fails on a clean run.
-  # CI-15: Use `cp` (not `mv`) to promote bandit output so the seed is never
-  #        destroyed if bandit exits non-zero. The seed is always present for
-  #        upload-sarif; the hard gate below catches real findings.
+  # CI-16: bandit[sarif] extra installed via requirements-dev.txt.
+  #        All SARIF paths use relative ./bandit-app.sarif (no env-var expansion).
+  #        Seed written first; cp only overwrites on success so seed survives
+  #        a bandit exit-1 (findings present) for a clean upload-sarif.
   # ---------------------------------------------------------------------------
   sast:
     name: SAST - Bandit + mypy
@@ -106,32 +103,27 @@ jobs:
 
       - name: Bandit SARIF (api/ + observability/ + src/)
         run: |
-          SARIF="$GITHUB_WORKSPACE/bandit-app.sarif"
-          # Seed a valid empty-results SARIF so upload-sarif always has a file,
-          # even when bandit exits non-zero (findings present) or a target dir
-          # is missing. CI-15: cp overwrites seed only on success; seed survives failure.
-          echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Bandit","rules":[]}},"results":[]}]}' > "$SARIF"
-          bandit -r api/ observability/ src/ -l -i -f sarif -o "${SARIF}.tmp" \
-            && cp "${SARIF}.tmp" "$SARIF" || true
-          rm -f "${SARIF}.tmp"
+          echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Bandit","rules":[]}},"results":[]}]}' > ./bandit-app.sarif
+          bandit -r api/ observability/ src/ -l -i -f sarif -o ./bandit-app.sarif.tmp \
+            && cp ./bandit-app.sarif.tmp ./bandit-app.sarif || true
+          rm -f ./bandit-app.sarif.tmp
 
       - name: Bandit hard gate (api/ + observability/ + src/)
         run: bandit -r api/ observability/ src/ --severity-level medium --confidence-level medium
 
       - name: Bandit - test code
         run: |
-          SARIF="$GITHUB_WORKSPACE/bandit-tests.sarif"
-          echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Bandit","rules":[]}},"results":[]}]}' > "$SARIF"
+          echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Bandit","rules":[]}},"results":[]}]}' > ./bandit-tests.sarif
           bandit -r tests/ --severity-level low --confidence-level low \
-            --skip B101 -f sarif -o "${SARIF}.tmp" \
-            && cp "${SARIF}.tmp" "$SARIF" || true
-          rm -f "${SARIF}.tmp"
+            --skip B101 -f sarif -o ./bandit-tests.sarif.tmp \
+            && cp ./bandit-tests.sarif.tmp ./bandit-tests.sarif || true
+          rm -f ./bandit-tests.sarif.tmp
 
       - name: Upload Bandit SARIF
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: ${{ github.workspace }}/bandit-app.sarif
+          sarif_file: ./bandit-app.sarif
 
       # Hard gate - no continue-on-error (CI-02)
       - name: mypy type checking (api/ + observability/ + src/)
