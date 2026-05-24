@@ -8,7 +8,7 @@
 -r requirements.txt
 
 # ── Test runner ──────────────────────────────────────────────────────────────
-pytest==8.3.5
+pytest==9.0.3
 pytest-cov==6.1.0
 # anyio provides the async test runner for @pytest.mark.anyio in test_api.py.
 # trio backend is used (faster for unit tests than asyncio in most pytest setups).
