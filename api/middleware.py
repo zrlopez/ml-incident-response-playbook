@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import time
 import asyncio
+from collections.abc import MutableMapping
 from typing import Any, Awaitable, Callable, Dict
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -99,7 +100,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         received_bytes = 0
         original_receive = request._receive
 
-        async def counting_receive() -> dict:  # type: ignore[return-value]
+        async def counting_receive() -> MutableMapping[str, Any]:
             nonlocal received_bytes
             message = await original_receive()
             if message["type"] == "http.request":
