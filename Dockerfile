@@ -23,7 +23,7 @@
 # MED-A: Pinned to SHA-256 digest. Prevents tag-mutation supply chain attacks
 # where an attacker pushes a malicious layer over a floating tag.
 # To update: pull the new image and re-run `docker inspect ... --format='{{index .RepoDigests 0}}'`
-FROM python:3.12-slim@sha256:da2d7af143dab7cd5b0d5a5c9545fe14e67fc24c394fcf1cf15e8ea16cbd8637 AS builder
+FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203 AS builder
 
 WORKDIR /build
 
@@ -52,7 +52,7 @@ RUN python -m venv /opt/venv \
 # Stage 2: runtime image
 # Purpose: minimal production image. No build tools, no compilers, no pip.
 # ───────────────────────────────────────────────────────────────────
-FROM python:3.12-slim@sha256:da2d7af143dab7cd5b0d5a5c9545fe14e67fc24c394fcf1cf15e8ea16cbd8637 AS runtime
+FROM python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203 AS runtime
 
 # SEC-1: Runtime-only env vars. Never set secrets as ENV — use env_file or secrets.
 ENV PYTHONDONTWRITEBYTECODE=1 \
