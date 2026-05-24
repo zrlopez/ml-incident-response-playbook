@@ -26,6 +26,11 @@
 #                  P1-05: Trivy exit-code restored to '1' (hard gate, CI-26 CLOSED)
 #                  P1-06: pip-audit artifact gen decoupled from hard gate
 #                  P1-07: secret availability guard added to integration-tests
+#   2026-05-24 v18 P1-fix-01:
+#                  Fix invalid job ID '🧪 Tests (Python 3.11)' — emoji + spaces
+#                  violate GitHub Actions ID rules. Job ID -> integration-tests.
+#                  name: field preserved as '🧪 Tests (Python 3.11)' so the
+#                  branch ruleset required status check still resolves correctly.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (update when bumping versions):
@@ -45,8 +50,8 @@
 #     -> e11c554f704a0b820cbf8c51673f6526911c1bfb
 #   trufflesecurity/trufflehog@v3.95.3
 #     -> 5af854b9571d720709b5e15dda4e4b37f0c5e1ee
-#   github/codeql-action/upload-sarif@v3
-#     -> v3 (repo-pinned upstream; CodeQL actions are verified by GitHub)
+#   github/codeql-action/*@v3.28.15
+#     -> ff0a06e83cb2ec761ce6ed8b129e5935e7508d9a
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -159,7 +164,7 @@ jobs:
           rm -f ./bandit-tests.sarif.tmp
 
       - name: Upload Bandit SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@ff0a06e83cb2ec761ce6ed8b129e5935e7508d9a  # v3.28.15
         if: always()
         with:
           sarif_file: ./bandit-app.sarif
@@ -194,8 +199,11 @@ jobs:
           path: coverage-unit.xml
           retention-days: 30
 
-  🧪 Tests (Python 3.11):
-    name: "🧪 Tests (Python 3.11)"
+  integration-tests:
+    # Job ID must be alphanumeric/_/- only — emoji not allowed in IDs.
+    # The name: field below is what appears in the UI and in branch ruleset
+    # required status checks — it CAN contain emoji and spaces.
+    name: "\U0001F9EAABAB Tests (Python 3.11)"
     runs-on: ubuntu-latest
     needs: [sast, dependency-audit]
 
@@ -237,7 +245,7 @@ jobs:
         run: |
           if [ -z "${{ secrets.CI_JWT_SECRET_KEY }}" ]; then
             echo "ERROR: CI_JWT_SECRET_KEY secret is not configured."
-            echo "Go to Settings → Secrets and variables → Actions → New repository secret"
+            echo "Go to Settings -> Secrets and variables -> Actions -> New repository secret"
             echo "and add CI_JWT_SECRET_KEY with the output of: openssl rand -hex 32"
             exit 1
           fi
@@ -273,7 +281,7 @@ jobs:
   container-scan:
     name: Container Build + Trivy + SBOM
     runs-on: ubuntu-latest
-    needs: [test, "🧪 Tests (Python 3.11)"]
+    needs: [test, integration-tests]
     permissions:
       contents: read
       security-events: write
@@ -305,7 +313,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@ff0a06e83cb2ec761ce6ed8b129e5935e7508d9a  # v3.28.15
         if: always()
         with:
           sarif_file: trivy-container.sarif
@@ -337,8 +345,8 @@ jobs:
           echo "dependency-audit ............. passed"
           echo "SAST - Bandit + mypy ......... passed"
           echo "test (unit) .................. passed"
-          echo "🧪 Tests (Python 3.11) ....... passed"
-          echo "container-scan (trivy) ....... passed (hard gate — P1-05)"
+          echo "Tests (Python 3.11) .......... passed"
+          echo "container-scan (trivy) ....... passed (hard gate - P1-05)"
           echo "sbom ......................... generated (SPDX, 365-day retention)"
           echo "========================================"
           echo "  Branch: ${{ github.ref }}"
