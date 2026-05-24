@@ -1,4 +1,5 @@
-'"""Generate a comprehensive incident metrics report for leadership review.
+"""
+Generate a comprehensive incident metrics report for leadership review.
 
 This script aggregates metrics from the PostgreSQL incidents database and
 produces a monthly metrics report in both CSV and Markdown formats. It is
@@ -242,7 +243,7 @@ def write_markdown_report(metrics: Dict[str, Any], trends: Optional[Dict[str, An
         ])
         for key, value in trends.items():
             friendly_name = key.replace("_change_pct", "").replace("_", " ").title()
-            direction = "↑" if value > 0 else "↓" if value < 0 else "→"
+            direction = "\u2191" if value > 0 else "\u2193" if value < 0 else "\u2192"
             lines.append(f"- **{friendly_name}:** {direction} {abs(value)}%")
         lines.append("")
 
@@ -338,10 +339,10 @@ def main() -> None:
     print(f"Wrote CSV: {csv_path}")
 
     md_path = output_dir / f"metrics_{args.month}.md"
-    write_markdown报告(metrics, trends, args.month, md_path)
+    write_markdown_report(metrics, trends, args.month, md_path)
     print(f"Wrote Markdown report: {md_path}")
 
-    print("✓ Metrics report generation complete")
+    print("\u2713 Metrics report generation complete")
 
 
 if __name__ == "__main__":
