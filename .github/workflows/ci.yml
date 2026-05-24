@@ -12,9 +12,8 @@
 #   2026-05-24 v8  CI-22: Trivy ignore-unfixed:true
 #   2026-05-24 v9  CI-23: base image -> python:3.12-alpine
 #   2026-05-24 v10 CI-24: split Trivy into diagnostic table + gating sarif
-#   2026-05-24 v11 CI-25: call trivy binary directly for diagnostic table;
-#                  trivy-action@master entrypoint.sh ignores format:table
-#                  and always builds SARIF, so table output was lost.
+#   2026-05-24 v11 CI-25: call trivy binary directly for diagnostic table
+#   2026-05-24 v12 CI-25b: fix setup-trivy tag v0.2.2->v0.2.6 (only tag)
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -224,12 +223,6 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Gate 4: Container build + Trivy scan + SBOM
-  #
-  # CI-25: Diagnostic step calls trivy binary directly (via setup-trivy) with
-  #        --format table --exit-code 0 so the CVE list always appears in the
-  #        Actions log. trivy-action@master entrypoint.sh ignores format:table
-  #        and always builds SARIF, making the table output inaccessible.
-  #        The gating step still uses trivy-action for SARIF + upload.
   # ---------------------------------------------------------------------------
   container-scan:
     name: Container Build + Trivy + SBOM
@@ -254,7 +247,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.2
+        uses: aquasecurity/setup-trivy@v0.2.6
         with:
           version: v0.70.0
           cache: true
