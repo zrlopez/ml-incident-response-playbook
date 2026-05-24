@@ -347,7 +347,8 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict[str, 
     """
     if _user_repo is not None:
         # Production path — argon2id with rehash-on-login
-        return await _user_repo.authenticate(username, password)
+        result = await _user_repo.authenticate(username, password)
+        return result.to_dict() if result is not None else None
 
     # Dev/test fallback path — _USERS in-memory dict
     user = _USERS.get(username)
@@ -402,7 +403,8 @@ async def get_current_user(
     username: str = payload.get("sub", "")
     # ARCH-03: use _user_repo when available; fall back to _USERS dict in dev
     if _user_repo is not None:
-        user = await _user_repo.get_by_username(username)
+        _record = await _user_repo.get_by_username(username)
+        user: dict | None = _record.to_dict() if _record is not None else None
     else:
         user = _USERS.get(username)
     if not user or user.get("disabled"):
@@ -466,7 +468,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         log.info("user_repo.postgres_wired", environment=ENVIRONMENT)
     else:
         from src.users.repository import InMemoryUserRepository  # noqa: PLC0415
-        _user_repo = InMemoryUserRepository()
+        _user_repo = InMemoryUserRepository(users=_USERS)
         app.state.user_repo = _user_repo
         log.warning(
             "user_repo.in_memory_fallback",
@@ -476,7 +478,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialise Redis-backed JWT denylist (R-03)
     _denylist = RedisDenylist(redis_url=REDIS_URL)
     await _denylist.connect()
-    app.state.redis = _denylist._redis  # Expose Redis client for rate_limit.py
+    app.state.redis = _denylist._client  # Expose Redis client for rate_limit.py
     log.info("denylist.connected", redis_url=REDIS_URL)
 
     # ARCH-01: Load RS256 key pair when RSA_PRIVATE_KEY_PEM is set.
@@ -518,7 +520,7 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # ARCH-03 / ARCH-05: Mount GDPR data subject rights endpoints
 # Routes: GET /users/me/export  (Art. 15 access)
@@ -604,8 +606,10 @@ async def trace_and_security_headers(request: Request, call_next: Callable[..., 
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     response.headers["Cache-Control"] = "no-store"
-    response.headers.pop("server", None)
-    response.headers.pop("x-powered-by", None)
+    if "server" in response.headers:
+        del response.headers["server"]
+    if "x-powered-by" in response.headers:
+        del response.headers["x-powered-by"]
 
     return response
 
@@ -736,7 +740,8 @@ async def refresh_token_endpoint(
     username: str = payload.get("sub", "")
     # ARCH-03: use _user_repo when available
     if _user_repo is not None:
-        user = await _user_repo.get_by_username(username)
+        _record = await _user_repo.get_by_username(username)
+        user: dict | None = _record.to_dict() if _record is not None else None
     else:
         user = _USERS.get(username)
     if not user or user.get("disabled"):

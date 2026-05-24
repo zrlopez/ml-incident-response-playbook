@@ -99,7 +99,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         received_bytes = 0
         original_receive = request._receive
 
-        async def counting_receive() -> Dict[str, Any]:
+        async def counting_receive() -> dict:  # type: ignore[return-value]
             nonlocal received_bytes
             message = await original_receive()
             if message["type"] == "http.request":

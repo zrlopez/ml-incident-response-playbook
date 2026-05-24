@@ -54,7 +54,7 @@ import json
 import math
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import jwt
 from cryptography.hazmat.primitives import serialization
@@ -103,10 +103,10 @@ def load_keys() -> bool:
         return False
 
     try:
-        _private_key = serialization.load_pem_private_key(
+        _private_key = cast(RSAPrivateKey, serialization.load_pem_private_key(
             private_pem.encode(), password=None
-        )
-        _public_key = _private_key.public_key()
+        ))
+        _public_key = cast(RSAPublicKey, _private_key.public_key())
         _key_id = _pem_to_key_id(_public_key)
         log.info("jwt_rs256.private_key_loaded", key_id=_key_id)
     except Exception as exc:
@@ -117,7 +117,7 @@ def load_keys() -> bool:
     public_pem = os.environ.get("RSA_PUBLIC_KEY_PEM", "").strip()
     if public_pem:
         try:
-            _public_key = serialization.load_pem_public_key(public_pem.encode())
+            _public_key = cast(RSAPublicKey, serialization.load_pem_public_key(public_pem.encode()))
             _key_id = _pem_to_key_id(_public_key)
         except Exception as exc:
             log.error("jwt_rs256.public_key_load_failed", error=str(exc))
@@ -127,7 +127,7 @@ def load_keys() -> bool:
     old_public_pem = os.environ.get("RSA_OLD_PUBLIC_KEY_PEM", "").strip()
     if old_public_pem:
         try:
-            _old_public_key = serialization.load_pem_public_key(old_public_pem.encode())
+            _old_public_key = cast(RSAPublicKey, serialization.load_pem_public_key(old_public_pem.encode()))
             _old_key_id = _pem_to_key_id(_old_public_key)
             log.info("jwt_rs256.old_key_loaded_rotation_window", old_key_id=_old_key_id)
         except Exception as exc:

@@ -88,7 +88,7 @@ def configure_logging(log_level: str | None = None) -> None:
     Bootstrap structlog with JSON production rendering and PII scrubbing.
     Must be called once at application startup (wired in api/app.py).
     """
-    level_str = (log_level or os.getenv("LOG_LEVEL", "INFO")).upper()
+    level_str = (log_level or os.getenv("LOG_LEVEL") or "INFO").upper()
     level = getattr(logging, level_str, logging.INFO)
     is_production = os.getenv("APP_ENV", "production") == "production"
 

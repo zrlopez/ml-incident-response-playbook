@@ -212,4 +212,4 @@ def get_settings() -> Settings:
         settings = get_settings()
         settings.some_field
     """
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
