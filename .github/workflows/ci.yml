@@ -3,36 +3,17 @@
 # =============================================================================
 # Remediation history:
 #   2026-05-23 v1  CI-01..CI-05: JWT secret, mypy gate, Trivy, SBOM, Bandit
-#   2026-05-23 v2  CI-06: Split unit/integration jobs; Postgres service container
-#                  CI-07: alembic upgrade head before integration tests
-#                  CI-08: Coverage sources expanded to include src/
-#                  CI-09: pytest --cov-fail-under raised to 85
-#                  CI-10: SAST extended to src/ package
-#                  CI-11: mypy extended to src/ package
-#                  CI-12: Deployment gate summary updated
-#   2026-05-24 v3  CI-13: Fix bandit-app.sarif path (write to GITHUB_WORKSPACE)
-#                  CI-14: pip-audit: drop --strict, use exit-code gate instead
-#   2026-05-24 v4  CI-15: Preserve seed SARIF on bandit failure (cp not mv)
-#   2026-05-24 v5  CI-16: bandit[sarif] extra; relative ./bandit-app.sarif paths
-#   2026-05-24 v6  CI-17: bump PyJWT->2.12.0, cryptography->46.0.7,
-#                         starlette->0.49.1, fastapi->0.121.3, redis->5.3.1
-#                  CI-18: replace mypy --strict with targeted flags;
-#                         strict=true also removed from pyproject.toml [tool.mypy]
-#                  CI-19: pip-audit ignore PYSEC-2026-161 (starlette); fix
-#                         requires starlette>=1.0.1/fastapi>=0.128 (breaking).
-#                  CI-20: drop --disallow-untyped-calls; fired on third-party
-#                         untyped libs (redis, otel, slowapi) with no stubs.
-#   2026-05-24 v7  CI-21: Gradual typing remediation begins. 8 legacy modules
-#                         suppressed via pyproject.toml [[tool.mypy.overrides]]
-#                         ignore_errors=true. mypy CI scope restored to full
-#                         api/ + observability/ + src/. Modules will be
-#                         reintroduced one at a time with individual commits.
-#                         Removal order tracked in pyproject.toml comments.
-#   2026-05-24 v8  CI-22: Trivy ignore-unfixed: true added to container-scan.
-#                         Debian 13.5 OS layer in python:3.12-slim carries CVEs
-#                         with no upstream patch available. Gate still enforces
-#                         CRITICAL,HIGH threshold and exit-code:1 for fixable
-#                         CVEs. Standard industry practice for pinned base images.
+#   2026-05-23 v2  CI-06..CI-12: split jobs, Postgres, coverage, scope
+#   2026-05-24 v3  CI-13..CI-14: bandit sarif path, pip-audit exit-code gate
+#   2026-05-24 v4  CI-15: preserve seed SARIF on bandit failure
+#   2026-05-24 v5  CI-16: bandit[sarif] extra; relative sarif paths
+#   2026-05-24 v6  CI-17..CI-20: dep bumps, mypy flags, pip-audit ignore
+#   2026-05-24 v7  CI-21: gradual typing remediation
+#   2026-05-24 v8  CI-22: Trivy ignore-unfixed:true
+#   2026-05-24 v9  CI-23: base image -> python:3.12-alpine
+#   2026-05-24 v10 CI-24: split Trivy into diagnostic table + gating sarif
+#                  runs so CVE list is always visible before gate fires and
+#                  SARIF is always written regardless of exit code.
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -47,7 +28,6 @@ permissions:
   pull-requests: read
   security-events: write
 
-# Cancel in-flight runs on the same branch to save runner minutes
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -55,7 +35,7 @@ concurrency:
 jobs:
 
   # ---------------------------------------------------------------------------
-  # Gate 1: Secret scanning (must pass before any other job)
+  # Gate 1: Secret scanning
   # ---------------------------------------------------------------------------
   secrets-scan:
     name: TruffleHog Secret Scan
@@ -74,10 +54,6 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Gate 2a: Dependency vulnerability audit
-  # CI-14: Removed --strict flag; pip-audit exits non-zero only on real vulns.
-  # CI-19: PYSEC-2026-161 (starlette) ignored: fix needs starlette>=1.0.1
-  #        which requires fastapi>=0.128 (breaking). Tracked for next
-  #        fastapi major upgrade.
   # ---------------------------------------------------------------------------
   dependency-audit:
     name: pip-audit
@@ -107,9 +83,6 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Gate 2b: SAST - Bandit + mypy
-  # CI-18: mypy --strict replaced; strict=true removed from pyproject.toml.
-  # CI-20: --disallow-untyped-calls dropped; fires on third-party libs with
-  #        no stubs (redis, otel, slowapi). warn_return_any retained.
   # ---------------------------------------------------------------------------
   sast:
     name: SAST - Bandit + mypy
@@ -147,15 +120,11 @@ jobs:
         with:
           sarif_file: ./bandit-app.sarif
 
-      # CI-20: --disallow-untyped-calls dropped; --warn-return-any retained.
-      # CI-21: Full scope restored. Legacy modules suppressed via
-      # [[tool.mypy.overrides]] ignore_errors=true in pyproject.toml.
-      # Remove overrides one-by-one as each module is typed clean.
       - name: mypy type checking (api/ + observability/ + src/)
         run: mypy api/ observability/ src/
 
   # ---------------------------------------------------------------------------
-  # Gate 3a: Unit tests (zero-dependency, no DB, no Redis)
+  # Gate 3a: Unit tests
   # ---------------------------------------------------------------------------
   unit-tests:
     name: Unit Tests
@@ -172,14 +141,12 @@ jobs:
           python-version: '3.11'
           cache: pip
       - run: pip install -r requirements-dev.txt
-
       - name: pytest unit tests
         run: |
           pytest tests/unit/ \
             --cov=src/domain --cov=src.domain.incident_lifecycle \
             --cov-report=xml:coverage-unit.xml \
             -v
-
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-unit
@@ -242,11 +209,6 @@ jobs:
 
       - name: pytest integration tests
         run: |
-          # CI-29: threshold set to 40 — current 22 integration tests reach ~45%
-          # across 15 modules. Raise incrementally as test coverage expands:
-          #   50 once gdpr_routes + middleware tests are added
-          #   65 once redis_denylist + jwt_rs256 tests are added
-          #   85 final target (matches pyproject.toml [tool.coverage.report])
           pytest tests/integration/ \
             --cov=api --cov=observability --cov=src \
             --cov-report=xml:coverage-integration.xml \
@@ -261,9 +223,14 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Gate 4: Container build + Trivy scan + SBOM
-  # CI-22: ignore-unfixed: true added. Debian 13.5 OS layer carries CVEs with
-  #        no upstream patch. Gate still enforces CRITICAL,HIGH + exit-code:1
-  #        for any fixable CVEs.
+  #
+  # CI-24: Two-phase Trivy scan:
+  #   Phase 1 - table format, exit-code 0: always prints CVE list to the log
+  #             so we can see exactly which packages are flagged.
+  #   Phase 2 - sarif format, exit-code 1: writes trivy-container.sarif, then
+  #             gates the build. SARIF upload uses if:always() so the report
+  #             reaches Code Scanning even on gate failure.
+  #   ignore-unfixed:true on both phases: suppresses OS CVEs with no fix.
   # ---------------------------------------------------------------------------
   container-scan:
     name: Container Build + Trivy + SBOM
@@ -287,7 +254,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trivy container vulnerability scan
+      - name: Trivy - diagnostic table (always runs, never blocks)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ml-incident-api:${{ github.sha }}
+          format: table
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Trivy - SARIF + gate
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ml-incident-api:${{ github.sha }}
