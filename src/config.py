@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 from typing import Literal
+from typing_extensions import Self
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -105,7 +106,7 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_redis_auth_in_production(self) -> "Settings":
+    def validate_redis_auth_in_production(self) -> Self:
         """Enforce Redis password in non-test environments."""
         if self.environment == "production" and not self.redis_password:
             raise ValueError(
@@ -140,7 +141,7 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_dev_credentials(self) -> "Settings":
+    def validate_dev_credentials(self) -> Self:
         """CRIT-A: Reject placeholder/empty dev passwords in non-test environments."""
         if self.environment == "test":
             return self  # Test fixtures set their own values
