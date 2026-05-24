@@ -41,6 +41,10 @@ import structlog
 from observability.logging_config import configure_logging
 from observability.otel_setup import configure_otel, shutdown_otel
 from api.redis_denylist import RedisDenylist
+from api.gdpr_routes import router as gdpr_router
+from api.rate_limit import check_user_rate_limit
+from src.users.repository import PostgresUserRepository, AbstractUserRepository
+from src.auth.password import hash_password, verify_password, maybe_rehash
 from src.incident_tracker import (
     IncidentRepository,
     IncidentStatus,
@@ -74,51 +78,18 @@ ALLOWED_ORIGINS: List[str] = [o.strip() for o in _raw_origins.split(",") if o.st
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 # ── Redis JWT denylist (distributed, TTL-backed) ───────────────────────────
-# Module-level singleton; initialised in lifespan, used in is_token_revoked().
+# CRIT-B REMEDIATION (Phase 0): Sync wrappers revoke_token() and is_token_revoked()
+# removed. All denylist interactions are now natively async via _denylist directly.
+# DenylistUnavailableError imported from redis_denylist to avoid re-definition.
+from api.redis_denylist import DenylistUnavailableError  # noqa: E402
+
+# Module-level singleton; initialised in lifespan startup, closed in shutdown.
 _denylist: RedisDenylist | None = None
 
-
-def revoke_token(jti: str, expires_in: int) -> None:
-    """
-    Add a JWT ID to the denylist with an explicit TTL (seconds).
-    Falls back to raising RuntimeError if the denylist is not initialised
-    so logout failures are loud rather than silent.
-    """
-    if _denylist is None:
-        raise RuntimeError("Token denylist not initialised — lifespan may not have run")
-    _denylist.revoke(jti, ttl_seconds=expires_in)
-
-
-class DenylistUnavailableError(Exception):
-    """Raised when token revocation check cannot be completed safely."""
-
-
-def is_token_revoked(jti: str) -> bool:
-    """
-    Check if a JWT has been revoked.
-
-    Fail-CLOSED: if the denylist is unavailable, raises DenylistUnavailableError.
-    The caller must respond with HTTP 503 so clients can retry.
-    This prioritises security over availability — correct for an auth control plane.
-    """
-    if _denylist is None:
-        log.critical(
-            "denylist.unavailable.fail_closed",
-            jti=jti,
-            action="request_denied",
-            alert="page_oncall",
-        )
-        raise DenylistUnavailableError("Token denylist not initialised — failing closed")
-    try:
-        return _denylist.is_revoked(jti)
-    except Exception as exc:
-        log.critical(
-            "denylist.check_failed.fail_closed",
-            jti=jti,
-            error=str(exc),
-            action="request_denied",
-        )
-        raise DenylistUnavailableError(f"Denylist check failed: {exc}") from exc
+# ARCH-03: PostgresUserRepository singleton — replaces _USERS dict in production.
+# Initialised in lifespan when ENVIRONMENT != 'development'.
+# InMemoryUserRepository (from src.users.repository) is used in dev/test.
+_user_repo: AbstractUserRepository | None = None
 
 
 # ── Password hashing ───────────────────────────────────────────────────────
@@ -139,14 +110,38 @@ if ENVIRONMENT == "production":
         "  and inject it via the lifespan context before deploying.\n"
     )
 
-_DEV_ADMIN_PW: str = os.environ.get("DEV_ADMIN_PASSWORD", "")
-if not _DEV_ADMIN_PW and ENVIRONMENT != "production":
-    import warnings
-    warnings.warn(
-        "DEV_ADMIN_PASSWORD not set — using insecure fallback. Set it in .env for local dev.",
-        stacklevel=1,
-    )
-    _DEV_ADMIN_PW = "admin-dev-only"
+# CRIT-A REMEDIATION (Phase 0): All plaintext fallback passwords removed.
+# Application fails loudly at startup if any DEV_*_PASSWORD is unset in non-production.
+# Rationale: a silent fallback to 'admin-dev-only' etc. is a credential stuffing vector
+# if the service is accidentally deployed to staging with ENVIRONMENT != 'production'.
+
+def _require_dev_password(env_var: str) -> str:
+    """
+    Return the value of env_var, or raise a RuntimeError with a clear remediation
+    instruction. No fallback strings — ever.
+    """
+    value = os.environ.get(env_var, "").strip()
+    if not value:
+        raise RuntimeError(
+            f"\n"
+            f"  FATAL: {env_var} is not set.\n"
+            f"  No fallback password is allowed — predictable dev credentials\n"
+            f"  are a credential stuffing vector on misconfigured environments.\n"
+            f"\n"
+            f"  Fix: Add to your .env file:\n"
+            f"    {env_var}=$(openssl rand -hex 16)\n"
+        )
+    if len(value) < 12:
+        raise RuntimeError(
+            f"{env_var} is too short (< 12 chars). "
+            f"Generate a secure value: openssl rand -hex 16"
+        )
+    return value
+
+
+_DEV_ADMIN_PW    = _require_dev_password("DEV_ADMIN_PASSWORD")
+_DEV_ANALYST_PW  = _require_dev_password("DEV_ANALYST_PASSWORD")
+_DEV_OPERATOR_PW = _require_dev_password("DEV_OPERATOR_PASSWORD")
 
 _USERS: Dict[str, Dict[str, Any]] = {
     "admin": {
@@ -157,13 +152,13 @@ _USERS: Dict[str, Dict[str, Any]] = {
     },
     "analyst": {
         "username": "analyst",
-        "hashed_password": pwd_context.hash(os.environ.get("DEV_ANALYST_PASSWORD", "analyst-dev-only")),
+        "hashed_password": pwd_context.hash(_DEV_ANALYST_PW),
         "role": "analyst",
         "disabled": False,
     },
     "operator": {
         "username": "operator",
-        "hashed_password": pwd_context.hash(os.environ.get("DEV_OPERATOR_PASSWORD", "operator-dev-only")),
+        "hashed_password": pwd_context.hash(_DEV_OPERATOR_PW),
         "role": "operator",
         "disabled": False,
     },
@@ -339,10 +334,28 @@ def decode_token(token: str) -> Dict[str, Any]:
 
 # ── Auth helpers ───────────────────────────────────────────────────────────
 
-def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
+async def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
+    """
+    Authenticate a user against the active user repository.
+
+    ARCH-03: When _user_repo is initialised (production/staging), delegates
+    to PostgresUserRepository.authenticate() which also performs argon2
+    rehash-on-login (ARCH-06) transparently.
+
+    Dev fallback: _USERS dict with passlib bcrypt (migration window only).
+    """
+    if _user_repo is not None:
+        # Production path — argon2id with rehash-on-login
+        return await _user_repo.authenticate(username, password)
+
+    # Dev/test fallback path — _USERS in-memory dict
     user = _USERS.get(username)
     if not user:
-        pwd_context.dummy_verify("dummy", pwd_context.hash("dummy"))  # constant-time: prevent username enumeration
+        # Constant-time dummy verify to prevent username enumeration
+        try:
+            verify_password(password, hash_password("dummy-constant-time"))
+        except Exception:
+            pass
         return None
     if user.get("disabled"):
         return None
@@ -363,7 +376,10 @@ async def get_current_user(
         )
     jti = payload.get("jti", "")
     try:
-        revoked = is_token_revoked(jti)
+        # CRIT-B FIX: await async-native is_revoked() directly
+        revoked = await _denylist.is_revoked(jti) if _denylist else False
+        if _denylist is None:
+            raise DenylistUnavailableError("Denylist not initialised")
     except DenylistUnavailableError:
         # Fail-closed: denylist unreachable — return 503, not 401, so clients retry
         raise HTTPException(
@@ -383,7 +399,11 @@ async def get_current_user(
             detail="Token has been revoked",
         )
     username: str = payload.get("sub", "")
-    user = _USERS.get(username)
+    # ARCH-03: use _user_repo when available; fall back to _USERS dict in dev
+    if _user_repo is not None:
+        user = await _user_repo.get_by_username(username)
+    else:
+        user = _USERS.get(username)
     if not user or user.get("disabled"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -423,6 +443,8 @@ async def lifespan(app: FastAPI):
     # ── Startup ────────────────────────────────────────────────────────────
     log.info("api.startup", environment=ENVIRONMENT, algorithm=JWT_ALGORITHM)
 
+    global _user_repo
+
     # CR-1: Verify DB connectivity + Alembic migration state (no create_all)
     try:
         from src.incident_tracker import init_db  # noqa: E402
@@ -431,9 +453,29 @@ async def lifespan(app: FastAPI):
         log.error("api.startup.db_check_failed", error=str(_db_exc))
         raise
 
+    # ARCH-03: Wire PostgresUserRepository when DATABASE_URL is a real Postgres URL.
+    # Dev fallback: InMemoryUserRepository seeded from environment variables.
+    database_url = os.getenv("DATABASE_URL", "")
+    if database_url.startswith("postgresql"):
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker  # noqa: PLC0415
+        _pg_engine = create_async_engine(database_url, pool_pre_ping=True)
+        _pg_session_factory = async_sessionmaker(_pg_engine, expire_on_commit=False)
+        _user_repo = PostgresUserRepository(session_factory=_pg_session_factory)
+        app.state.user_repo = _user_repo
+        log.info("user_repo.postgres_wired", environment=ENVIRONMENT)
+    else:
+        from src.users.repository import InMemoryUserRepository  # noqa: PLC0415
+        _user_repo = InMemoryUserRepository()
+        app.state.user_repo = _user_repo
+        log.warning(
+            "user_repo.in_memory_fallback",
+            hint="Set DATABASE_URL=postgresql+asyncpg://... to use PostgresUserRepository",
+        )
+
     # Initialise Redis-backed JWT denylist (R-03)
     _denylist = RedisDenylist(redis_url=REDIS_URL)
     await _denylist.connect()
+    app.state.redis = _denylist._redis  # Expose Redis client for rate_limit.py
     log.info("denylist.connected", redis_url=REDIS_URL)
 
     # Bootstrap OpenTelemetry tracing (R-20)
@@ -464,6 +506,11 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# ARCH-03 / ARCH-05: Mount GDPR data subject rights endpoints
+# Routes: GET /users/me/export  (Art. 15 access)
+#         DELETE /users/me      (Art. 17 erasure)
+app.include_router(gdpr_router)
+
 # -- CR-2: Map InvalidTransitionError -> HTTP 409 Conflict -------------------
 # InvalidTransitionError is raised by IncidentRepository.update_status() when
 # a caller requests a transition forbidden by the domain state machine.
@@ -487,6 +534,18 @@ try:
         )
 except ImportError:
     pass  # Graceful: incident_tracker not yet imported at module load in some test configs
+
+# ── Request hardening middleware (Phase 0: HIGH-C, MED-E, timeout) ────────────
+# Starlette applies middleware in reverse registration order.
+# Registration here: SecurityHeaders (outermost) -> MaxBodySize -> RequestTimeout
+from api.middleware import (  # noqa: E402
+    MaxBodySizeMiddleware,
+    SecurityHeadersMiddleware,
+    RequestTimeoutMiddleware,
+)
+app.add_middleware(SecurityHeadersMiddleware, environment=ENVIRONMENT)
+app.add_middleware(MaxBodySizeMiddleware)
+app.add_middleware(RequestTimeoutMiddleware)
 
 # ── CORS middleware ────────────────────────────────────────────────────────
 if ALLOWED_ORIGINS:
@@ -598,7 +657,7 @@ async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
 ):
     """Issue an access + refresh token pair. Rate limited to 5/min per IP."""
-    user = authenticate_user(form.username, form.password)
+    user = await authenticate_user(form.username, form.password)
     if not user:
         log.warning(
             "auth.login_failed",
@@ -647,22 +706,36 @@ async def refresh_token_endpoint(
             detail="Wrong token type — submit a refresh token",
         )
     old_jti = payload.get("jti", "")
-    if is_token_revoked(old_jti):
+    if _denylist is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable",
+            headers={"Retry-After": "30"},
+        )
+    # CRIT-B FIX: await async-native check
+    if await _denylist.is_revoked(old_jti):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token has been revoked",
         )
 
     username: str = payload.get("sub", "")
-    user = _USERS.get(username)
+    # ARCH-03: use _user_repo when available
+    if _user_repo is not None:
+        user = await _user_repo.get_by_username(username)
+    else:
+        user = _USERS.get(username)
     if not user or user.get("disabled"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or disabled",
         )
 
-    # Rotate: revoke the old refresh token before issuing new pair
-    revoke_token(old_jti, expires_in=int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()))
+    # Rotate: await the revocation write to confirm before issuing new tokens
+    await _denylist.revoke(
+        old_jti,
+        ttl_seconds=int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()),
+    )
 
     token_data = {"sub": user["username"], "role": user["role"]}
     access_token, access_jti, access_ttl = create_access_token(token_data)
@@ -692,7 +765,13 @@ async def logout(
     """Revoke the current access token immediately via the Redis denylist."""
     jti = current_user["jti"]
     ttl = ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    revoke_token(jti, expires_in=ttl)
+    if _denylist is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable",
+        )
+    # CRIT-B FIX: await confirmed write — revocation is durable before response returns
+    await _denylist.revoke(jti, ttl_seconds=ttl)
     log.info(
         "auth.logout",
         username=current_user["username"],
@@ -713,7 +792,8 @@ async def logout(
 # which is mapped to HTTP 409 by the exception handler registered above.
 
 
-@app.post("/incidents/", status_code=201, tags=["incidents"])
+@app.post("/incidents/", status_code=201, tags=["incidents"],
+          dependencies=[Depends(check_user_rate_limit("incidents"))])
 async def create_incident(
     incident: IncidentCreate,
     current_user: Annotated[dict, Depends(require_role("analyst", "admin"))],

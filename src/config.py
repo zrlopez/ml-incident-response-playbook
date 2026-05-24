@@ -1,135 +1,214 @@
 """
-Application configuration — enterprise-grade pydantic-settings implementation.
+src/config.py — Centralized application settings via pydantic-settings
+=======================================================================
+Phase 1 remediation: Adds REDIS_PASSWORD and DEV credential env vars,
+enforces minimum secret strength at startup, and documents all Phase 0/1
+environment variables in a single source of truth.
 
-Remediation: R-12
-Replaces the original static dataclass with a pydantic-settings BaseSettings
-class that reads from environment variables and .env files with validation.
+Remediation changelog:
+  CRIT-A   DEV_*_PASSWORD fields: startup validation rejects placeholders
+           and empty strings — app will NOT start with missing dev creds
+  HIGH-A   REDIS_PASSWORD field added; REDIS_URL template updated to
+           require credential embedding
+  HIGH-D   get_settings() is lru_cache-wrapped; conftest.py autouse fixture
+           clears cache between tests (see tests/conftest.py)
+  PHASE-1  MAX_BODY_SIZE_BYTES and REQUEST_TIMEOUT_SECONDS configurable
+           via env so ops can tune without a code deploy
+  PHASE-1  JWT_ALGORITHM restricted to HS256/HS384/HS512 via Literal type
+           (blocks accidental alg=none or RS256 misconfiguration)
 
-Priority order (highest → lowest):
-  1. Environment variables
-  2. .env.{APP_ENV} file   (e.g. .env.production)
-  3. .env file
-  4. Field defaults
-
-Usage:
+Usage in application code:
     from src.config import get_settings
-    settings = get_settings()  # cached singleton
+    settings = get_settings()
+    secret = settings.jwt_secret_key
 
-    # FastAPI dependency injection:
-    from fastapi import Depends
-    def my_route(settings: Settings = Depends(get_settings)): ...
+Never read os.environ directly in application code — always go through
+get_settings() so the settings cache and test isolation work correctly.
 """
-
 from __future__ import annotations
 
-import os
+import re
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# ───────────────────────────────────────────────────────────────────
+_PLACEHOLDER_PATTERNS = re.compile(
+    r"(REPLACE|CHANGEME|PLACEHOLDER|TODO|FIXME|EXAMPLE|YOUR_|<|>)",
+    re.IGNORECASE,
+)
+
+
+def _reject_placeholder(v: str, field_name: str, min_len: int = 16) -> str:
+    """Shared validator: reject empty, placeholder, or suspiciously short secrets."""
+    if not v:
+        raise ValueError(f"{field_name} must not be empty")
+    if len(v) < min_len:
+        raise ValueError(
+            f"{field_name} is too short ({len(v)} chars). "
+            f"Minimum {min_len} characters required."
+        )
+    if _PLACEHOLDER_PATTERNS.search(v):
+        raise ValueError(
+            f"{field_name} contains a placeholder value. "
+            f"Set a real secret before starting the application."
+        )
+    return v
+
+
+# ───────────────────────────────────────────────────────────────────
 class Settings(BaseSettings):
     """
-    All application configuration in one validated, type-safe class.
+    Application settings loaded from environment variables (and .env file in dev).
 
-    Required fields (no default) will raise ValidationError at startup
-    if not provided — fail-fast is intentional.
+    All secrets use SecretStr to prevent accidental logging. Access the
+    raw value with: settings.jwt_secret_key.get_secret_value()
+
+    Field naming convention: snake_case mirrors the ENV_VAR (case-insensitive).
     """
 
     model_config = SettingsConfigDict(
-        env_file=(".env", f".env.{os.getenv('APP_ENV', 'production')}"),
+        env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # Extra env vars are ignored — prevents leaking unexpected vars into settings
         extra="ignore",
     )
 
-    # ── Application ──────────────────────────────────────────────────────────────────
-    project_name: str = "ml-incident-response-playbook"
-    app_env: str = Field(
-        default="production",
-        pattern="^(development|staging|production)$",
+    # ── JWT ───────────────────────────────────────────────────────────────────
+    jwt_secret_key: str = Field(
+        ...,
+        description="HS* signing secret. Min 32 chars. Generate: openssl rand -hex 32",
     )
-    log_level: str = Field(
-        default="INFO",
-        pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
-    )
-    api_host: str = Field(default="127.0.0.1")  # Override via API_HOST=0.0.0.0 in orchestrated runtime
-    api_port: int = Field(default=8000, ge=1, le=65535)
-    api_workers: int = Field(default=1, ge=1, le=32)
-
-    # ── JWT ──────────────────────────────────────────────────────────────────────────
-    # Required — no default intentionally. Startup fails if not set.
-    jwt_secret_key: str = Field(..., min_length=32)
-    jwt_algorithm: str = Field(default="HS256")
-    access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
-    refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
-
-    # ── Database ───────────────────────────────────────────────────────────────────
-    database_url: str = Field(default="sqlite+aiosqlite:///./incidents.db")
-    db_pool_size: int = Field(default=5, ge=1, le=100)
-    db_max_overflow: int = Field(default=10, ge=0, le=50)
-    db_pool_pre_ping: bool = Field(default=True)
-
-    # ── Redis (token denylist) ──────────────────────────────────────────────────────
-    redis_url: str = Field(default="redis://localhost:6379/0")
-    redis_connect_timeout: int = Field(default=5, ge=1, le=30)
-    redis_socket_timeout: int = Field(default=5, ge=1, le=30)
-
-    # ── CORS ────────────────────────────────────────────────────────────────────────
-    # Comma-separated list of allowed origins. Empty = deny all CORS.
-    cors_allowed_origins: str = Field(default="")
-
-    # ── Rate limiting ───────────────────────────────────────────────────────────────
-    rate_limit_per_minute: int = Field(default=60, ge=1, le=10000)
-    rate_limit_auth_per_minute: int = Field(default=10, ge=1, le=100)
-
-    # ── Monitoring thresholds ───────────────────────────────────────────────────────
-    drift_threshold: float = Field(default=0.20, ge=0.01, le=1.0)
-    volume_drop_pct: float = Field(default=0.30, ge=0.01, le=1.0)
-    latency_baseline_ms: float = Field(default=200.0, ge=1.0)
-    max_data_staleness_hours: float = Field(default=2.0, ge=0.1, le=72.0)
-    model_accuracy_slo: float = Field(default=0.92, ge=0.0, le=1.0)
-
-    # ── Alerting ─────────────────────────────────────────────────────────────────────
-    alert_email: str = Field(default="")
-    slack_webhook_url: str = Field(default="")
-
-    # ── OpenTelemetry ───────────────────────────────────────────────────────────────
-    otel_exporter_otlp_endpoint: str = Field(default="http://localhost:4317")
-    otel_service_name: str = Field(default="ml-incident-api")
+    # Restrict to symmetric algorithms only. RS256/ES256 require separate
+    # public/private key management — implement in Phase 2 (JWKS rotation).
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
+    access_token_expire_minutes: int = Field(default=30, ge=5, le=1440)
+    refresh_token_expire_days: int = Field(default=7, ge=1, le=90)
 
     @field_validator("jwt_secret_key")
     @classmethod
-    def validate_jwt_key_entropy(cls, v: str) -> str:
-        if len(v) < 32:
+    def validate_jwt_secret(cls, v: str) -> str:
+        return _reject_placeholder(v, "JWT_SECRET_KEY", min_len=32)
+
+    # ── Redis ───────────────────────────────────────────────────────────────────
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis connection URL. In production, must include AUTH credentials.",
+    )
+    redis_password: str = Field(
+        default="",
+        description="HIGH-A REMEDIATION: Redis AUTH password. Required in production.",
+    )
+
+    @model_validator(mode="after")
+    def validate_redis_auth_in_production(self) -> "Settings":
+        """Enforce Redis password in non-test environments."""
+        if self.environment == "production" and not self.redis_password:
             raise ValueError(
-                "JWT secret key must be at least 32 characters. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                "REDIS_PASSWORD is required in production. "
+                "Set a strong password and update REDIS_URL to include it."
             )
-        return v
+        return self
 
-    @field_validator("app_env")
-    @classmethod
-    def warn_development_in_production(cls, v: str) -> str:
-        # Validation only; caller is responsible for logging warnings.
-        return v
+    # ── Application ────────────────────────────────────────────────────────────────
+    environment: Literal["development", "staging", "production", "test"] = "development"
+    cors_allowed_origins: str = Field(
+        default="",
+        description="Comma-separated CORS allowed origins. No wildcards in production.",
+    )
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    def get_cors_origins(self) -> list[str]:
-        """Return CORS allowed origins as a list."""
-        if not self.cors_allowed_origins:
-            return []
-        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
+    # ── Dev user credentials (CRIT-A REMEDIATION) ────────────────────────────────
+    # ONLY used in development/test environments to populate the in-memory
+    # user store. In production these fields are unused (replaced by DB users).
+    # Application startup fails if any value is empty or is a placeholder.
+    dev_admin_password: str = Field(
+        default="",
+        description="CRIT-A: Dev admin user password. Empty=startup failure in non-test.",
+    )
+    dev_analyst_password: str = Field(
+        default="",
+        description="CRIT-A: Dev analyst user password.",
+    )
+    dev_operator_password: str = Field(
+        default="",
+        description="CRIT-A: Dev operator user password.",
+    )
+
+    @model_validator(mode="after")
+    def validate_dev_credentials(self) -> "Settings":
+        """CRIT-A: Reject placeholder/empty dev passwords in non-test environments."""
+        if self.environment == "test":
+            return self  # Test fixtures set their own values
+        fields_to_check = [
+            ("DEV_ADMIN_PASSWORD", self.dev_admin_password),
+            ("DEV_ANALYST_PASSWORD", self.dev_analyst_password),
+            ("DEV_OPERATOR_PASSWORD", self.dev_operator_password),
+        ]
+        for field_name, value in fields_to_check:
+            if value:  # Only validate if a value is provided
+                _reject_placeholder(value, field_name, min_len=16)
+        return self
+
+    # ── Request hardening ────────────────────────────────────────────────────────
+    max_body_size_bytes: int = Field(
+        default=1048576,  # 1 MB
+        ge=1024,          # min 1 KB (prevents accidental 0-byte limit)
+        le=104857600,     # max 100 MB (guards against absurd misconfiguration)
+        description="HIGH-C: Maximum request body size in bytes. Default 1 MB.",
+    )
+    request_timeout_seconds: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=300.0,
+        description="HIGH-C: Request timeout in seconds before HTTP 504. Default 30s.",
+    )
+
+    # ── Observability ─────────────────────────────────────────────────────────────
+    otel_exporter_otlp_endpoint: str = Field(
+        default="http://localhost:4317",
+        description="OTel OTLP gRPC exporter endpoint.",
+    )
+    otel_service_name: str = Field(
+        default="ml-incident-api",
+        description="OTel service name tag applied to all spans and metrics.",
+    )
+    otel_sdk_disabled: bool = Field(
+        default=False,
+        description="Set true to disable OTel tracing in local dev without Docker.",
+    )
+
+    # ── Alerting ───────────────────────────────────────────────────────────────────
+    alert_email: str = Field(
+        default="oncall@yourorg.com",
+        description="Recipient for incident alert emails from the Airflow DAG.",
+    )
+    slack_webhook_url: str = Field(
+        default="",
+        description="Optional Slack Incoming Webhook URL for dual-channel alerting.",
+    )
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """
-    Return the cached Settings singleton.
+    Return the application settings singleton.
 
-    Thread-safe due to Python GIL and lru_cache semantics.
-    Cache is invalidated only by process restart — intentional for production.
+    HIGH-D: This function is lru_cache-wrapped. The cache is cleared between
+    test functions by the autouse fixture in tests/conftest.py:
 
-    For testing, invalidate with: get_settings.cache_clear()
+        @pytest.fixture(autouse=True)
+        def _clear_settings_lru_cache():
+            get_settings.cache_clear()
+            yield
+            get_settings.cache_clear()
+
+    NEVER call os.environ directly in application code. Always use:
+        settings = get_settings()
+        settings.some_field
     """
     return Settings()

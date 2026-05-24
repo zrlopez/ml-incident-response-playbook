@@ -1,23 +1,17 @@
-<<<<<<< Updated upstream
-# Python
-=======
 # ──────────────────────────────────────────────────────────────────────────────
 # .gitignore — ML Incident Response Platform
-# Maintained by: ml-platform-sre
+# LOW-A REMEDIATION: Added .DS_Store, expanded secret exclusions,
+# resolved merge conflicts from prior stash.
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Python bytecode ───────────────────────────────────────────────────────────
->>>>>>> Stashed changes
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-<<<<<<< Updated upstream
-=======
 
 # ── Build / distribution ──────────────────────────────────────────────────────
->>>>>>> Stashed changes
 build/
 develop-eggs/
 dist/
@@ -31,49 +25,40 @@ sdist/
 var/
 wheels/
 *.egg-info/
-<<<<<<< Updated upstream
 .installed.cfg
 *.egg
-MANIFEST
-
-# Virtual environments
-.env
-.venv
-=======
-.eggs/
 *.whl
+MANIFEST
 
 # ── Virtual environments ──────────────────────────────────────────────────────
 .venv/
 venv/
->>>>>>> Stashed changes
 env/
-venv/
 ENV/
+
+# ── Secrets and environment files ─────────────────────────────────────────────
+# NEVER commit real .env files. .env.example is intentionally tracked.
+.env
+*.env
 .env.local
 .env.staging
 .env.production
-
-<<<<<<< Updated upstream
-# Secrets — NEVER commit real secrets
-=======
-# ── Secrets and environment files ─────────────────────────────────────────────
-# .env.example is intentionally committed; actual .env files are not
-.env
-*.env
+.env.production.local
 !.env.example
 
-# ── JWT keys (never commit) ───────────────────────────────────────────────────
->>>>>>> Stashed changes
+# ── JWT keys and TLS certificates (never commit) ──────────────────────────────
 *.pem
 *.key
 *.p12
 *.pfx
-<<<<<<< Updated upstream
+*.crt
+*.cer
 secrets/
 .secrets/
 
-# macOS metadata — must never be committed
+# ── macOS filesystem artifacts — LOW-A REMEDIATION ────────────────────────────
+# These binaries expose directory listings and extended attributes.
+# If already tracked: git rm -r --cached .DS_Store && git commit -m "remove .DS_Store"
 .DS_Store
 **/.DS_Store
 .AppleDouble
@@ -88,109 +73,46 @@ Icon
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
 
-# IDEs
-=======
-jwt_private.pem
-jwt_public.pem
-
-# ── Testing artifacts ─────────────────────────────────────────────────────────
-.pytest_cache/
-.coverage
-coverage.xml
-htmlcov/
-.tox/
-.nox/
-
-# ── Type checking ─────────────────────────────────────────────────────────────
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# ── IDE / editor ─────────────────────────────────────────────────────────────
-.vscode/
->>>>>>> Stashed changes
+# ── IDEs ──────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
 *.swo
-<<<<<<< Updated upstream
 *.iml
+.cursor/
 
-# Testing
+# ── Testing and coverage ──────────────────────────────────────────────────────
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
-.tox/
 coverage.xml
+junit.xml
+.tox/
 *.cover
 
-# Logs
+# ── Type checking ─────────────────────────────────────────────────────────────
+.mypy_cache/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
 logs/
 *.log
 
-# Jupyter
+# ── Jupyter ───────────────────────────────────────────────────────────────────
 .ipynb_checkpoints
+*.ipynb_checkpoints
 
-# Database
-=======
-*~
-
-# ── macOS ─────────────────────────────────────────────────────────────────────
-.DS_Store
-.AppleDouble
-.LSOverride
-._*
-.Spotlight-V100
-.Trashes
-
-# ── Logs ─────────────────────────────────────────────────────────────────────
-*.log
-logs/
-*.jsonl
-
-# ── Database files (local dev only — use Postgres in staging/production) ──────
->>>>>>> Stashed changes
+# ── Local databases (never bake into VCS or images) ───────────────────────────
 *.db
 *.sqlite
 *.sqlite3
 
-<<<<<<< Updated upstream
-# Docker
-.dockerignore
-=======
-# ── Docker ────────────────────────────────────────────────────────────────────
-# Root Dockerfile is retired (R-01). Use infrastructure/Dockerfile.hardened.
-# Re-adding a root Dockerfile will be caught by the CI hygiene gate.
-Dockerfile
+# ── SBOM output (generated artifacts, not source) ─────────────────────────────
+sbom*.json
+sbom*.spdx
+*.sarif
 
-# ── dbt ───────────────────────────────────────────────────────────────────────
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-dbt/.user.yml
-
-# ── Airflow ───────────────────────────────────────────────────────────────────
-airflow.cfg
-airflow.db
-airflow/logs/
-airflow/plugins/
-standalone_admin_password.txt
-
-# ── Jupyter ───────────────────────────────────────────────────────────────────
-.ipynb_checkpoints/
-*.ipynb
-
-# ── SBOM / security scan outputs ─────────────────────────────────────────────
-sbom.spdx.json
-trivy-results.sarif
-bandit-report.json
-
-# ── Terraform (if infrastructure-as-code added later) ────────────────────────
-**/.terraform/
-*.tfstate
-*.tfstate.backup
-*.tfvars
-!*.tfvars.example
-.terraform.lock.hcl
->>>>>>> Stashed changes
+# NOTE: .dockerignore is intentionally tracked — it protects image build context
+# and should be reviewed alongside Dockerfile changes.

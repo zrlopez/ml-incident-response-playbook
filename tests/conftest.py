@@ -46,6 +46,42 @@ os.environ.setdefault(
 )
 
 
+# ── Settings cache isolation (HIGH-D REMEDIATION) ────────────────────────────────
+
+try:
+    from src.config import get_settings as _get_settings
+    _HAS_SETTINGS = True
+except ImportError:
+    _HAS_SETTINGS = False
+    _get_settings = None  # type: ignore[assignment]
+
+
+@pytest.fixture(autouse=True)
+def _clear_settings_lru_cache():
+    """
+    HIGH-D REMEDIATION: Clear pydantic-settings lru_cache before and after
+    every test function.
+
+    WHY THIS MATTERS:
+        get_settings() is decorated with @lru_cache. Without clearing it,
+        env var overrides applied inside one test (e.g. monkeypatching
+        JWT_SECRET_KEY or ENVIRONMENT) persist silently into all subsequent
+        tests in the same pytest session. This can:
+          - Cause auth tests to pass against a stale secret
+          - Mask ENVIRONMENT=production guard failures
+          - Produce non-deterministic test ordering bugs
+
+    Graceful fallback: if src.config does not exist (early project state or
+    alternative config layout), the fixture becomes a no-op rather than
+    crashing the entire test suite.
+    """
+    if _HAS_SETTINGS and hasattr(_get_settings, "cache_clear"):
+        _get_settings.cache_clear()
+    yield
+    if _HAS_SETTINGS and hasattr(_get_settings, "cache_clear"):
+        _get_settings.cache_clear()
+
+
 # ── SQLite async session (unit tests) ───────────────────────────────────────────────
 
 SQLITE_URL = "sqlite+aiosqlite:///:memory:"

@@ -1,75 +1,83 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# requirements.txt — production dependencies
-# Remediation: R-03 (Redis added), R-12 (pydantic-settings already present)
+# requirements.txt — API container production dependencies
 #
-# Test/dev dependencies are intentionally excluded from this file.
-# Install dev tools with: pip install -r requirements-dev.txt
-# Production image: see infrastructure/Dockerfile.hardened
+# CRIT-C REMEDIATION (Phase 0):
+#   apache-airflow, dbt-core, and dbt-postgres REMOVED from this file.
+#   These orchestration/transform tools have no runtime role in the FastAPI
+#   container and brought ~300 transitive packages (including multiple CVE-
+#   carrying Flask/Werkzeug/Celery/paramiko versions) into the API image.
+#
+#   Migration:
+#     • Airflow DAGs → use requirements-airflow.txt in the Airflow image
+#     • dbt models    → use requirements-dbt.txt in the dbt runner image
+#
+# Dependency management policy:
+#   • All versions are pinned exactly (==) for reproducible builds.
+#   • Run `pip-compile --generate-hashes requirements.in` to regenerate
+#     with hash verification enabled for supply-chain hardening.
+#   • Run `pip-audit -r requirements.txt` weekly (automated in CI).
+#   • Dependabot watches this file for patch/minor upgrades.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ── Web framework ───────────────────────────────────────────────────────────────
+# ── Web framework ──────────────────────────────────────────────────────────
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 python-multipart==0.0.12
 
-# ── Authentication ──────────────────────────────────────────────────────────────
-# python-jose REMOVED: CVE-2024-33663
+# ── Authentication ────────────────────────────────────────────────────────
+# python-jose removed (CVE-2024-33663) — replaced by PyJWT[crypto]
 PyJWT[crypto]==2.9.0
-passlib[bcrypt]==1.7.4
+# ARCH-02 REMEDIATION (Phase 2): migrated from passlib[bcrypt] to argon2-cffi.
+# argon2id is the OWASP 2024 recommended algorithm (memory-hard, GPU-resistant).
+# passlib[bcrypt] is retained during the migration window for rehash-on-login
+# (see src/auth/password.py: maybe_rehash). Remove after all users are rehashed.
+# Monitor progress: SELECT hash_algorithm, COUNT(*) FROM users GROUP BY 1;
+# Remove passlib + bcrypt lines and set ALLOW_BCRYPT_FALLBACK=false when done.
+argon2-cffi==23.1.0
+passlib[bcrypt]==1.7.4   # migration fallback — remove after ARCH-02 complete
+bcrypt==4.2.0            # migration fallback — remove after ARCH-02 complete
 cryptography==43.0.1
 
-# ── Rate limiting ──────────────────────────────────────────────────────────────
+# ── Rate limiting ──────────────────────────────────────────────────────
 slowapi==0.1.9
 
-# ── Data validation ─────────────────────────────────────────────────────────────
+# ── Data validation ─────────────────────────────────────────────────────
 pydantic==2.9.2
 pydantic-settings==2.5.2
 
-# ── Structured logging ──────────────────────────────────────────────────────────
+# ── Structured logging ───────────────────────────────────────────────────
 structlog==24.4.0
 
-# ── Database (async-ready) ───────────────────────────────────────────────────────
-# Production: use postgresql+asyncpg
-# Local / test: use sqlite+aiosqlite (configured via DATABASE_URL env var)
+# ── Database (async-ready) ───────────────────────────────────────────────
+# Production target: postgresql+asyncpg
+# Local / CI:        sqlite+aiosqlite (via DATABASE_URL env var)
 asyncpg==0.30.0
 aiosqlite==0.20.0
 sqlalchemy[asyncio]==2.0.36
 alembic==1.13.3
 
-# ── Redis (distributed JWT denylist — R-03) ─────────────────────────────────────
-# hiredis provides C-extension parser for ~10x read throughput
+# ── Redis (distributed JWT denylist) ────────────────────────────────────────
+# hiredis: C-extension for ~10x read throughput vs pure-Python parser
 redis[hiredis]==5.2.0
 
-# ── HTTP client (internal service calls) ───────────────────────────────────────
+# ── HTTP client (alert dispatching, internal calls) ────────────────────────
 httpx==0.27.2
 
-# ── Observability ────────────────────────────────────────────────────────────────
+# ── Observability ───────────────────────────────────────────────────────────
 opentelemetry-api==1.27.0
 opentelemetry-sdk==1.27.0
 opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-exporter-otlp-proto-grpc==1.27.0
 prometheus-fastapi-instrumentator==7.0.0
 
-# ── ML / Data ──────────────────────────────────────────────────────────────────
+# ── ML / Data ──────────────────────────────────────────────────────────────
 numpy==2.1.2
 pandas==2.2.3
 scikit-learn==1.5.2
 
-# ── Orchestration / Airflow ───────────────────────────────────────────────────────
-# NOTE: Airflow is a heavy dependency. In production, install Airflow separately
-# in its own environment and deploy DAGs via git-sync. Do not install in the
-# API container (infrastructure/Dockerfile.hardened excludes it).
-apache-airflow==2.10.2
-
-# ── AWS SDK ─────────────────────────────────────────────────────────────────────
+# ── AWS SDK ───────────────────────────────────────────────────────────────────
 boto3==1.35.49
 
-# ── Utilities ────────────────────────────────────────────────────────────────────
+# ── Utilities ─────────────────────────────────────────────────────────────────
 python-dotenv==1.0.1
 tenacity==9.0.0
-
-# ── dbt ────────────────────────────────────────────────────────────────────────
-# NOTE: dbt runs in the data pipeline environment, not the API container.
-# Install separately in your dbt runner / Airflow worker image.
-dbt-core==1.8.7
-dbt-postgres==1.8.2

@@ -1,4 +1,47 @@
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "14px"}}}%%
+%% Diagram: LLM Cost Spike Incident Response Flow
+%% Purpose : Guides the on-call engineer from a cost-spike alert through
+%%           traffic analysis, prompt inspection, throttle decisions,
+%%           and root-cause remediation.
+%% Usage   : Render with Mermaid CLI or the GitHub Mermaid renderer.
+%%           Referenced by runbooks/llm_cost_spike.md
 flowchart TD
-  A[Cost spike] --> B{Traffic spike?}
-  B -- Yes --> C[Throttle]
-  B -- No --> D[Inspect prompt/token growth]
+    A(["💸 Cost Spike Alert Fires\n(spend > 2x 7-day rolling average\nor token budget > 80%)"]) --> B
+
+    B{"Traffic volume spike?\n(requests > 3x p95 baseline)"}
+
+    B -- Yes --> C["Enable request throttle\nApply rate-limit at API gateway\nCapacity team alerted"]
+    B -- No --> D["Inspect prompt / token growth\nQuery token_usage_log table\nCompare avg tokens per request"]
+
+    C --> E{"Throttle reduced spend\nwithin 10 minutes?"}
+    E -- Yes --> F["Log rate-limit change\nMonitor for SLA impact"]
+    E -- No --> G["Escalate to SEV-1\nEngage LLM provider support\nConsider circuit-breaker"]
+
+    D --> H{"Token count per request\nincreased > 40%?"}
+
+    H -- Yes --> I["Identify changed prompt templates\nCheck recent deploys for prompt diffs\nRoll back if confirmed"]
+    H -- No --> J{"New integration or\nclient sending bulk requests?"}
+
+    J -- Yes --> K["Contact integration owner\nApply per-client quota\nOpen non-urgent incident"]
+    J -- No --> L["Check provider pricing changes\nReview cost attribution tags\nEscalate to FinOps"] 
+
+    I --> M["Confirm rollback reduced token usage\nCapture diff in postmortem"]
+    K --> N["Monitor spend for 30 minutes\nVerify quota effective"]
+    L --> O["Adjust internal budget alert\nthreshold if pricing changed\nDocument in CHANGELOG"]
+    F --> P["Review rate-limit impact on users\nAdjust burst allowance if needed"]
+    G --> Q["War-room: SRE + ML Platform\nDecide on provider fallback"]
+
+    M --> R["Validate 1-hour spend trend\nis returning to baseline"]
+    N --> R
+    O --> R
+    P --> R
+    Q --> R
+
+    R --> S{"Spend trending down?"}
+    S -- No --> D
+    S -- Yes --> T["Write postmortem\nUpdate budget alerts\nClose incident"]
+
+    style A fill:#f59e0b,color:#000
+    style G fill:#ef4444,color:#fff
+    style Q fill:#dc2626,color:#fff
+    style T fill:#22c55e,color:#fff
