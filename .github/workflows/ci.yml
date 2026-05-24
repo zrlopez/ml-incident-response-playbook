@@ -24,6 +24,8 @@
 #   2026-05-24 v20 P1-fix-03: TruffleHog SHA verified; others rolled to tag refs
 #   2026-05-24 v21 P1-04-complete: all 6 remaining actions SHA-pinned via API
 #   2026-05-24 v22 fix: seed Trivy SARIF; decouple container-scan from integration-tests
+#   2026-05-24 v23 fix: trivy-action v0.31.0->v0.36.0 (Trivy v0.63.0 binary broken)
+#                  Closes Dependabot PR #20. SHA-pinned via verified commit digest.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -37,8 +39,8 @@
 #     -> b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2
 #   docker/build-push-action@v5.4.0
 #     -> ca052bb54ab0790a636c9b5f226502c73d547a25
-#   aquasecurity/trivy-action@v0.31.0
-#     -> 76071ef0d7ec797419534a183b498b4d6366cf37
+#   aquasecurity/trivy-action@v0.36.0  (upgraded from v0.31.0 - v0.63.0 binary broken)
+#     -> ed142fd0673e97e23eac54620cfb913e5ce36c25  (tag cryptographically signed)
 #   anchore/sbom-action@v0.18.0
 #     -> f325610c9f50a54015d37c8d16cb3b0e2c8f4de0
 #   trufflesecurity/trufflehog@v3.95.3
@@ -227,7 +229,8 @@ jobs:
 
       - name: Verify required CI secrets are present
         run: |
-          if [ -z "${{ secrets.CI_JWT_SECRET_KEY }}" ]; then
+          if [ -z "${{ secrets.CI_JWT_SECRET_KEY }}" ]
+          then
             echo "ERROR: CI_JWT_SECRET_KEY secret is not configured."
             echo "Go to Settings -> Secrets and variables -> Actions -> New repository secret"
             echo "and add CI_JWT_SECRET_KEY with the output of: openssl rand -hex 32"
@@ -289,7 +292,7 @@ jobs:
           echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Trivy","rules":[]}},"results":[]}]}' > trivy-container.sarif
 
       - name: Trivy container vulnerability scan
-        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37  # v0.31.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ml-incident-api:${{ github.sha }}
           format: sarif
