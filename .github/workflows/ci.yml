@@ -170,7 +170,7 @@ jobs:
 
       - name: pytest unit tests
         run: |
-          pytest tests/unit/ -m unit \
+          pytest tests/unit/ \
             --cov=api --cov=observability --cov=src \
             --cov-report=xml:coverage-unit.xml \
             -v
@@ -234,7 +234,7 @@ jobs:
 
       - name: pytest integration tests
         run: |
-          pytest tests/integration/ -m integration \
+          pytest tests/integration/ \
             --cov=api --cov=observability --cov=src \
             --cov-report=xml:coverage-integration.xml \
             --cov-fail-under=85 \

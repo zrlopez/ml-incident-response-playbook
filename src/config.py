@@ -94,12 +94,13 @@ class Settings(BaseSettings):
     @classmethod
     def validate_jwt_secret(cls, v: str) -> str:
         import os  # noqa: PLC0415
-        if os.getenv("ENVIRONMENT", "").lower() == "test" and not v:
-            # Allow empty key in test environment so alembic/env.py can import
-            # incident_tracker.py without a real secret. Integration tests
-            # supply CI_JWT_SECRET_KEY via GitHub Actions secrets; unit tests
-            # use the in-memory SQLite path which never issues real JWTs.
-            return "test-only-secret-not-used-in-production-padding-32chars"
+        if os.getenv("ENVIRONMENT", "").lower() == "test":
+            # In test environment skip strength validation entirely.
+            # alembic/env.py imports incident_tracker at module level which
+            # calls get_settings() before any test fixture can set the key.
+            # The key may be absent, short, or a CI placeholder — all are
+            # acceptable because test JWTs are never used in production.
+            return v or "test-only-placeholder-not-for-production-use-padded"
         return _reject_placeholder(v, "JWT_SECRET_KEY", min_len=32)
 
     # ── Redis ───────────────────────────────────────────────────────────────────
