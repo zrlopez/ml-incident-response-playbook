@@ -72,10 +72,10 @@ opentelemetry-sdk==1.27.0
 opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-exporter-otlp-proto-grpc==1.27.0
 prometheus-fastapi-instrumentator==7.0.0
-# CVE-2026-0994 (CVSS 8.2 HIGH): transitive via opentelemetry-exporter-otlp-proto-grpc.
-# Pinned explicitly to override vulnerable transitive resolution.
-# Fixed in 5.29.6+ and 6.33.5+. Pinned to 5.x line for otel compatibility.
-protobuf==5.29.6
+# NOTE: protobuf is a transitive dep via opentelemetry-proto==1.27.0 which
+# caps it at <5.0. CVE-2026-0994 cannot be pinned to 5.x without breaking
+# the otel stack. Accepted risk documented in .trivyignore. Track as tech
+# debt: upgrade otel to a protobuf-5.x-compatible release when available.
 
 # ── ML / Data ──────────────────────────────────────────────────────────────
 numpy==2.2.6
