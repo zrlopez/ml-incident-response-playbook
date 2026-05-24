@@ -34,8 +34,6 @@ PyJWT[crypto]==2.12.1
 # Monitor progress: SELECT hash_algorithm, COUNT(*) FROM users GROUP BY 1;
 # Remove passlib + bcrypt lines and set ALLOW_BCRYPT_FALLBACK=false when done.
 argon2-cffi==23.1.0
-passlib[bcrypt]==1.7.4   # migration fallback — remove after ARCH-02 complete
-bcrypt==4.2.0            # migration fallback — remove after ARCH-02 complete
 cryptography==46.0.5
 
 # ── Rate limiting ──────────────────────────────────────────────────────

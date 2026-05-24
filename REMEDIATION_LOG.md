@@ -18,7 +18,7 @@
 | MED-A | Dockerfile base image on floating tag (tag-mutation supply chain attack) | MED | ✅ CLOSED | `Dockerfile` (SHA-256 digest pinned on both stages) |
 | MED-B | Full repo `.:/app` bind mount; `.dockerignore` missing | MED | ✅ CLOSED | `docker-compose.yml`, `.dockerignore` |
 | MED-C | `SlowAPI` rate limiting missing on `/auth/token` | MED | ✅ CLOSED | `api/app.py` |
-| MED-D | `passlib` unmaintained; `bcrypt` unpinned | MED | ⚠️ Partial | `requirements.txt` (`bcrypt==4.2.0`; full argon2 migration in Phase 2) |
+| MED-D | `passlib` unmaintained; `bcrypt` unpinned | MED | ✅ CLOSED | `requirements.txt` — `passlib` and `bcrypt` removed entirely; `ALLOW_BCRYPT_FALLBACK=false` set in `.env.example`; argon2-cffi is sole password hashing dependency |
 | MED-E | Missing OWASP security headers (CSP, HSTS, X-Frame-Options, etc.) | MED | ✅ CLOSED | `api/middleware.py` |
 | LOW-A | `.DS_Store` tracked in git; merge conflicts in `.gitignore` | LOW | ✅ CLOSED | `.gitignore` (conflict-resolved, all macOS artifacts excluded) |
 | LOW-B | Telemetry ports bound to `0.0.0.0` (Jaeger UI, OTel receiver, Prometheus) | LOW | ✅ CLOSED | `docker-compose.yml` (loopback-only: `127.0.0.1:*`) |
