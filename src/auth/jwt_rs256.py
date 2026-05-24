@@ -54,7 +54,7 @@ import json
 import math
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import jwt
 from cryptography.hazmat.primitives import serialization
@@ -103,10 +103,10 @@ def load_keys() -> bool:
         return False
 
     try:
-        _private_key = serialization.load_pem_private_key(
+        _private_key = cast(RSAPrivateKey, serialization.load_pem_private_key(
             private_pem.encode(), password=None
-        )
-        _public_key = _private_key.public_key()
+        ))
+        _public_key = cast(RSAPublicKey, _private_key.public_key())
         _key_id = _pem_to_key_id(_public_key)
         log.info("jwt_rs256.private_key_loaded", key_id=_key_id)
     except Exception as exc:
@@ -117,7 +117,7 @@ def load_keys() -> bool:
     public_pem = os.environ.get("RSA_PUBLIC_KEY_PEM", "").strip()
     if public_pem:
         try:
-            _public_key = serialization.load_pem_public_key(public_pem.encode())
+            _public_key = cast(RSAPublicKey, serialization.load_pem_public_key(public_pem.encode()))
             _key_id = _pem_to_key_id(_public_key)
         except Exception as exc:
             log.error("jwt_rs256.public_key_load_failed", error=str(exc))
@@ -127,7 +127,7 @@ def load_keys() -> bool:
     old_public_pem = os.environ.get("RSA_OLD_PUBLIC_KEY_PEM", "").strip()
     if old_public_pem:
         try:
-            _old_public_key = serialization.load_pem_public_key(old_public_pem.encode())
+            _old_public_key = cast(RSAPublicKey, serialization.load_pem_public_key(old_public_pem.encode()))
             _old_key_id = _pem_to_key_id(_old_public_key)
             log.info("jwt_rs256.old_key_loaded_rotation_window", old_key_id=_old_key_id)
         except Exception as exc:
@@ -147,7 +147,7 @@ def sign_token(
     payload: dict[str, Any],
     expires_delta: timedelta,
     token_type: str = "access",
-) -> tuple[str, str, int]:
+) -> Tuple[str, str, int]:
     """
     Sign a JWT with RS256. Returns (encoded_token, jti, ttl_seconds).
 
@@ -197,7 +197,7 @@ def verify_token(token: str) -> dict[str, Any]:
     unverified_header = jwt.get_unverified_header(token)
     token_kid = unverified_header.get("kid", "")
 
-    verification_key: RSAPublicKey | None = None
+    verification_key: "RSAPublicKey | None" = None
     if token_kid == _key_id:
         verification_key = _public_key
     elif _old_public_key and token_kid == _old_key_id:
@@ -217,12 +217,12 @@ def verify_token(token: str) -> dict[str, Any]:
 
 # ── JWKS endpoint ────────────────────────────────────────────────────────────────
 
-def _rsa_public_key_to_jwk(public_key: RSAPublicKey, kid: str) -> dict[str, str]:
+def _rsa_public_key_to_jwk(public_key: RSAPublicKey, kid: str) -> Dict[str, str]:
     """
     Convert an RSA public key to a JWK (JSON Web Key) dict.
     Uses the standard Base64url-encoded n (modulus) and e (exponent) representation.
     """
-    pub_numbers = public_key.public_key().public_numbers() if hasattr(public_key, 'public_key') else public_key.public_numbers()  # type: ignore
+    pub_numbers = public_key.public_numbers()
 
     def _int_to_base64url(n: int) -> str:
         byte_length = math.ceil(n.bit_length() / 8)
@@ -249,7 +249,7 @@ jwks_router = APIRouter(tags=["Security / JWKS"])
     include_in_schema=True,
     response_description="JWKS document containing active and rotation-window public keys",
 )
-async def jwks_endpoint() -> dict:
+async def jwks_endpoint() -> Dict[str, List[Dict[str, str]]]:
     """
     Serve the JSON Web Key Set (JWKS) for RS256 JWT verification.
 

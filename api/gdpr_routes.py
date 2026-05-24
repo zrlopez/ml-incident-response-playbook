@@ -37,7 +37,7 @@ Router:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable, Dict
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -54,7 +54,7 @@ router = APIRouter(tags=["GDPR / Data Subject Rights"])
 # When the user repository moves fully to PostgresUserRepository (ARCH-03),
 # update these to use AbstractUserRepository.
 
-def _get_current_user_dep():
+def _get_current_user_dep() -> Callable[..., Any]:
     """Lazy import to avoid circular dependency with api.app."""
     try:
         from api.app import get_current_user  # noqa: PLC0415
@@ -170,7 +170,7 @@ async def export_my_data(
 async def delete_my_account(
     request: Request,
     current_user: dict = Depends(lambda: _get_current_user_dep()),
-) -> dict:
+) -> Dict[str, Any]:
     """
     Soft-delete the requesting user's account in compliance with GDPR
     Article 17 (Right to Erasure).

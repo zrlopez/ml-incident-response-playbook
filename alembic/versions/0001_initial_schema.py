@@ -102,8 +102,8 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_users_username", "users", ["username"], unique=True)
-    op.create_index("ix_users_hash_algorithm", "users", ["hash_algorithm"],
-                    comment="Monitor ARCH-02 migration: SELECT hash_algorithm, COUNT(*) FROM users GROUP BY 1")
+    # ARCH-02 migration monitor: SELECT hash_algorithm, COUNT(*) FROM users GROUP BY 1
+    op.create_index("ix_users_hash_algorithm", "users", ["hash_algorithm"])
 
 
 def downgrade() -> None:

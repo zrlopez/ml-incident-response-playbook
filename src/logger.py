@@ -17,12 +17,14 @@ Usage:
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 
 from observability.logging_config import configure_logging
 
 
-def get_logger(name: str) -> structlog.stdlib.BoundLogger:
+def get_logger(name: str) -> Any:
     """
     Return a structlog BoundLogger bound to the given name.
 

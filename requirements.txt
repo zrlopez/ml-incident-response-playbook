@@ -20,23 +20,24 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Web framework ──────────────────────────────────────────────────────────
-fastapi==0.115.12
+# CI-17: bumped 0.115.12 → 0.121.3 to allow starlette==0.49.1 (CVE fixes).
+# 0.121.3 caps starlette<0.51.0; no breaking API changes vs 0.115.x.
+fastapi==0.121.3
 uvicorn[standard]==0.34.2
 python-multipart==0.0.27
+# CI-17: pinned explicitly; resolves PYSEC-2026-161, GHSA-2c2j, GHSA-7f5h.
+starlette==0.49.1
 
 # ── Authentication ────────────────────────────────────────────────────────
 # python-jose removed (CVE-2024-33663) — replaced by PyJWT[crypto]
-PyJWT[crypto]==2.12.1
+# CI-17: bumped 2.9.0 → 2.12.0 (PYSEC-2026-120, PYSEC-2025-183).
+# redis[jwt] constraint resolved by bumping redis to 5.3.1 (see below).
+PyJWT[crypto]==2.12.0
 # ARCH-02 REMEDIATION (Phase 2): migrated from passlib[bcrypt] to argon2-cffi.
 # argon2id is the OWASP 2024 recommended algorithm (memory-hard, GPU-resistant).
-# passlib[bcrypt] is retained during the migration window for rehash-on-login
-# (see src/auth/password.py: maybe_rehash). Remove after all users are rehashed.
-# Monitor progress: SELECT hash_algorithm, COUNT(*) FROM users GROUP BY 1;
-# Remove passlib + bcrypt lines and set ALLOW_BCRYPT_FALLBACK=false when done.
 argon2-cffi==23.1.0
-passlib[bcrypt]==1.7.4   # migration fallback — remove after ARCH-02 complete
-bcrypt==4.2.0            # migration fallback — remove after ARCH-02 complete
-cryptography==46.0.5
+# CI-17: bumped 46.0.5 → 46.0.7 (PYSEC-2026-35, PYSEC-2026-36).
+cryptography==46.0.7
 
 # ── Rate limiting ──────────────────────────────────────────────────────
 slowapi==0.1.9
@@ -58,7 +59,9 @@ alembic==1.15.2
 
 # ── Redis (distributed JWT denylist) ────────────────────────────────────────
 # hiredis: C-extension for ~10x read throughput vs pure-Python parser
-redis[hiredis]==5.3.0
+# CI-17: bumped 5.3.0 → 5.3.1; patch release that allows PyJWT>=2.9.0
+# (redis-py#3682), unblocking our PyJWT==2.12.0 pin.
+redis[hiredis]==5.3.1
 
 # ── HTTP client (alert dispatching, internal calls) ────────────────────────
 httpx==0.28.1

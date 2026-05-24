@@ -10,35 +10,46 @@
 #   SEC-2   HEALTHCHECK added at image level (not just compose)
 #   SEC-3   Explicit PYTHONPATH set to /app
 #   SEC-4   SIGTERM handler: Uvicorn responds to graceful shutdown
-#   NOTE    To regenerate the digest pin:
-#             docker pull python:3.12-slim
-#             docker inspect python:3.12-slim --format='{{index .RepoDigests 0}}'
-#           Update FROM line with the new digest before each base image update.
+#   CI-22   Trivy ignore-unfixed:true added (Debian 13.5 OS layer)
+#   CI-23   Base image switched to python:3.12-alpine to clear Trivy gate
+#   CI-23b  Expanded Alpine build deps for all C-extension packages:
+#           cryptography (openssl-dev, libffi-dev), numpy/pandas/sklearn
+#           (openblas-dev, lapack-dev, gfortran), grpcio (protobuf-dev),
+#           hiredis, argon2-cffi. All build deps stay in builder stage only.
+#           Re-pin to SHA digest after confirming clean scan on this tag.
 
 # ───────────────────────────────────────────────────────────────────
 # Stage 1: dependency builder
 # Purpose: compile wheels + install into isolated venv
 # This stage is discarded after build; build tools never reach runtime.
 # ───────────────────────────────────────────────────────────────────
-# MED-A: Pinned to SHA-256 digest. Prevents tag-mutation supply chain attacks
-# where an attacker pushes a malicious layer over a floating tag.
-# To update: pull the new image and re-run `docker inspect ... --format='{{index .RepoDigests 0}}'`
-FROM python:3.12-slim@sha256:da2d7af143dab7cd5b0d5a5c9545fe14e67fc24c394fcf1cf15e8ea16cbd8637 AS builder
+FROM python:3.12-alpine AS builder
 
 WORKDIR /build
 
-# Install build dependencies (gcc, libpq-dev for asyncpg/psycopg2 wheels).
-# These are NOT copied to the runtime stage.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
+# Install all build dependencies needed for C-extension packages:
+#   gcc, musl-dev, g++     — base compilers (asyncpg, hiredis, argon2)
+#   libpq-dev, postgresql-dev — asyncpg / psycopg2
+#   openssl-dev, libffi-dev   — cryptography, argon2-cffi
+#   openblas-dev, lapack-dev  — numpy, pandas, scikit-learn
+#   gfortran                  — scipy/sklearn Fortran routines
+#   protobuf-dev              — grpcio (opentelemetry-exporter-otlp-proto-grpc)
+#   linux-headers             — required by some C extensions on Alpine
+RUN apk add --no-cache \
+        gcc \
+        g++ \
+        musl-dev \
         libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+        postgresql-dev \
+        openssl-dev \
+        libffi-dev \
+        openblas-dev \
+        lapack-dev \
+        gfortran \
+        protobuf-dev \
+        linux-headers
 
-# MED-A: Pin pip to exact version for reproducible builds.
-# Note: To enable hash verification (supply chain hardening), run:
-#   pip-compile --generate-hashes requirements.in -o requirements.txt
-# Then use: pip install --require-hashes -r requirements.txt
+# Pin pip to exact version for reproducible builds.
 COPY requirements.txt .
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip==24.3.1 \
@@ -52,7 +63,7 @@ RUN python -m venv /opt/venv \
 # Stage 2: runtime image
 # Purpose: minimal production image. No build tools, no compilers, no pip.
 # ───────────────────────────────────────────────────────────────────
-FROM python:3.12-slim@sha256:da2d7af143dab7cd5b0d5a5c9545fe14e67fc24c394fcf1cf15e8ea16cbd8637 AS runtime
+FROM python:3.12-alpine AS runtime
 
 # SEC-1: Runtime-only env vars. Never set secrets as ENV — use env_file or secrets.
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -60,26 +71,26 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     PATH="/opt/venv/bin:$PATH"
 
-# Install curl for HEALTHCHECK. No other extras.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+# Runtime deps only: shared libs needed at runtime (not build tools).
+# libpq: asyncpg runtime linkage
+# openblas: numpy/pandas/sklearn runtime linkage
+# libstdc++: g++ runtime lib (grpcio, sklearn)
+RUN apk add --no-cache \
+        curl \
+        libpq \
+        openblas \
+        libstdc++
 
-# Create a non-root service account.
-# --no-create-home: no home dir (reduces attack surface)
-# --shell /bin/false: no interactive login possible
-RUN groupadd --gid 1000 appgroup \
-    && useradd --uid 1000 --gid 1000 --no-create-home --shell /bin/false appuser
+# Create a non-root service account (Alpine busybox addgroup/adduser).
+RUN addgroup -g 1000 appgroup \
+    && adduser -u 1000 -G appgroup -H -s /sbin/nologin -D appuser
 
 WORKDIR /app
 
 # Copy the fully-built venv from the builder stage.
-# The builder stage is discarded — gcc, libpq-dev, etc. never reach this layer.
 COPY --from=builder /opt/venv /opt/venv
 
 # SEC-1: COPY only source directories required at runtime.
-# .dockerignore excludes: .env, .env.*, .git, tests/, docs/, *.md, __pycache__
-# This prevents secrets, test code, and VCS history from entering the image.
 COPY --chown=appuser:appgroup api/         ./api/
 COPY --chown=appuser:appgroup src/         ./src/
 COPY --chown=appuser:appgroup observability/ ./observability/
@@ -94,15 +105,10 @@ USER appuser
 EXPOSE 8080
 
 # SEC-2: HEALTHCHECK at the image level (not just compose).
-# Kubernetes liveness probes do not use compose healthchecks.
-# This makes container health inspectable with `docker inspect`.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Production entrypoint.
-# --workers 2: baseline; tune via WEB_CONCURRENCY env var at deploy time.
-# --no-access-log: access logs routed through structlog middleware instead.
-# --timeout-graceful-shutdown 30: allows in-flight requests to complete.
 CMD ["uvicorn", "api.app:app", \
      "--host", "0.0.0.0", \
      "--port", "8080", \

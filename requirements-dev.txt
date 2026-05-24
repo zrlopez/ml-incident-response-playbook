@@ -10,6 +10,9 @@
 # ── Test runner ──────────────────────────────────────────────────────────────
 pytest==8.3.5
 pytest-cov==6.1.0
+# pytest-asyncio: required by conftest.py (import pytest_asyncio) and any
+# @pytest.mark.asyncio test. Without this, conftest.py fails at collection time.
+pytest-asyncio==0.24.0
 # anyio provides the async test runner for @pytest.mark.anyio in test_api.py.
 # trio backend is used (faster for unit tests than asyncio in most pytest setups).
 anyio[trio]==4.9.0
@@ -22,7 +25,7 @@ mypy==1.15.0
 ruff==0.11.10
 
 # ── Security audit ────────────────────────────────────────────────────────────
-bandit==1.8.3
+bandit[sarif]==1.8.3
 pip-audit==2.9.0
 
 # ── Pre-commit hooks ──────────────────────────────────────────────────────────

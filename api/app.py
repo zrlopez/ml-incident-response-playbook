@@ -24,14 +24,15 @@ import uuid
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from passlib.context import CryptContext
+# passlib removed (ARCH-02): hash_password / verify_password from src.auth.password
+# provide argon2id hashing; see src/auth/password.py for migration notes.
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -93,9 +94,6 @@ _denylist: RedisDenylist | None = None
 _user_repo: AbstractUserRepository | None = None
 
 
-# ── Password hashing ───────────────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 # ── OAuth2 bearer scheme ───────────────────────────────────────────────────
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
@@ -147,19 +145,19 @@ _DEV_OPERATOR_PW = _require_dev_password("DEV_OPERATOR_PASSWORD")
 _USERS: Dict[str, Dict[str, Any]] = {
     "admin": {
         "username": "admin",
-        "hashed_password": pwd_context.hash(_DEV_ADMIN_PW),
+        "hashed_password": hash_password(_DEV_ADMIN_PW),
         "role": "admin",
         "disabled": False,
     },
     "analyst": {
         "username": "analyst",
-        "hashed_password": pwd_context.hash(_DEV_ANALYST_PW),
+        "hashed_password": hash_password(_DEV_ANALYST_PW),
         "role": "analyst",
         "disabled": False,
     },
     "operator": {
         "username": "operator",
-        "hashed_password": pwd_context.hash(_DEV_OPERATOR_PW),
+        "hashed_password": hash_password(_DEV_OPERATOR_PW),
         "role": "operator",
         "disabled": False,
     },
@@ -242,14 +240,14 @@ class IncidentUpdate(BaseModel):
 # ── JWT helpers ────────────────────────────────────────────────────────────
 
 def create_access_token(
-     Dict[str, Any],
+    data: Dict[str, Any],
     expires_delta: timedelta | None = None,
 ) -> Tuple[str, str, int]:
     """
     Create a signed JWT access token.
 
     Args:
-         Payload claims to encode. Must include 'sub' and 'role'.
+        data: Payload claims to encode. Must include 'sub' and 'role'.
         expires_delta: Override default expiry window.
 
     Returns:
@@ -259,7 +257,7 @@ def create_access_token(
     Raises:
         ValueError: If payload is missing required claims.
     """
-    if "sub" not in data or "role" not in 
+    if "sub" not in data or "role" not in data:
         raise ValueError("Token payload must include 'sub' and 'role' claims")
     to_encode = data.copy()
     jti = str(uuid.uuid4())
@@ -277,13 +275,13 @@ def create_access_token(
 
 
 def create_refresh_token(
-     Dict[str, Any],
+    data: Dict[str, Any],
 ) -> Tuple[str, str, int]:
     """
     Create a signed JWT refresh token.
 
     Args:
-         Payload claims to encode. Must include 'sub'.
+        data: Payload claims to encode. Must include 'sub'.
 
     Returns:
         Tuple of (encoded_jwt, jti, ttl_seconds).
@@ -291,7 +289,7 @@ def create_refresh_token(
     Raises:
         ValueError: If payload is missing 'sub' claim.
     """
-    if "sub" not in 
+    if "sub" not in data:
         raise ValueError("Refresh token payload must include 'sub' claim")
     to_encode = data.copy()
     jti = str(uuid.uuid4())
@@ -347,7 +345,8 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict[str, 
     """
     if _user_repo is not None:
         # Production path — argon2id with rehash-on-login
-        return await _user_repo.authenticate(username, password)
+        result = await _user_repo.authenticate(username, password)
+        return result.to_dict() if result is not None else None
 
     # Dev/test fallback path — _USERS in-memory dict
     user = _USERS.get(username)
@@ -360,7 +359,7 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict[str, 
         return None
     if user.get("disabled"):
         return None
-    if not pwd_context.verify(password, user["hashed_password"]):
+    if not verify_password(password, user["hashed_password"]):
         return None
     return user
 
@@ -393,7 +392,6 @@ async def get_current_user(
             "auth.revoked_token_access",
             jti=jti,
             log_type="audit",
-            event="revoked_token_access_attempt",
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -402,7 +400,8 @@ async def get_current_user(
     username: str = payload.get("sub", "")
     # ARCH-03: use _user_repo when available; fall back to _USERS dict in dev
     if _user_repo is not None:
-        user = await _user_repo.get_by_username(username)
+        _record = await _user_repo.get_by_username(username)
+        user: dict | None = _record.to_dict() if _record is not None else None
     else:
         user = _USERS.get(username)
     if not user or user.get("disabled"):
@@ -413,11 +412,11 @@ async def get_current_user(
     return {**user, "jti": jti}
 
 
-def require_role(*roles: str):
+def require_role(*roles: str) -> Callable[..., Any]:
     """FastAPI dependency factory for role-based access control."""
     async def _checker(
         current_user: Annotated[dict, Depends(get_current_user)],
-    ) -> dict:
+    ) -> Dict[str, Any]:
         if current_user["role"] not in roles:
             log.warning(
                 "auth.access_denied",
@@ -425,7 +424,6 @@ def require_role(*roles: str):
                 role=current_user["role"],
                 required_roles=roles,
                 log_type="audit",
-                event="access_denied",
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -438,7 +436,7 @@ def require_role(*roles: str):
 # ── FastAPI lifespan ───────────────────────────────────────────────────────
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _denylist
 
     # ── Startup ────────────────────────────────────────────────────────────
@@ -466,7 +464,7 @@ async def lifespan(app: FastAPI):
         log.info("user_repo.postgres_wired", environment=ENVIRONMENT)
     else:
         from src.users.repository import InMemoryUserRepository  # noqa: PLC0415
-        _user_repo = InMemoryUserRepository()
+        _user_repo = InMemoryUserRepository(users=_USERS)
         app.state.user_repo = _user_repo
         log.warning(
             "user_repo.in_memory_fallback",
@@ -476,7 +474,7 @@ async def lifespan(app: FastAPI):
     # Initialise Redis-backed JWT denylist (R-03)
     _denylist = RedisDenylist(redis_url=REDIS_URL)
     await _denylist.connect()
-    app.state.redis = _denylist._redis  # Expose Redis client for rate_limit.py
+    app.state.redis = _denylist._client  # Expose Redis client for rate_limit.py
     log.info("denylist.connected", redis_url=REDIS_URL)
 
     # ARCH-01: Load RS256 key pair when RSA_PRIVATE_KEY_PEM is set.
@@ -518,7 +516,7 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # ARCH-03 / ARCH-05: Mount GDPR data subject rights endpoints
 # Routes: GET /users/me/export  (Art. 15 access)
@@ -536,7 +534,7 @@ try:
     @app.exception_handler(InvalidTransitionError)
     async def _invalid_transition_handler(
         request: Request, exc: InvalidTransitionError
-    ):
+    ) -> JSONResponse:
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=409,
@@ -574,7 +572,7 @@ if ALLOWED_ORIGINS:
 
 # ── Trace + security headers middleware ───────────────────────────────────
 @app.middleware("http")
-async def trace_and_security_headers(request: Request, call_next):
+async def trace_and_security_headers(request: Request, call_next: Callable[..., Awaitable[Response]]) -> Response:
     trace_id = str(uuid.uuid4())
     start_time = time.perf_counter()
 
@@ -604,8 +602,10 @@ async def trace_and_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     response.headers["Cache-Control"] = "no-store"
-    response.headers.pop("server", None)
-    response.headers.pop("x-powered-by", None)
+    if "server" in response.headers:
+        del response.headers["server"]
+    if "x-powered-by" in response.headers:
+        del response.headers["x-powered-by"]
 
     return response
 
@@ -613,13 +613,13 @@ async def trace_and_security_headers(request: Request, call_next):
 # ── Health probes ──────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["ops"], include_in_schema=False)
-async def liveness():
+async def liveness() -> Dict[str, str]:
     """Kubernetes liveness probe — confirms process is alive."""
     return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/ready", tags=["ops"], include_in_schema=False)
-async def readiness():
+async def readiness() -> JSONResponse:
     """Kubernetes readiness probe — checks all critical dependencies."""
     checks: Dict[str, str] = {}
     all_ok = True
@@ -669,7 +669,7 @@ async def readiness():
 async def login(
     request: Request,
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
-):
+) -> Token:
     """Issue an access + refresh token pair. Rate limited to 5/min per IP."""
     user = await authenticate_user(form.username, form.password)
     if not user:
@@ -677,7 +677,6 @@ async def login(
             "auth.login_failed",
             username=form.username,
             log_type="audit",
-            event="authentication_failure",
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -695,7 +694,6 @@ async def login(
         role=user["role"],
         jti=access_jti,
         log_type="audit",
-        event="authentication_success",
     )
 
     return Token(
@@ -711,7 +709,7 @@ async def login(
 async def refresh_token_endpoint(
     request: Request,
     token: Annotated[str, Depends(oauth2_scheme)],
-):
+) -> Token:
     """Exchange a valid refresh token for a new access + refresh token pair."""
     payload = decode_token(token)
     if payload.get("token_type") != "refresh":
@@ -736,7 +734,8 @@ async def refresh_token_endpoint(
     username: str = payload.get("sub", "")
     # ARCH-03: use _user_repo when available
     if _user_repo is not None:
-        user = await _user_repo.get_by_username(username)
+        _record = await _user_repo.get_by_username(username)
+        user: dict | None = _record.to_dict() if _record is not None else None
     else:
         user = _USERS.get(username)
     if not user or user.get("disabled"):
@@ -761,7 +760,6 @@ async def refresh_token_endpoint(
         old_jti=old_jti,
         new_jti=access_jti,
         log_type="audit",
-        event="token_rotated",
     )
 
     return Token(
@@ -775,7 +773,7 @@ async def refresh_token_endpoint(
 @app.post("/auth/logout", status_code=204, tags=["auth"])
 async def logout(
     current_user: Annotated[dict, Depends(get_current_user)],
-):
+) -> None:
     """Revoke the current access token immediately via the Redis denylist."""
     jti = current_user["jti"]
     ttl = ACCESS_TOKEN_EXPIRE_MINUTES * 60
@@ -791,7 +789,6 @@ async def logout(
         username=current_user["username"],
         jti=jti,
         log_type="audit",
-        event="logout",
     )
 
 
@@ -812,7 +809,7 @@ async def create_incident(
     incident: IncidentCreate,
     current_user: Annotated[dict, Depends(require_role("analyst", "admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> Dict[str, Any]:
     """Create a new incident in OPEN status. Requires analyst or admin role."""
     repo = IncidentRepository(session)
     try:
@@ -837,7 +834,6 @@ async def create_incident(
         category=record.category,
         created_by=current_user["username"],
         log_type="audit",
-        event="incident_created",
     )
     return record.to_dict()
 
@@ -848,7 +844,7 @@ async def list_incidents(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: int = 50,
     offset: int = 0,
-):
+) -> Dict[str, Any]:
     """List open incidents (most recent first). Requires analyst, operator, or admin."""
     repo = IncidentRepository(session)
     incidents = await repo.list_open(limit=min(limit, 200))
@@ -866,7 +862,7 @@ async def get_incident(
     incident_id: str,
     current_user: Annotated[dict, Depends(require_role("analyst", "admin", "operator"))],
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> Dict[str, Any]:
     """Retrieve a single incident by UUID. Requires analyst, operator, or admin."""
     repo = IncidentRepository(session)
     record = await repo.get(incident_id)
@@ -884,7 +880,7 @@ async def update_incident_status(
     update: StatusUpdate,
     current_user: Annotated[dict, Depends(require_role("operator", "admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> Dict[str, Any]:
     """
     Transition an incident to a new lifecycle status.
 
@@ -920,7 +916,6 @@ async def update_incident_status(
         new_status=record.status.value,
         updated_by=current_user["username"],
         log_type="audit",
-        event="incident_status_updated",
     )
     return record.to_dict()
 
@@ -931,7 +926,7 @@ async def update_incident_metadata(
     update: IncidentUpdate,
     current_user: Annotated[dict, Depends(require_role("operator", "admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> Dict[str, Any]:
     """
     Update mutable incident metadata (resolution_notes, severity).
     Does NOT change lifecycle status — use PATCH /incidents/{id}/status for that.
@@ -962,6 +957,5 @@ async def update_incident_metadata(
         incident_id=incident_id,
         updated_by=current_user["username"],
         log_type="audit",
-        event="incident_metadata_updated",
     )
     return record.to_dict()

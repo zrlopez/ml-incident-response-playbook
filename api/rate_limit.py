@@ -42,7 +42,7 @@ Usage in route handlers:
 from __future__ import annotations
 
 import os
-from typing import Callable
+from typing import Any, Callable, Dict
 
 import structlog
 from fastapi import Depends, HTTPException, Request, status
@@ -155,7 +155,7 @@ async def _check_limit(
         return
 
 
-def check_user_rate_limit(endpoint_group: str) -> Callable:
+def check_user_rate_limit(endpoint_group: str) -> Callable[..., Any]:
     """
     FastAPI dependency factory. Returns a Depends-compatible async function.
 
@@ -181,13 +181,13 @@ def check_user_rate_limit(endpoint_group: str) -> Callable:
     return _dependency
 
 
-def _get_current_user_lazy():
+def _get_current_user_lazy() -> Any:
     """Lazy import to avoid circular dependency with api.app."""
     try:
         from api.app import get_current_user  # noqa: PLC0415
         return get_current_user
     except ImportError:
         # Return a no-op placeholder during testing / import order issues
-        async def _noop() -> dict:
+        async def _noop() -> Dict[str, Any]:
             return {"sub": "unknown", "role": "default"}
         return _noop

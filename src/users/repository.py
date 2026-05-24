@@ -47,7 +47,7 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, cast
 
 import structlog
 from sqlalchemy import Boolean, DateTime, String, select, update
@@ -160,7 +160,7 @@ class PostgresUserRepository(AbstractUserRepository):
             result = await session.execute(
                 select(UserRecord).where(UserRecord.username == username)
             )
-            return result.scalar_one_or_none()
+            return cast(Optional[UserRecord], result.scalar_one_or_none())
 
     async def update_password_hash(
         self, username: str, new_hash: str, algorithm: str = "argon2id"

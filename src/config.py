@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 from typing import Literal
+from typing_extensions import Self
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -92,6 +93,14 @@ class Settings(BaseSettings):
     @field_validator("jwt_secret_key")
     @classmethod
     def validate_jwt_secret(cls, v: str) -> str:
+        import os  # noqa: PLC0415
+        if os.getenv("ENVIRONMENT", "").lower() == "test":
+            # In test environment skip strength validation entirely.
+            # alembic/env.py imports incident_tracker at module level which
+            # calls get_settings() before any test fixture can set the key.
+            # The key may be absent, short, or a CI placeholder — all are
+            # acceptable because test JWTs are never used in production.
+            return v or "test-only-placeholder-not-for-production-use-padded"
         return _reject_placeholder(v, "JWT_SECRET_KEY", min_len=32)
 
     # ── Redis ───────────────────────────────────────────────────────────────────
@@ -105,7 +114,7 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_redis_auth_in_production(self) -> "Settings":
+    def validate_redis_auth_in_production(self) -> Self:
         """Enforce Redis password in non-test environments."""
         if self.environment == "production" and not self.redis_password:
             raise ValueError(
@@ -140,7 +149,7 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_dev_credentials(self) -> "Settings":
+    def validate_dev_credentials(self) -> Self:
         """CRIT-A: Reject placeholder/empty dev passwords in non-test environments."""
         if self.environment == "test":
             return self  # Test fixtures set their own values
@@ -211,4 +220,4 @@ def get_settings() -> Settings:
         settings = get_settings()
         settings.some_field
     """
-    return Settings()
+    return Settings()  # type: ignore[call-arg]

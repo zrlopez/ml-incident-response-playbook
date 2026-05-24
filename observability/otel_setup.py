@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def configure_otel(
     service_name: str = "ml-incident-api",
     otlp_endpoint: str = "http://localhost:4317",
     environment: str = "development",
-    app: Optional[object] = None,
+    app: "Optional[Any]" = None,
 ) -> None:
     """
     Bootstrap OpenTelemetry tracing.  No-ops gracefully if the OTel
