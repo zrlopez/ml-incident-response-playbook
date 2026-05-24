@@ -20,13 +20,13 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Web framework ──────────────────────────────────────────────────────────
-fastapi==0.115.0
-uvicorn[standard]==0.32.0
-python-multipart==0.0.12
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-multipart==0.0.27
 
 # ── Authentication ────────────────────────────────────────────────────────
 # python-jose removed (CVE-2024-33663) — replaced by PyJWT[crypto]
-PyJWT[crypto]==2.9.0
+PyJWT[crypto]==2.12.1
 # ARCH-02 REMEDIATION (Phase 2): migrated from passlib[bcrypt] to argon2-cffi.
 # argon2id is the OWASP 2024 recommended algorithm (memory-hard, GPU-resistant).
 # passlib[bcrypt] is retained during the migration window for rehash-on-login
@@ -36,32 +36,32 @@ PyJWT[crypto]==2.9.0
 argon2-cffi==23.1.0
 passlib[bcrypt]==1.7.4   # migration fallback — remove after ARCH-02 complete
 bcrypt==4.2.0            # migration fallback — remove after ARCH-02 complete
-cryptography==43.0.1
+cryptography==46.0.5
 
 # ── Rate limiting ──────────────────────────────────────────────────────
 slowapi==0.1.9
 
 # ── Data validation ─────────────────────────────────────────────────────
-pydantic==2.9.2
-pydantic-settings==2.5.2
+pydantic==2.11.5
+pydantic-settings==2.9.1
 
 # ── Structured logging ───────────────────────────────────────────────────
-structlog==24.4.0
+structlog==25.4.0
 
 # ── Database (async-ready) ───────────────────────────────────────────────
 # Production target: postgresql+asyncpg
 # Local / CI:        sqlite+aiosqlite (via DATABASE_URL env var)
 asyncpg==0.30.0
-aiosqlite==0.20.0
-sqlalchemy[asyncio]==2.0.36
-alembic==1.13.3
+aiosqlite==0.21.0
+sqlalchemy[asyncio]==2.0.41
+alembic==1.15.2
 
 # ── Redis (distributed JWT denylist) ────────────────────────────────────────
 # hiredis: C-extension for ~10x read throughput vs pure-Python parser
-redis[hiredis]==5.2.0
+redis[hiredis]==5.3.0
 
 # ── HTTP client (alert dispatching, internal calls) ────────────────────────
-httpx==0.27.2
+httpx==0.28.1
 
 # ── Observability ───────────────────────────────────────────────────────────
 opentelemetry-api==1.27.0
@@ -71,13 +71,13 @@ opentelemetry-exporter-otlp-proto-grpc==1.27.0
 prometheus-fastapi-instrumentator==7.0.0
 
 # ── ML / Data ──────────────────────────────────────────────────────────────
-numpy==2.1.2
-pandas==2.2.3
-scikit-learn==1.5.2
+numpy==2.2.6
+pandas==2.3.3
+scikit-learn==1.6.1
 
 # ── AWS SDK ───────────────────────────────────────────────────────────────────
-boto3==1.35.49
+boto3==1.38.28
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
-python-dotenv==1.0.1
-tenacity==9.0.0
+python-dotenv==1.2.2
+tenacity==9.1.2
