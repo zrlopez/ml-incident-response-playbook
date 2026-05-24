@@ -94,13 +94,13 @@ jobs:
 
       - name: Bandit - application code (api/ + observability/ + src/)
         run: |
-          touch bandit-app.sarif
+          echo '{"version":"2.1.0","runs":[]}' > bandit-app.sarif
           bandit -r api/ observability/ src/ -l -i -f sarif -o bandit-app.sarif || true
           bandit -r api/ observability/ src/ -l -i
 
       - name: Bandit - test code
         run: |
-          touch bandit-tests.sarif
+          echo '{"version":"2.1.0","runs":[]}' > bandit-tests.sarif
           bandit -r tests/ --severity-level low --confidence-level low \
             --skip B101 -f sarif -o bandit-tests.sarif || true
 
