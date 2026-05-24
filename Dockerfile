@@ -12,8 +12,10 @@
 #   SEC-4   SIGTERM handler: Uvicorn responds to graceful shutdown
 #   CI-22   Trivy ignore-unfixed:true added (Debian 13.5 OS layer)
 #   CI-23   Base image switched to python:3.12-alpine to clear Trivy gate
-#           Alpine has dramatically smaller OS surface; Debian 13.5 slim
-#           carried patchable CRITICAL/HIGH CVEs with no upstream fix yet.
+#   CI-23b  Expanded Alpine build deps for all C-extension packages:
+#           cryptography (openssl-dev, libffi-dev), numpy/pandas/sklearn
+#           (openblas-dev, lapack-dev, gfortran), grpcio (protobuf-dev),
+#           hiredis, argon2-cffi. All build deps stay in builder stage only.
 #           Re-pin to SHA digest after confirming clean scan on this tag.
 
 # ───────────────────────────────────────────────────────────────────
@@ -25,13 +27,27 @@ FROM python:3.12-alpine AS builder
 
 WORKDIR /build
 
-# Install build dependencies for Alpine (gcc, musl-dev, libpq-dev).
-# These are NOT copied to the runtime stage.
+# Install all build dependencies needed for C-extension packages:
+#   gcc, musl-dev, g++     — base compilers (asyncpg, hiredis, argon2)
+#   libpq-dev, postgresql-dev — asyncpg / psycopg2
+#   openssl-dev, libffi-dev   — cryptography, argon2-cffi
+#   openblas-dev, lapack-dev  — numpy, pandas, scikit-learn
+#   gfortran                  — scipy/sklearn Fortran routines
+#   protobuf-dev              — grpcio (opentelemetry-exporter-otlp-proto-grpc)
+#   linux-headers             — required by some C extensions on Alpine
 RUN apk add --no-cache \
         gcc \
+        g++ \
         musl-dev \
         libpq-dev \
-        postgresql-dev
+        postgresql-dev \
+        openssl-dev \
+        libffi-dev \
+        openblas-dev \
+        lapack-dev \
+        gfortran \
+        protobuf-dev \
+        linux-headers
 
 # Pin pip to exact version for reproducible builds.
 COPY requirements.txt .
@@ -55,8 +71,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     PATH="/opt/venv/bin:$PATH"
 
-# Install curl for HEALTHCHECK. No other extras.
-RUN apk add --no-cache curl
+# Runtime deps only: shared libs needed at runtime (not build tools).
+# libpq: asyncpg runtime linkage
+# openblas: numpy/pandas/sklearn runtime linkage
+# libstdc++: g++ runtime lib (grpcio, sklearn)
+RUN apk add --no-cache \
+        curl \
+        libpq \
+        openblas \
+        libstdc++
 
 # Create a non-root service account (Alpine busybox addgroup/adduser).
 RUN addgroup -g 1000 appgroup \
