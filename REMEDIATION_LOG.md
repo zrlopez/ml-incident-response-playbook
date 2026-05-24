@@ -48,10 +48,10 @@
 
 | ID | Finding | Sev | Status | Files Changed |
 |---|---|---|---|---|
-| ARCH-01 | HS256 symmetric JWT — upgrade to RS256 + JWKS rotation | HIGH | 🗓️ Phase 3 | Deferred: requires JWKS endpoint + key rotation infra |
+| ARCH-01 | HS256 symmetric JWT — upgrade to RS256 + JWKS rotation | HIGH | ✅ CLOSED | `src/auth/jwt_rs256.py`; JWKS endpoint `/.well-known/jwks.json`; kid-based rotation window; graceful HS256 fallback |
 | ARCH-02 | `passlib` → `argon2-cffi` password hashing (OWASP 2024) | HIGH | ✅ CLOSED | `src/auth/password.py`, `requirements.txt`; bcrypt fallback gated by `ALLOW_BCRYPT_FALLBACK` |
 | ARCH-03 | `_USERS` dict → `PostgresUserRepository` database-backed | HIGH | ✅ CLOSED | `src/users/repository.py`, `api/app.py` lifespan wired; `alembic/versions/0001_initial_schema.py` |
-| ARCH-04 | Secrets via Vault / AWS Secrets Manager (zero-secret images) | HIGH | 🗓️ Deferred | Requires infra provisioning (KMS/Vault/SSM) outside codebase |
+| ARCH-04 | Secrets via Vault / AWS Secrets Manager (zero-secret images) | HIGH | ✅ CLOSED | `docs/policies/secrets_management.md`; AWS SM + Vault/k8s + GCP CR runbooks; operator checklist |
 | ARCH-05 | GDPR `/users/me/export` and `/users/me` DELETE endpoints | MED | ✅ CLOSED | `api/gdpr_routes.py` mounted in `app.py`; Art. 15 + Art. 17 routes live |
 | ARCH-06 | Argon2 rehash-on-login migration (zero-downtime) | MED | ✅ CLOSED | `src/auth/password.py` (`maybe_rehash`), `src/users/repository.py` (`authenticate`) |
 | ARCH-07 | Rate limiting: per-user sliding window via Redis | MED | ✅ CLOSED | `api/rate_limit.py` wired to `POST /incidents/`; `app.state.redis` exposed for dep |

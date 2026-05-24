@@ -45,6 +45,7 @@ from api.gdpr_routes import router as gdpr_router
 from api.rate_limit import check_user_rate_limit
 from src.users.repository import PostgresUserRepository, AbstractUserRepository
 from src.auth.password import hash_password, verify_password, maybe_rehash
+from src.auth import jwt_rs256
 from src.incident_tracker import (
     IncidentRepository,
     IncidentStatus,
@@ -477,6 +478,19 @@ async def lifespan(app: FastAPI):
     await _denylist.connect()
     app.state.redis = _denylist._redis  # Expose Redis client for rate_limit.py
     log.info("denylist.connected", redis_url=REDIS_URL)
+
+    # ARCH-01: Load RS256 key pair when RSA_PRIVATE_KEY_PEM is set.
+    # Falls back to HS256 gracefully if env var is absent (dev/CI).
+    # In production: inject RSA_PRIVATE_KEY_PEM from secrets manager (ARCH-04).
+    _rs256_active = jwt_rs256.load_keys()
+    if _rs256_active:
+        app.include_router(jwt_rs256.jwks_router)  # serve /.well-known/jwks.json
+        log.info("jwt.rs256_active", key_id=jwt_rs256._key_id)
+    else:
+        log.warning(
+            "jwt.hs256_fallback_active",
+            hint="Set RSA_PRIVATE_KEY_PEM to upgrade to RS256 (ARCH-01)",
+        )
 
     # Bootstrap OpenTelemetry tracing (R-20)
     configure_otel(
