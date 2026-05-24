@@ -12,8 +12,9 @@
 #   2026-05-24 v8  CI-22: Trivy ignore-unfixed:true
 #   2026-05-24 v9  CI-23: base image -> python:3.12-alpine
 #   2026-05-24 v10 CI-24: split Trivy into diagnostic table + gating sarif
-#                  runs so CVE list is always visible before gate fires and
-#                  SARIF is always written regardless of exit code.
+#   2026-05-24 v11 CI-25: call trivy binary directly for diagnostic table;
+#                  trivy-action@master entrypoint.sh ignores format:table
+#                  and always builds SARIF, so table output was lost.
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -224,13 +225,11 @@ jobs:
   # ---------------------------------------------------------------------------
   # Gate 4: Container build + Trivy scan + SBOM
   #
-  # CI-24: Two-phase Trivy scan:
-  #   Phase 1 - table format, exit-code 0: always prints CVE list to the log
-  #             so we can see exactly which packages are flagged.
-  #   Phase 2 - sarif format, exit-code 1: writes trivy-container.sarif, then
-  #             gates the build. SARIF upload uses if:always() so the report
-  #             reaches Code Scanning even on gate failure.
-  #   ignore-unfixed:true on both phases: suppresses OS CVEs with no fix.
+  # CI-25: Diagnostic step calls trivy binary directly (via setup-trivy) with
+  #        --format table --exit-code 0 so the CVE list always appears in the
+  #        Actions log. trivy-action@master entrypoint.sh ignores format:table
+  #        and always builds SARIF, making the table output inaccessible.
+  #        The gating step still uses trivy-action for SARIF + upload.
   # ---------------------------------------------------------------------------
   container-scan:
     name: Container Build + Trivy + SBOM
@@ -254,14 +253,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trivy - diagnostic table (always runs, never blocks)
-        uses: aquasecurity/trivy-action@master
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.2
         with:
-          image-ref: ml-incident-api:${{ github.sha }}
-          format: table
-          exit-code: '0'
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
+          version: v0.70.0
+          cache: true
+
+      - name: Trivy - diagnostic table (always runs, never blocks)
+        run: |
+          trivy image \
+            --format table \
+            --exit-code 0 \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            ml-incident-api:${{ github.sha }}
 
       - name: Trivy - SARIF + gate
         uses: aquasecurity/trivy-action@master
@@ -272,6 +277,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true
+          skip-setup-trivy: true
 
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@v4
