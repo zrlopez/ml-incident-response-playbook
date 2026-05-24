@@ -171,7 +171,7 @@ jobs:
       - name: pytest unit tests
         run: |
           pytest tests/unit/ \
-            --cov=api --cov=observability --cov=src \
+            --cov=src/domain --cov=src.domain.incident_lifecycle \
             --cov-report=xml:coverage-unit.xml \
             -v
 

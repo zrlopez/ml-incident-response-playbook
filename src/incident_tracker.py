@@ -159,16 +159,17 @@ def _build_engine(settings=None):
     level singleton is retained for backward compatibility with existing test shims.
     """
     cfg = settings or get_settings()
-    is_sqlite = cfg.database_url.startswith("sqlite")
+    database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./incidents.db")
+    is_sqlite = database_url.startswith("sqlite")
     kwargs: dict = {
-        "pool_pre_ping": cfg.db_pool_pre_ping,
-        "echo": (cfg.app_env == "development"),
+        "pool_pre_ping": True,
+        "echo": (getattr(cfg, "environment", "development") == "development"),
     }
     if not is_sqlite:
         # SQLite does not support pool_size / max_overflow
-        kwargs["pool_size"] = cfg.db_pool_size
-        kwargs["max_overflow"] = cfg.db_max_overflow
-    return create_async_engine(cfg.database_url, **kwargs)
+        kwargs["pool_size"] = 5
+        kwargs["max_overflow"] = 10
+    return create_async_engine(database_url, **kwargs)
 
 
 _engine = _build_engine()
