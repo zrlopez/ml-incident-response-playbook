@@ -93,6 +93,13 @@ class Settings(BaseSettings):
     @field_validator("jwt_secret_key")
     @classmethod
     def validate_jwt_secret(cls, v: str) -> str:
+        import os  # noqa: PLC0415
+        if os.getenv("ENVIRONMENT", "").lower() == "test" and not v:
+            # Allow empty key in test environment so alembic/env.py can import
+            # incident_tracker.py without a real secret. Integration tests
+            # supply CI_JWT_SECRET_KEY via GitHub Actions secrets; unit tests
+            # use the in-memory SQLite path which never issues real JWTs.
+            return "test-only-secret-not-used-in-production-padding-32chars"
         return _reject_placeholder(v, "JWT_SECRET_KEY", min_len=32)
 
     # ── Redis ───────────────────────────────────────────────────────────────────
