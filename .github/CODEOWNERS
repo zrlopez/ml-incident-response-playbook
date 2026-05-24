@@ -3,53 +3,53 @@
 #
 # Enforces review requirements per directory and file type.
 # All rules are additive — a file matching multiple patterns requires
-# approval from ALL matching teams.
+# approval from ALL matching owners.
 #
-# Format: pattern   @team-or-user
+# Format: pattern   @user-or-team
 # Patterns are evaluated in order; last match wins for the default reviewer,
 # but GitHub shows ALL matching owners as required reviewers.
 #
-# IMPORTANT: Team slugs must match your GitHub organization's team names.
-# Update @your-org/... references to match your actual org and team slugs.
+# Note: This repo is personal (zrlopez), not org-owned.
+# If moved to a GitHub org, replace @zrlopez with @org/team slugs.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ── Global fallback — platform lead reviews anything unmatched ────────────────────
-*                                       @your-org/ml-platform-lead
+# ── Global fallback ───────────────────────────────────────────────────────────
+*                                       @zrlopez
 
-# ── Runbooks and decision trees (SRE review required) ───────────────────────────
-runbooks/                               @your-org/ml-platform-sre
-diagrams/                               @your-org/ml-platform-sre
-severity_matrix.md                      @your-org/ml-platform-sre
-incident_response_template.md           @your-org/ml-platform-sre
+# ── Runbooks and decision trees ──────────────────────────────────────────────
+runbooks/                               @zrlopez
+diagrams/                               @zrlopez
+severity_matrix.md                      @zrlopez
+incident_response_template.md           @zrlopez
 
-# ── Governance (governance board approval required) ────────────────────────────
-governance.md                           @your-org/ml-governance-board
-docs/operational_principles.md          @your-org/ml-governance-board
-SECURITY.md                             @your-org/ml-governance-board @your-org/ml-security-team
+# ── Governance ────────────────────────────────────────────────────────────────
+governance.md                           @zrlopez
+docs/operational_principles.md          @zrlopez
+SECURITY.md                             @zrlopez
 
-# ── CI/CD and infrastructure (security + platform lead) ─────────────────────────
-ci_cd/                                  @your-org/ml-security-team @your-org/ml-platform-lead
-.github/                                @your-org/ml-security-team @your-org/ml-platform-lead
-infrastructure/                         @your-org/ml-security-team @your-org/ml-platform-lead
-Dockerfile.dev                          @your-org/ml-security-team
-.dockerignore                           @your-org/ml-security-team
-requirements.txt                        @your-org/ml-security-team @your-org/ml-platform-engineering
-pyproject.toml                          @your-org/ml-platform-engineering
+# ── CI/CD and infrastructure ──────────────────────────────────────────────────
+ci_cd/                                  @zrlopez
+.github/                                @zrlopez
+infrastructure/                         @zrlopez
+Dockerfile.dev                          @zrlopez
+.dockerignore                           @zrlopez
+requirements.txt                        @zrlopez
+pyproject.toml                          @zrlopez
 
-# ── Application source (platform engineering review) ───────────────────────────
-api/                                    @your-org/ml-platform-engineering
-src/                                    @your-org/ml-platform-engineering
-pipelines/                              @your-org/ml-platform-engineering
-orchestration/                          @your-org/ml-platform-engineering
+# ── Application source ────────────────────────────────────────────────────────
+api/                                    @zrlopez
+src/                                    @zrlopez
+pipelines/                              @zrlopez
+orchestration/                          @zrlopez
 
-# ── Monitoring and observability (SRE + ML engineers) ──────────────────────────
-monitoring/                             @your-org/ml-platform-sre @your-org/ml-engineers
-observability/                          @your-org/ml-platform-sre
-dashboards/                             @your-org/ml-platform-sre
+# ── Monitoring and observability ──────────────────────────────────────────────
+monitoring/                             @zrlopez
+observability/                          @zrlopez
+dashboards/                             @zrlopez
 
-# ── dbt models (data engineering review) ───────────────────────────────────────
-dbt/                                    @your-org/ml-data-engineering
-configs/                                @your-org/ml-data-engineering @your-org/ml-platform-engineering
+# ── dbt models ────────────────────────────────────────────────────────────────
+dbt/                                    @zrlopez
+configs/                                @zrlopez
 
-# ── ML models (ML engineering review) ──────────────────────────────────────────
-ml_models/                              @your-org/ml-engineers
+# ── ML models ─────────────────────────────────────────────────────────────────
+ml_models/                              @zrlopez
