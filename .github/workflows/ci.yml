@@ -209,6 +209,9 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: postgresql+asyncpg://incidents:ci_test_password@localhost:5432/incidents_test
       APP_ENV: test
+      DEV_ADMIN_PASSWORD: ${{ secrets.DEV_ADMIN_PASSWORD }}
+      DEV_ANALYST_PASSWORD: ${{ secrets.DEV_ANALYST_PASSWORD }}
+      DEV_OPERATOR_PASSWORD: ${{ secrets.DEV_OPERATOR_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
