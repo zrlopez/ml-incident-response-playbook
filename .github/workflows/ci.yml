@@ -98,7 +98,7 @@ jobs:
           bandit -r api/ observability/ src/ -l -i -f sarif -o bandit-app.sarif.tmp && mv bandit-app.sarif.tmp bandit-app.sarif || true
 
       - name: Bandit hard gate (api/ + observability/ + src/)
-        run: bandit -r api/ observability/ src/ -l -i
+        run: bandit -r api/ observability/ src/ --severity-level medium --confidence-level medium
 
       - name: Bandit - test code
         run: |

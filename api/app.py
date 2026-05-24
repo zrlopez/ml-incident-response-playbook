@@ -242,7 +242,7 @@ class IncidentUpdate(BaseModel):
 # ── JWT helpers ────────────────────────────────────────────────────────────
 
 def create_access_token(
-     Dict[str, Any],
+    payload: Dict[str, Any],
     expires_delta: timedelta | None = None,
 ) -> Tuple[str, str, int]:
     """
