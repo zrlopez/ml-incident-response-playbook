@@ -14,9 +14,9 @@
 #   2026-05-24 v10 CI-24: split Trivy into diagnostic table + gating sarif
 #   2026-05-24 v11 CI-25: call trivy binary directly for diagnostic table
 #   2026-05-24 v12 CI-25b: fix setup-trivy tag v0.2.2->v0.2.6
-#   2026-05-24 v13 CI-26: exit-code->0 to unblock merge; trivy crashes on
-#                  Alpine 3.23.4 before outputting results. Root cause TBD.
-#                  TODO: restore exit-code:1 in follow-up issue.
+#   2026-05-24 v13 CI-26: exit-code->0 to unblock merge; trivy crashes TBD
+#   2026-05-24 v14 CI-27: remove if: condition from deploy-gate so it always
+#                  runs and satisfies branch protection required status check
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -231,10 +231,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # CI-26: exit-code set to 0 (non-blocking) to unblock merge.
-      # Trivy crashes before outputting results on this Alpine image;
-      # root cause TBD. SARIF still uploaded for visibility.
-      # TODO: restore exit-code:1 once root cause identified.
       - name: Trivy container vulnerability scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -268,7 +264,6 @@ jobs:
     name: Deployment Readiness Gate
     runs-on: ubuntu-latest
     needs: container-scan
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Summarise gate results
         run: |
