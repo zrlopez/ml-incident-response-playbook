@@ -1,0 +1,72 @@
+# =============================================================================
+# CodeQL Semantic SAST Analysis
+# =============================================================================
+# Why this is a separate workflow from ci.yml:
+#   - Requires different permissions (security-events:write)
+#   - Runs on a weekly schedule in addition to push/PR
+#   - Findings surface as Security tab alerts, not CI gate failures
+#   - Longer timeout (30 min) shouldn't block the main CI feedback loop
+#
+# What CodeQL catches that Bandit does not:
+#   - Taint-flow from HTTP input to sensitive sinks (SQL, shell, file path)
+#   - Insecure redirect chains (CWE-601)
+#   - Path traversal via user-controlled input (CWE-022)
+#   - SQL injection via ORM query construction (CWE-089)
+#   - XSS via template rendering (CWE-079)
+#   - Cryptographic weakness patterns
+#
+# Remediation:
+#   P1-08: CodeQL semantic SAST added (2026-05-24)
+# =============================================================================
+name: CodeQL Analysis
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly — Monday 06:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql-analyze:
+    name: CodeQL — Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-and-quality
+          # security-and-quality includes:
+          #   security-extended: broader CVE pattern coverage
+          #   quality: code quality rules that surface exploitable patterns
+          # Stricter than the default 'security' suite.
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+        # For Python, autobuild locates source files without compilation.
+        # If autobuild fails, replace with:
+        #   - run: pip install -r requirements.txt
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
+          upload: true
+          # Results appear in Security → Code scanning alerts
+          # SARIF is uploaded automatically by this action
