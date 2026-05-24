@@ -26,7 +26,7 @@ python-multipart==0.0.27
 
 # ── Authentication ────────────────────────────────────────────────────────
 # python-jose removed (CVE-2024-33663) — replaced by PyJWT[crypto]
-PyJWT[crypto]==2.9.0
+PyJWT[crypto]==2.12.1
 # ARCH-02 REMEDIATION (Phase 2): migrated from passlib[bcrypt] to argon2-cffi.
 # argon2id is the OWASP 2024 recommended algorithm (memory-hard, GPU-resistant).
 # passlib[bcrypt] is retained during the migration window for rehash-on-login
