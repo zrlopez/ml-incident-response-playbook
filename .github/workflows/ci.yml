@@ -16,21 +16,12 @@
 #   2026-05-24 v12 CI-25b: fix setup-trivy tag v0.2.2->v0.2.6
 #   2026-05-24 v13 CI-26: exit-code->0 to unblock merge; trivy crashes TBD
 #   2026-05-24 v14 CI-27: remove if condition from deploy-gate
-#   2026-05-24 v15 CI-28: fix TruffleHog on push — base/head diff fails when
-#                  there is no PR context; use since-commit on push events
-#                  and base/head diff only on pull_request events.
-#   2026-05-24 v16 CI-29: pin codeql/upload-sarif back to v3 — v4 breaks
-#                  sarif path resolution (Path does not exist: ./bandit-app.sarif)
-#   2026-05-24 v17 P1-04/05/06/07:
-#                  P1-04: all actions SHA-pinned (supply chain hardening)
-#                  P1-05: Trivy exit-code restored to '1' (hard gate, CI-26 CLOSED)
-#                  P1-06: pip-audit artifact gen decoupled from hard gate
-#                  P1-07: secret availability guard added to integration-tests
-#   2026-05-24 v18 P1-fix-01:
-#                  Fix invalid job ID '🧪 Tests (Python 3.11)' — emoji + spaces
-#                  violate GitHub Actions ID rules. Job ID -> integration-tests.
-#                  name: field preserved as '🧪 Tests (Python 3.11)' so the
-#                  branch ruleset required status check still resolves correctly.
+#   2026-05-24 v15 CI-28: fix TruffleHog on push
+#   2026-05-24 v16 CI-29: pin codeql/upload-sarif back to v3
+#   2026-05-24 v17 P1-04/05/06/07: SHA-pin all actions, Trivy gate, pip-audit decouple, secret guard
+#   2026-05-24 v18 P1-fix-01: fix invalid job ID emoji->integration-tests
+#   2026-05-24 v19 P1-fix-02: correct codeql-action SHA to verified commit digest
+#                  45775bd8235c68ba998cffa5171334d58593da47 (v3.28.15)
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (update when bumping versions):
@@ -51,7 +42,7 @@
 #   trufflesecurity/trufflehog@v3.95.3
 #     -> 5af854b9571d720709b5e15dda4e4b37f0c5e1ee
 #   github/codeql-action/*@v3.28.15
-#     -> ff0a06e83cb2ec761ce6ed8b129e5935e7508d9a
+#     -> 45775bd8235c68ba998cffa5171334d58593da47  (commit SHA, not tag object SHA)
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -111,9 +102,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # P1-06: JSON artifact step is decoupled — runs with || true so a JSON
-      # serialisation error never silently bypasses the gate below.
-      - name: pip-audit — generate JSON artifact
+      - name: pip-audit -- generate JSON artifact
         run: |
           pip install pip-audit==2.7.3
           pip-audit --requirement requirements.txt --format json \
@@ -126,9 +115,7 @@ jobs:
           path: pip-audit-report.json
           retention-days: 90
 
-      # P1-06: Hard gate is a clean separate step — no || true, no chaining.
-      # A real CVE finding exits non-zero and fails the job cleanly.
-      - name: pip-audit — hard gate (no || true)
+      - name: pip-audit -- hard gate (no || true)
         run: |
           pip-audit --requirement requirements.txt \
             --ignore-vuln PYSEC-2026-161
@@ -164,7 +151,7 @@ jobs:
           rm -f ./bandit-tests.sarif.tmp
 
       - name: Upload Bandit SARIF
-        uses: github/codeql-action/upload-sarif@ff0a06e83cb2ec761ce6ed8b129e5935e7508d9a  # v3.28.15
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
         if: always()
         with:
           sarif_file: ./bandit-app.sarif
@@ -200,10 +187,7 @@ jobs:
           retention-days: 30
 
   integration-tests:
-    # Job ID must be alphanumeric/_/- only — emoji not allowed in IDs.
-    # The name: field below is what appears in the UI and in branch ruleset
-    # required status checks — it CAN contain emoji and spaces.
-    name: "\U0001F9EAABAB Tests (Python 3.11)"
+    name: "\U0001F9EA Tests (Python 3.11)"
     runs-on: ubuntu-latest
     needs: [sast, dependency-audit]
 
@@ -239,8 +223,6 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
 
-      # P1-07: Secret availability guard — fail fast with a clear message rather
-      # than running tests with an empty JWT secret that causes misleading results.
       - name: Verify required CI secrets are present
         run: |
           if [ -z "${{ secrets.CI_JWT_SECRET_KEY }}" ]; then
@@ -300,8 +282,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # P1-05: exit-code restored to '1' — Trivy is a hard gate again.
-      # CI-26 regression (exit-code '0') is now CLOSED.
       - name: Trivy container vulnerability scan
         uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8  # v0.31.0
         with:
@@ -313,7 +293,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@ff0a06e83cb2ec761ce6ed8b129e5935e7508d9a  # v3.28.15
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
         if: always()
         with:
           sarif_file: trivy-container.sarif
