@@ -54,12 +54,11 @@ ignore_missing_imports = true
 # Removal order (easiest → hardest):
 #   [x] src/config.py              — step 1 (done 2026-05-24)
 #   [x] src/auth/jwt_rs256.py      — step 2 (done 2026-05-24)
-#   [ ] api/dependencies.py        — step 3
-#   [ ] api/incidents.py           — step 4
-#   [ ] api/auth_routes.py         — step 5
-#   [ ] api/users.py               — step 6
-#   [ ] src/models.py              — step 7
-#   [ ] api/app.py                 — step 8 (largest surface, do last)
+#   [x] api/middleware.py          — step 3 (done 2026-05-24)
+#   [ ] api/gdpr_routes.py         — step 4
+#   [ ] api/rate_limit.py          — step 5
+#   [ ] api/redis_denylist.py      — step 6 (clean — no fixes needed)
+#   [ ] api/app.py                 — step 7 (largest surface, do last)
 #
 # When a module is fully typed and clean:
 #   1. Remove its [[tool.mypy.overrides]] block below.
@@ -69,23 +68,11 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------------------
 
 [[tool.mypy.overrides]]
-module = "api.dependencies"
+module = "api.gdpr_routes"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "api.incidents"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "api.auth_routes"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "api.users"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "src.models"
+module = "api.rate_limit"
 ignore_errors = true
 
 [[tool.mypy.overrides]]

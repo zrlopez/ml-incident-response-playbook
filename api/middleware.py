@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import time
 import asyncio
-from typing import Callable
+from typing import Any, Awaitable, Callable, Dict
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -64,7 +64,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
 
     MAX_BYTES: int = 1 * 1024 * 1024  # 1 MB — tune per deployment
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[..., Awaitable[Response]]) -> Response:
         # Fast path: Content-Length header is present and oversized
         content_length_header = request.headers.get("content-length")
         if content_length_header is not None:
@@ -99,7 +99,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         received_bytes = 0
         original_receive = request._receive
 
-        async def counting_receive():
+        async def counting_receive() -> Dict[str, Any]:
             nonlocal received_bytes
             message = await original_receive()
             if message["type"] == "http.request":
@@ -180,7 +180,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._environment = environment
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[..., Awaitable[Response]]) -> Response:
         response = await call_next(request)
 
         # Core security headers — all environments
@@ -232,7 +232,7 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
 
     TIMEOUT_SECONDS: float = 30.0
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[..., Awaitable[Response]]) -> Response:
         try:
             return await asyncio.wait_for(
                 call_next(request),
