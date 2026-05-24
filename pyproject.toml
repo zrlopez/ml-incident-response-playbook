@@ -58,7 +58,7 @@ ignore_missing_imports = true
 #   [x] api/gdpr_routes.py         — step 4 (done 2026-05-24)
 #   [x] api/rate_limit.py          — step 5 (done 2026-05-24)
 #   [ ] api/redis_denylist.py      — step 6 (clean — no fixes needed)
-#   [ ] api/app.py                 — step 7 (largest surface, do last)
+#   [x] api/app.py                 — step 7 (done 2026-05-24)
 #
 # When a module is fully typed and clean:
 #   1. Remove its [[tool.mypy.overrides]] block below.
@@ -67,6 +67,4 @@ ignore_missing_imports = true
 #   4. Update the checklist above (mark [x]).
 # ---------------------------------------------------------------------------
 
-[[tool.mypy.overrides]]
-module = "api.app"
-ignore_errors = true
+

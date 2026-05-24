@@ -24,12 +24,12 @@ import uuid
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
 from pydantic import BaseModel, Field, field_validator
@@ -413,11 +413,11 @@ async def get_current_user(
     return {**user, "jti": jti}
 
 
-def require_role(*roles: str):
+def require_role(*roles: str) -> Callable[..., Any]:
     """FastAPI dependency factory for role-based access control."""
     async def _checker(
         current_user: Annotated[dict, Depends(get_current_user)],
-    ) -> dict:
+    ) -> Dict[str, Any]:
         if current_user["role"] not in roles:
             log.warning(
                 "auth.access_denied",
@@ -438,7 +438,7 @@ def require_role(*roles: str):
 # ── FastAPI lifespan ───────────────────────────────────────────────────────
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _denylist
 
     # ── Startup ────────────────────────────────────────────────────────────
@@ -536,7 +536,7 @@ try:
     @app.exception_handler(InvalidTransitionError)
     async def _invalid_transition_handler(
         request: Request, exc: InvalidTransitionError
-    ):
+    ) -> JSONResponse:
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=409,
@@ -574,7 +574,7 @@ if ALLOWED_ORIGINS:
 
 # ── Trace + security headers middleware ───────────────────────────────────
 @app.middleware("http")
-async def trace_and_security_headers(request: Request, call_next):
+async def trace_and_security_headers(request: Request, call_next: Callable[..., Awaitable[Response]]) -> Response:
     trace_id = str(uuid.uuid4())
     start_time = time.perf_counter()
 
@@ -613,13 +613,13 @@ async def trace_and_security_headers(request: Request, call_next):
 # ── Health probes ──────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["ops"], include_in_schema=False)
-async def liveness():
+async def liveness() -> Dict[str, str]:
     """Kubernetes liveness probe — confirms process is alive."""
     return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/ready", tags=["ops"], include_in_schema=False)
-async def readiness():
+async def readiness() -> JSONResponse:
     """Kubernetes readiness probe — checks all critical dependencies."""
     checks: Dict[str, str] = {}
     all_ok = True
@@ -669,7 +669,7 @@ async def readiness():
 async def login(
     request: Request,
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
-):
+) -> Token:
     """Issue an access + refresh token pair. Rate limited to 5/min per IP."""
     user = await authenticate_user(form.username, form.password)
     if not user:
@@ -711,7 +711,7 @@ async def login(
 async def refresh_token_endpoint(
     request: Request,
     token: Annotated[str, Depends(oauth2_scheme)],
-):
+) -> Token:
     """Exchange a valid refresh token for a new access + refresh token pair."""
     payload = decode_token(token)
     if payload.get("token_type") != "refresh":
@@ -775,7 +775,7 @@ async def refresh_token_endpoint(
 @app.post("/auth/logout", status_code=204, tags=["auth"])
 async def logout(
     current_user: Annotated[dict, Depends(get_current_user)],
-):
+) -> None:
     """Revoke the current access token immediately via the Redis denylist."""
     jti = current_user["jti"]
     ttl = ACCESS_TOKEN_EXPIRE_MINUTES * 60
@@ -812,7 +812,7 @@ async def create_incident(
     incident: IncidentCreate,
     current_user: Annotated[dict, Depends(require_role("analyst", "admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> Dict[str, Any]:
     """Create a new incident in OPEN status. Requires analyst or admin role."""
     repo = IncidentRepository(session)
     try:
@@ -848,7 +848,7 @@ async def list_incidents(
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: int = 50,
     offset: int = 0,
-):
+) -> Dict[str, Any]:
     """List open incidents (most recent first). Requires analyst, operator, or admin."""
     repo = IncidentRepository(session)
     incidents = await repo.list_open(limit=min(limit, 200))
@@ -866,7 +866,7 @@ async def get_incident(
     incident_id: str,
     current_user: Annotated[dict, Depends(require_role("analyst", "admin", "operator"))],
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> Dict[str, Any]:
     """Retrieve a single incident by UUID. Requires analyst, operator, or admin."""
     repo = IncidentRepository(session)
     record = await repo.get(incident_id)
@@ -884,7 +884,7 @@ async def update_incident_status(
     update: StatusUpdate,
     current_user: Annotated[dict, Depends(require_role("operator", "admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> Dict[str, Any]:
     """
     Transition an incident to a new lifecycle status.
 
@@ -931,7 +931,7 @@ async def update_incident_metadata(
     update: IncidentUpdate,
     current_user: Annotated[dict, Depends(require_role("operator", "admin"))],
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> Dict[str, Any]:
     """
     Update mutable incident metadata (resolution_notes, severity).
     Does NOT change lifecycle status — use PATCH /incidents/{id}/status for that.
