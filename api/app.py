@@ -31,7 +31,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from passlib.context import CryptContext
+# passlib removed (ARCH-02): hash_password / verify_password from src.auth.password
+# provide argon2id hashing; see src/auth/password.py for migration notes.
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -93,9 +94,6 @@ _denylist: RedisDenylist | None = None
 _user_repo: AbstractUserRepository | None = None
 
 
-# ── Password hashing ───────────────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 # ── OAuth2 bearer scheme ───────────────────────────────────────────────────
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
@@ -147,19 +145,19 @@ _DEV_OPERATOR_PW = _require_dev_password("DEV_OPERATOR_PASSWORD")
 _USERS: Dict[str, Dict[str, Any]] = {
     "admin": {
         "username": "admin",
-        "hashed_password": pwd_context.hash(_DEV_ADMIN_PW),
+        "hashed_password": hash_password(_DEV_ADMIN_PW),
         "role": "admin",
         "disabled": False,
     },
     "analyst": {
         "username": "analyst",
-        "hashed_password": pwd_context.hash(_DEV_ANALYST_PW),
+        "hashed_password": hash_password(_DEV_ANALYST_PW),
         "role": "analyst",
         "disabled": False,
     },
     "operator": {
         "username": "operator",
-        "hashed_password": pwd_context.hash(_DEV_OPERATOR_PW),
+        "hashed_password": hash_password(_DEV_OPERATOR_PW),
         "role": "operator",
         "disabled": False,
     },
@@ -361,7 +359,7 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict[str, 
         return None
     if user.get("disabled"):
         return None
-    if not pwd_context.verify(password, user["hashed_password"]):
+    if not verify_password(password, user["hashed_password"]):
         return None
     return user
 
