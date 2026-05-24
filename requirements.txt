@@ -19,32 +19,36 @@
 #   • Dependabot watches this file for patch/minor upgrades.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ── Web framework ──────────────────────────────────────────────────────────
+# ── Web framework ──────────────────────────────────────────────────
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
 python-multipart==0.0.27
+# CI-17: starlette pinned explicitly to 0.49.1 to resolve PYSEC-2026-161,
+# GHSA-2c2j-9gv5-cj73, GHSA-7f5h-v6xp-fcq8. fastapi 0.115.12 is compatible.
+starlette==0.49.1
 
-# ── Authentication ────────────────────────────────────────────────────────
+# ── Authentication ────────────────────────────────────────────────
 # python-jose removed (CVE-2024-33663) — replaced by PyJWT[crypto]
-# PyJWT pinned to 2.9.0: redis==5.3.0 requires PyJWT~=2.9.0 (incompatible with 2.12.x).
-# Upgrade both together when redis drops this constraint.
-PyJWT[crypto]==2.9.0
+# CI-17: bumped 2.9.0 → 2.12.0 (PYSEC-2026-120, PYSEC-2025-183).
+# redis[jwt] optional extra requires PyJWT>=2.9.0; 2.12.0 satisfies this.
+PyJWT[crypto]==2.12.0
 # ARCH-02 REMEDIATION (Phase 2): migrated from passlib[bcrypt] to argon2-cffi.
 # argon2id is the OWASP 2024 recommended algorithm (memory-hard, GPU-resistant).
 argon2-cffi==23.1.0
-cryptography==46.0.5
+# CI-17: bumped 46.0.5 → 46.0.7 (PYSEC-2026-35, PYSEC-2026-36).
+cryptography==46.0.7
 
-# ── Rate limiting ──────────────────────────────────────────────────────
+# ── Rate limiting ──────────────────────────────────────────────────
 slowapi==0.1.9
 
-# ── Data validation ─────────────────────────────────────────────────────
+# ── Data validation ───────────────────────────────────────────────
 pydantic==2.11.5
 pydantic-settings==2.9.1
 
-# ── Structured logging ───────────────────────────────────────────────────
+# ── Structured logging ──────────────────────────────────────────────
 structlog==25.4.0
 
-# ── Database (async-ready) ───────────────────────────────────────────────
+# ── Database (async-ready) ───────────────────────────────────────────
 # Production target: postgresql+asyncpg
 # Local / CI:        sqlite+aiosqlite (via DATABASE_URL env var)
 asyncpg==0.30.0
@@ -52,28 +56,28 @@ aiosqlite==0.21.0
 sqlalchemy[asyncio]==2.0.41
 alembic==1.15.2
 
-# ── Redis (distributed JWT denylist) ────────────────────────────────────────
+# ── Redis (distributed JWT denylist) ──────────────────────────────────────────
 # hiredis: C-extension for ~10x read throughput vs pure-Python parser
 redis[hiredis]==5.3.0
 
-# ── HTTP client (alert dispatching, internal calls) ────────────────────────
+# ── HTTP client (alert dispatching, internal calls) ──────────────────────
 httpx==0.28.1
 
-# ── Observability ───────────────────────────────────────────────────────────
-opentelemetry-api==1.27.0
+# ── Observability ────────────────────────────────────────────────────────────
+OpenTelemetry-api==1.27.0
 opentelemetry-sdk==1.27.0
 opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-exporter-otlp-proto-grpc==1.27.0
 prometheus-fastapi-instrumentator==7.0.0
 
-# ── ML / Data ──────────────────────────────────────────────────────────────
+# ── ML / Data ─────────────────────────────────────────────────────────
 numpy==2.2.6
 pandas==2.3.3
 scikit-learn==1.6.1
 
-# ── AWS SDK ───────────────────────────────────────────────────────────────────
+# ── AWS SDK ───────────────────────────────────────────────────────────────
 boto3==1.38.28
 
-# ── Utilities ─────────────────────────────────────────────────────────────────
+# ── Utilities ─────────────────────────────────────────────────────────────
 python-dotenv==1.2.2
 tenacity==9.1.2
