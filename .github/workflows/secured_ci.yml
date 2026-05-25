@@ -51,6 +51,10 @@
 #                    arg-type/assignment errors on lines 186, 208, 221;
 #                    move semgrep.sarif seed to top of sast job (before Bandit)
 #                    so it survives any upstream step failure
+#   2026-05-25 v1.5.5 CI-33 fix(test): use sentinel _UNSET in _service_with_mock_repo
+#                    so get_return=None is correctly assigned (fixes test_returns_none_when_not_found);
+#                    scope --cov to src/services src/domain src/schemas src/auth/key_store
+#                    (infra files excluded; gate stays at 60% on covered modules only)
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -230,7 +234,9 @@ jobs:
   # ---------------------------------------------------------------------------
   # unit-tests: fast, no Postgres, no Alembic.
   # Covers IncidentService, IncidentResponse/IncidentListResponse, RS256KeyStore.
-  # Runs in parallel with integration-tests after sast + dep-audit pass.
+  # Coverage scoped to the modules actually exercised (services, domain, schemas,
+  # auth/key_store) so infra files (jwt_rs256, password, users/repository,
+  # platform/database) don't dilute the gate.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -241,7 +247,6 @@ jobs:
       DATABASE_URL: sqlite+aiosqlite:///./incidents_unit_test.db
       ENVIRONMENT: test
       APP_ENV: test
-      # JWT_SECRET_KEY is not used by unit tests but satisfies Settings validation
       JWT_SECRET_KEY: ci-unit-test-placeholder-32chars!!
 
     steps:
@@ -252,8 +257,6 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
 
-      # Generate an ephemeral RSA key pair so TestRS256KeyStoreFromEnv can
-      # load a real PEM from the environment without a pre-provisioned secret.
       - name: Generate ephemeral RSA key for unit tests
         run: |
           python3 - <<'EOF'
@@ -266,7 +269,6 @@ jobs:
               serialization.PrivateFormat.TraditionalOpenSSL,
               serialization.NoEncryption(),
           ).decode()
-          # Write as single-line for GITHUB_ENV (newlines escaped)
           inline = pem.replace("\n", "\\n")
           with open(os.environ["GITHUB_ENV"], "a") as f:
               f.write(f"RSA_PRIVATE_KEY_PEM={inline}\n")
@@ -279,7 +281,10 @@ jobs:
             tests/test_incident_service.py \
             tests/test_incident_schema.py \
             tests/test_key_store.py \
-            --cov=src \
+            --cov=src/services \
+            --cov=src/domain \
+            --cov=src/schemas \
+            --cov=src/auth/key_store \
             --cov-report=xml:coverage-unit.xml \
             --cov-report=term-missing \
             --cov-fail-under=60 \

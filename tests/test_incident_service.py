@@ -21,6 +21,9 @@ from src.services.incident_service import IncidentService
 # Helpers
 # ---------------------------------------------------------------------------
 
+_UNSET = object()  # sentinel so callers can explicitly pass None as a return value
+
+
 def _make_incident(
     incident_id: str = "inc-001",
     title: str = "Latency spike",
@@ -44,28 +47,28 @@ def _make_incident(
 
 def _service_with_mock_repo(
     *,
-    create_return=None,
-    get_return=None,
-    list_open_return=None,
-    update_status_return=None,
-    update_status_side_effect=None,
-    list_open_side_effect=None,
+    create_return=_UNSET,
+    get_return=_UNSET,
+    list_open_return=_UNSET,
+    update_status_return=_UNSET,
+    update_status_side_effect=_UNSET,
+    list_open_side_effect=_UNSET,
 ):
     """Build an IncidentService wired to a patched IncidentRepository."""
     mock_session = MagicMock()
     service = IncidentService(mock_session)
     repo = AsyncMock()
-    if create_return is not None:
+    if create_return is not _UNSET:
         repo.create.return_value = create_return
-    if get_return is not None:
+    if get_return is not _UNSET:
         repo.get.return_value = get_return
-    if list_open_return is not None:
+    if list_open_return is not _UNSET:
         repo.list_open.return_value = list_open_return
-    if update_status_return is not None:
+    if update_status_return is not _UNSET:
         repo.update_status.return_value = update_status_return
-    if update_status_side_effect is not None:
+    if update_status_side_effect is not _UNSET:
         repo.update_status.side_effect = update_status_side_effect
-    if list_open_side_effect is not None:
+    if list_open_side_effect is not _UNSET:
         repo.list_open.side_effect = list_open_side_effect
     service._repo = repo
     return service, repo
