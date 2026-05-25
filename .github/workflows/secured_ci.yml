@@ -33,6 +33,16 @@
 #                    Runs test_incident_service.py, test_incident_schema.py, test_key_store.py
 #                    with --cov-fail-under=60.
 #                    Gate order: sast/dep-audit -> unit-tests -> integration-tests
+#   2026-05-25 v1.5.0 CI-28 feat(docs): add MkDocs Material site + GitHub Pages deploy workflow
+#                    docs.yml: build + deploy to GitHub Pages on push to main;
+#                    mkdocs.yml: Material theme, mermaid2 plugin, full nav across all docs/
+#                    Mermaid render CI workflow added (mermaid-render.yml)
+#   2026-05-25 v1.5.1 CI-29 fix(docs): resolve 10 MkDocs strict-mode warnings
+#                    CONTRIBUTING.md: absolute URLs for CODE_OF_CONDUCT, SECURITY, LICENSE
+#                    onboarding.md: fix ../severity_matrix.md path; absolute URLs for runbooks/
+#                    mkdocs.yml nav: add ADRs, policies/, monitoring/metrics.md (no orphaned files)
+#   2026-05-25 v1.5.2 CI-30 chore(docs): point site_url and Docs badge to mlops.zrl.dev
+#                    Custom domain mlops.zrl.dev -> zrlopez.github.io (DNS verified)
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
