@@ -15,8 +15,8 @@ or security hardening — are welcome and appreciated.
   architectural additions, security controls) so the approach can be
   discussed before you invest significant time.
 - **Review the policies** that govern this project:
-  - [Code of Conduct](CODE_OF_CONDUCT.md)
-  - [Security Policy](SECURITY.md) — security vulnerabilities must not be
+  - [Code of Conduct](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/CODE_OF_CONDUCT.md)
+  - [Security Policy](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/SECURITY.md) — security vulnerabilities must not be
     reported as public issues; follow the private reporting process described there.
 
 ---
@@ -114,7 +114,7 @@ Before marking your PR ready for review, confirm each item:
   were added.
 - [ ] Markdown files (runbooks, templates, policies) follow existing style:
   heading hierarchy, Mermaid diagram syntax, table formatting.
-- [ ] Mermaid diagrams render cleanly in GitHub’s Markdown preview.
+- [ ] Mermaid diagrams render cleanly in GitHub's Markdown preview.
 
 ---
 
@@ -140,7 +140,8 @@ Before marking your PR ready for review, confirm each item:
 - **Documentation improvements** across onboarding, deployment, monitoring,
   and operational runbooks.
 - **Security hardening** that addresses findings in `REMEDIATION_LOG.md` or
-  introduces new controls consistent with the security posture described in `SECURITY.md`.
+  introduces new controls consistent with the security posture described in
+  [SECURITY.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/SECURITY.md).
 - **Tooling improvements** — scripts, linting rules, additional CI jobs, or
   better test fixtures.
 
@@ -154,9 +155,10 @@ dependency versions, or the CI pipeline, please:
 1. Reference the relevant finding ID (e.g., `ARCH-01`, `ARCH-07`) in the
    PR description.
 2. Add or update tests in `tests/test_api.py` covering the security behavior.
-3. Update `SECURITY.md` if the active controls table changes.
+3. Update [SECURITY.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/SECURITY.md) if the active controls table changes.
 4. For newly discovered vulnerabilities, **do not open a public issue**.
-   Follow the private reporting process in [SECURITY.md](SECURITY.md).
+   Follow the private reporting process in
+   [SECURITY.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/SECURITY.md).
 
 ---
 
@@ -169,7 +171,7 @@ Runbooks, postmortem templates, and policy documents live in `runbooks/`,
   usernames, incident identifiers, or model names.
 - Link new documents from the appropriate index file or parent document
   so they are discoverable.
-- Mermaid diagrams must render cleanly in GitHub’s Markdown preview
+- Mermaid diagrams must render cleanly in GitHub's Markdown preview
   before the PR is marked ready.
 
 ---
@@ -189,6 +191,7 @@ Runbooks, postmortem templates, and policy documents live in `runbooks/`,
 ## License and Attribution
 
 This project is licensed under the **MIT License**. By contributing, you
-agree that your contributions are licensed under the same terms. See
-[LICENSE](../LICENSE) for details. Contributors who report security
-vulnerabilities are credited in release notes unless they request anonymity.
+agree that your contributions are licensed under the same terms. See the
+[LICENSE](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/LICENSE)
+for details. Contributors who report security vulnerabilities are credited
+in release notes unless they request anonymity.

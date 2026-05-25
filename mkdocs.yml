@@ -84,7 +84,11 @@ nav:
   - Monitoring & Observability:
     - Overview: monitoring.md
     - Metrics: metrics.md
-  - Governance: governance.md
+    - Extended Metrics: monitoring/metrics.md
+  - Governance:
+    - Overview: governance.md
+    - Governance Exception Register: policies/governance-exception-register.md
+    - Secrets Management: policies/secrets_management.md
   - Deployment: deployment.md
   - Operations:
     - Onboarding: onboarding.md
@@ -92,6 +96,11 @@ nav:
     - Setup: setup.md
     - Troubleshooting: troubleshooting.md
     - Severity Matrix: severity_matrix.md
+  - Architecture Decision Records:
+    - ADR-001 Async ORM: adr/ADR-001-async-orm.md
+    - ADR-002 Redis JWT Denylist: adr/ADR-002-redis-jwt-denylist.md
+    - ADR-003 Alembic Migration Strategy: adr/ADR-003-alembic-migration-strategy.md
+    - ADR-004 Structlog OTel Observability: adr/ADR-004-structlog-otel-observability.md
   - Contributing: CONTRIBUTING.md
   - Remediation Log: REMEDIATION_LOG.md
 
