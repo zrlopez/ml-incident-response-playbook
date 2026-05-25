@@ -305,34 +305,40 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Install Trivy via apt
+        run: |
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
       - name: Seed empty Trivy SARIF
         run: |
           echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Trivy","rules":[]}},"results":[]}]}' > trivy-container.sarif
 
       - name: Trivy diagnostic scan (table - hard gate)
-        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37  # v0.31.0
-        with:
-          image-ref: ml-incident-api:${{ github.sha }}
-          format: table
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-          ignore-unfixed: true
-          trivyignores: .trivyignore
-        env:
-          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+        run: |
+          trivy image \
+            --format table \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --db-repository ghcr.io/aquasecurity/trivy-db \
+            ml-incident-api:${{ github.sha }}
 
       - name: Trivy container scan (sarif - Security tab)
-        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37  # v0.31.0
-        with:
-          image-ref: ml-incident-api:${{ github.sha }}
-          format: sarif
-          output: trivy-container.sarif
-          severity: CRITICAL,HIGH
-          exit-code: '0'
-          ignore-unfixed: true
-          trivyignores: .trivyignore
-        env:
-          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-container.sarif \
+            --severity CRITICAL,HIGH \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --db-repository ghcr.io/aquasecurity/trivy-db \
+            ml-incident-api:${{ github.sha }}
 
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
