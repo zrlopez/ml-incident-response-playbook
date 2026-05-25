@@ -20,6 +20,7 @@ Findings addressed:
   ARCH-08  /auth/refresh rate limit lowered to 5/min (matches /auth/token)
   ARCH-09  /auth/logout docstring clarified — all roles may revoke own token
   ARCH-10  Distributed brute-force counter (Redis) on login failures
+  OPEN-01  Explicit updated_at write on metadata PATCH route (2026-05-24)
 """
 from __future__ import annotations
 
@@ -1091,6 +1092,12 @@ async def update_incident_metadata(
     Update mutable incident metadata (resolution_notes, severity).
     Does NOT change lifecycle status — use PATCH /incidents/{id}/status for that.
     Requires operator or admin role.
+
+    OPEN-01: updated_at is explicitly set here after any field mutation.
+    SQLAlchemy's onupdate= hook does not fire on ORM-level attribute assignments
+    followed by a session flush — only on UPDATE statements generated via
+    session.execute(). Without the explicit write, updated_at remains stale
+    after metadata changes, corrupting time-based metric queries.
     """
     repo = IncidentRepository(session)
     record = await repo.get(incident_id)
@@ -1111,6 +1118,9 @@ async def update_incident_metadata(
 
     if update.resolution_notes is not None:
         record.description = update.resolution_notes
+
+    # OPEN-01: Explicit timestamp — see docstring for why onupdate= is insufficient.
+    record.updated_at = datetime.now(timezone.utc)
 
     log.info(
         "incident.metadata_updated",

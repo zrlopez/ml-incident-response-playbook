@@ -5,6 +5,7 @@ Remediation history:
   R-05  Replaced 6-line flat-file appender with async ORM + connection pool
   CR-1  Removed create_all bootstrap; startup now delegates to Alembic (2026-05-23)
   CR-2  Wired IncidentRepository.update_status() through domain state machine (2026-05-23)
+  OPEN-01  Explicit updated_at write on every status/metadata transition (2026-05-24)
 
 Architecture:
   - SQLAlchemy 2.0 async ORM (asyncpg for PostgreSQL, aiosqlite for test)
@@ -363,6 +364,13 @@ class IncidentRepository:
         src.domain.incident_lifecycle before any mutation is applied.  Invalid
         transitions are rejected with InvalidTransitionError — no DB write occurs.
 
+        OPEN-01: updated_at is explicitly set on every allowed transition.
+        SQLAlchemy's onupdate= hook only fires on UPDATE statements generated
+        via session.execute(); it does NOT fire on ORM attribute mutations
+        followed by a flush. Without the explicit assignment, updated_at would
+        remain at its creation value after every status change, silently
+        corrupting MTTA/MTTR and incident-age metrics.
+
         Args:
             incident_id:  UUID of the target incident.
             new_status:   Requested target status.
@@ -395,10 +403,15 @@ class IncidentRepository:
             raise InvalidTransitionError(decision.reason)
 
         # ─ Apply mutation ──────────────────────────────────────────────────────
+        now = datetime.now(timezone.utc)
         incident.status = new_status
 
+        # OPEN-01: Explicit timestamp — do not rely on onupdate= hook alone.
+        # See docstring for why this is necessary with async ORM flush patterns.
+        incident.updated_at = now
+
         if new_status == IncidentStatus.RESOLVED and incident.resolved_at is None:
-            incident.resolved_at = resolved_at or datetime.now(timezone.utc)
+            incident.resolved_at = resolved_at or now
 
         log.info(
             "incident.status_updated",
@@ -406,6 +419,7 @@ class IncidentRepository:
             incident_id=incident_id,
             previous_status=current_status.value,
             new_status=new_status.value,
+            updated_at=now.isoformat(),
             resolved_at=(
                 incident.resolved_at.isoformat() if incident.resolved_at else None
             ),
