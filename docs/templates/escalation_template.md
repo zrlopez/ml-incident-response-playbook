@@ -1,1 +1,10 @@
-<!-- moved from templates/escalation_template.md -->
+# Escalation Template
+
+## Escalation Details
+
+- Incident ID:
+- Category:
+- Owner:
+- Escalation Target:
+- Reason for escalation:
+- Requested action:
