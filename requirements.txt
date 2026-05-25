@@ -52,7 +52,7 @@ structlog==25.4.0
 # ── Database (async-ready) ───────────────────────────────────────────────
 # Production target: postgresql+asyncpg
 # Local / CI:        sqlite+aiosqlite (via DATABASE_URL env var)
-asyncpg==0.30.0
+asyncpg==0.31.0
 aiosqlite==0.21.0
 sqlalchemy[asyncio]==2.0.41
 alembic==1.15.2
