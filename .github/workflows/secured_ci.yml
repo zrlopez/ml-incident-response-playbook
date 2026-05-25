@@ -30,6 +30,10 @@
 #   2026-05-24 v25 fix: sarif scan exit-code->0; table scan is the hard gate
 #   2026-05-25 v26 fix: replace weak SQLite 'test' job with integration-tests as gate
 #                  container-scan now needs: [integration-tests] (Postgres + Alembic)
+#   2026-05-25 v27 phase-10: add unit-tests job (SQLite, no Postgres)
+#                  Runs tests/test_incident_service.py, test_incident_schema.py,
+#                  test_key_store.py with --cov-fail-under=60.
+#                  Gate order: sast/dep-audit -> unit-tests -> integration-tests
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -200,10 +204,75 @@ jobs:
           deny-licenses: GPL-2.0, AGPL-3.0
           comment-summary-in-pr: always
 
+  # ---------------------------------------------------------------------------
+  # unit-tests: fast, no Postgres, no Alembic.
+  # Covers IncidentService, IncidentResponse/IncidentListResponse, RS256KeyStore.
+  # Runs in parallel with integration-tests after sast + dep-audit pass.
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: "Unit Tests (Python 3.11, SQLite)"
+    runs-on: ubuntu-latest
+    needs: [sast, dependency-audit]
+
+    env:
+      DATABASE_URL: sqlite+aiosqlite:///./incidents_unit_test.db
+      ENVIRONMENT: test
+      APP_ENV: test
+      # JWT_SECRET_KEY is not used by unit tests but satisfies Settings validation
+      JWT_SECRET_KEY: ci-unit-test-placeholder-32chars!!
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+
+      # Generate an ephemeral RSA key pair so TestRS256KeyStoreFromEnv can
+      # load a real PEM from the environment without a pre-provisioned secret.
+      - name: Generate ephemeral RSA key for unit tests
+        run: |
+          python3 - <<'EOF'
+          from cryptography.hazmat.primitives.asymmetric import rsa
+          from cryptography.hazmat.primitives import serialization
+          import os, pathlib
+          key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+          pem = key.private_bytes(
+              serialization.Encoding.PEM,
+              serialization.PrivateFormat.TraditionalOpenSSL,
+              serialization.NoEncryption(),
+          ).decode()
+          # Write as single-line for GITHUB_ENV (newlines escaped)
+          inline = pem.replace("\n", "\\n")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"RSA_PRIVATE_KEY_PEM={inline}\n")
+          print("RSA_PRIVATE_KEY_PEM injected into GITHUB_ENV (key_size=2048)")
+          EOF
+
+      - name: pytest unit tests
+        run: |
+          pytest \
+            tests/test_incident_service.py \
+            tests/test_incident_schema.py \
+            tests/test_key_store.py \
+            --cov=src \
+            --cov-report=xml:coverage-unit.xml \
+            --cov-report=term-missing \
+            --cov-fail-under=60 \
+            -v
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: always()
+        with:
+          name: coverage-unit
+          path: coverage-unit.xml
+          retention-days: 30
+
   integration-tests:
     name: "Tests (Python 3.11)"
     runs-on: ubuntu-latest
-    needs: [sast, dependency-audit]
+    needs: [sast, dependency-audit, unit-tests]
 
     services:
       postgres:
@@ -375,7 +444,8 @@ jobs:
           echo "secrets-scan ................. passed"
           echo "dependency-audit ............. passed"
           echo "SAST - Bandit + mypy + semgrep passed"
-          echo "Tests (Python 3.11) .......... passed (hard gate)"
+          echo "Unit Tests (SQLite) .......... passed (hard gate, cov >=60%)"
+          echo "Tests (Python 3.11) .......... passed (hard gate, cov >=40%)"
           echo "container-scan (trivy) ....... passed (hard gate)"
           echo "sbom ......................... generated (SPDX, 365-day retention)"
           echo "========================================"
