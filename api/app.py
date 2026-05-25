@@ -17,6 +17,9 @@ Findings addressed:
   R-20     OTel tracing bootstrap via observability/otel_setup.py
   ARCH-01  RS256 token signing when RSA_PRIVATE_KEY_PEM is set (Phase 2)
   ARCH-07  _USERS stub allowlist guard — blocks staging bypass (Phase 2)
+  ARCH-08  /auth/refresh rate limit lowered to 5/min (matches /auth/token)
+  ARCH-09  /auth/logout docstring clarified — all roles may revoke own token
+  ARCH-10  Distributed brute-force counter (Redis) on login failures
 """
 from __future__ import annotations
 
@@ -68,6 +71,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 
 REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# ARCH-10: Distributed brute-force protection — configurable via environment.
+# LOGIN_FAILURE_THRESHOLD: max consecutive failures per IP before 429 is returned.
+# LOGIN_FAILURE_WINDOW_SECONDS: sliding window TTL for the Redis failure counter.
+# Defaults are conservative (10 failures / 60s); tighten in high-risk deployments.
+LOGIN_FAILURE_THRESHOLD: int = int(os.getenv("LOGIN_FAILURE_THRESHOLD", "10"))
+LOGIN_FAILURE_WINDOW_SECONDS: int = int(os.getenv("LOGIN_FAILURE_WINDOW_SECONDS", "60"))
 
 # Validate algorithm allowlist — prevent algorithm confusion attacks
 _ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512"}
@@ -387,9 +397,22 @@ def decode_token(token: str) -> Dict[str, Any]:
 
 # ── Auth helpers ───────────────────────────────────────────────────────────
 
-async def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
+async def authenticate_user(
+    username: str,
+    password: str,
+    client_ip: str = "unknown",
+) -> Optional[Dict[str, Any]]:
     """
     Authenticate a user against the active user repository.
+
+    ARCH-10: Distributed brute-force protection — before credential verification,
+    check a Redis INCR counter keyed by client IP. If the failure count exceeds
+    LOGIN_FAILURE_THRESHOLD within LOGIN_FAILURE_WINDOW_SECONDS, raise HTTP 429
+    immediately without touching the credential store.
+
+    On a failed authentication the counter is incremented with a sliding TTL.
+    On success the counter is deleted so legitimate users are not locked out
+    after a single typo followed by a correct password.
 
     ARCH-03: When _user_repo is initialised (production/staging), delegates
     to PostgresUserRepository.authenticate() which also performs argon2
@@ -397,10 +420,52 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict[str, 
 
     Dev fallback: _USERS dict with passlib bcrypt (migration window only).
     """
+    # ARCH-10: Distributed brute-force check (Redis counter, per-IP)
+    _failure_key = f"login_failures:{client_ip}"
+    if _denylist is not None and _denylist._client is not None:
+        try:
+            _failure_count = await _denylist._client.get(_failure_key)
+            if _failure_count is not None and int(_failure_count) >= LOGIN_FAILURE_THRESHOLD:
+                log.warning(
+                    "auth.brute_force_blocked",
+                    client_ip=client_ip,
+                    failure_count=int(_failure_count),
+                    log_type="audit",
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Too many failed login attempts. Please try again later.",
+                    headers={"Retry-After": str(LOGIN_FAILURE_WINDOW_SECONDS)},
+                )
+        except HTTPException:
+            raise
+        except Exception as _redis_exc:
+            # Fail-open on Redis unavailability — do not block legitimate logins
+            # if the counter store is temporarily unreachable. The SlowAPI
+            # per-IP rate limit on /auth/token remains active as a backstop.
+            log.warning("auth.brute_force_counter_unavailable", error=str(_redis_exc))
+
     if _user_repo is not None:
         # Production path — argon2id with rehash-on-login
         result = await _user_repo.authenticate(username, password)
-        return result.to_dict() if result is not None else None
+        if result is None:
+            # Increment failure counter with sliding TTL
+            if _denylist is not None and _denylist._client is not None:
+                try:
+                    pipe = _denylist._client.pipeline()
+                    await pipe.incr(_failure_key)
+                    await pipe.expire(_failure_key, LOGIN_FAILURE_WINDOW_SECONDS)
+                    await pipe.execute()
+                except Exception:
+                    pass  # Counter unavailable — fail-open, SlowAPI backstop active
+            return None
+        # Success — clear the failure counter so a single typo doesn't persist
+        if _denylist is not None and _denylist._client is not None:
+            try:
+                await _denylist._client.delete(_failure_key)
+            except Exception:
+                pass
+        return result.to_dict()
 
     # Dev/test fallback path — _USERS in-memory dict
     user = _USERS.get(username)
@@ -410,11 +475,33 @@ async def authenticate_user(username: str, password: str) -> Optional[Dict[str, 
             verify_password(password, hash_password("dummy-constant-time"))
         except Exception:
             pass
+        if _denylist is not None and _denylist._client is not None:
+            try:
+                pipe = _denylist._client.pipeline()
+                await pipe.incr(_failure_key)
+                await pipe.expire(_failure_key, LOGIN_FAILURE_WINDOW_SECONDS)
+                await pipe.execute()
+            except Exception:
+                pass
         return None
     if user.get("disabled"):
         return None
     if not verify_password(password, user["hashed_password"]):
+        if _denylist is not None and _denylist._client is not None:
+            try:
+                pipe = _denylist._client.pipeline()
+                await pipe.incr(_failure_key)
+                await pipe.expire(_failure_key, LOGIN_FAILURE_WINDOW_SECONDS)
+                await pipe.execute()
+            except Exception:
+                pass
         return None
+    # Success — clear counter
+    if _denylist is not None and _denylist._client is not None:
+        try:
+            await _denylist._client.delete(_failure_key)
+        except Exception:
+            pass
     return user
 
 
@@ -730,7 +817,8 @@ async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
     """Issue an access + refresh token pair. Rate limited to 5/min per IP."""
-    user = await authenticate_user(form.username, form.password)
+    client_ip = request.client.host if request.client else "unknown"
+    user = await authenticate_user(form.username, form.password, client_ip=client_ip)
     if not user:
         log.warning(
             "auth.login_failed",
@@ -764,12 +852,17 @@ async def login(
 
 
 @app.post("/auth/refresh", response_model=Token, tags=["auth"])
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 async def refresh_token_endpoint(
     request: Request,
     token: Annotated[str, Depends(oauth2_scheme)],
 ) -> Token:
-    """Exchange a valid refresh token for a new access + refresh token pair."""
+    """
+    Exchange a valid refresh token for a new access + refresh token pair.
+
+    ARCH-08: Rate limited to 5/minute per IP — aligned with /auth/token to
+    prevent asymmetric token-rotation brute-force attacks.
+    """
     payload = decode_token(token)
     if payload.get("token_type") != "refresh":
         raise HTTPException(
@@ -833,7 +926,15 @@ async def refresh_token_endpoint(
 async def logout(
     current_user: Annotated[dict, Depends(get_current_user)],
 ) -> None:
-    """Revoke the current access token immediately via the Redis denylist."""
+    """
+    Revoke the caller's current access token immediately via the Redis denylist.
+
+    ARCH-09: No require_role() guard is applied — this is intentional.
+    Any authenticated principal (admin, analyst, operator) must be able to
+    revoke their own token without restriction. Adding a role gate here would
+    prevent lower-privileged users from logging out, which is a security
+    anti-pattern. Audit log entry is emitted on every successful call.
+    """
     jti = current_user["jti"]
     ttl = ACCESS_TOKEN_EXPIRE_MINUTES * 60
     if _denylist is None:
