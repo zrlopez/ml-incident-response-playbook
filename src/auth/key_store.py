@@ -31,6 +31,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from cryptography.hazmat.backends import default_backend
 import jwt
 
@@ -67,14 +68,25 @@ class RS256KeyStore:
         if isinstance(private_key_pem, str):
             private_key_pem = private_key_pem.encode()
         try:
-            self._private_key = serialization.load_pem_private_key(
+            _loaded = serialization.load_pem_private_key(
                 private_key_pem,
                 password=None,
                 backend=default_backend(),
             )
         except Exception as exc:
             raise ValueError(f"RS256KeyStore: failed to load private key PEM: {exc}") from exc
-        self._public_key = self._private_key.public_key()
+
+        if not isinstance(_loaded, RSAPrivateKey):
+            raise ValueError(
+                f"RS256KeyStore: expected RSA private key, got {type(_loaded).__name__}"
+            )
+        self._private_key: RSAPrivateKey = _loaded
+        _pub = self._private_key.public_key()
+        if not isinstance(_pub, RSAPublicKey):
+            raise ValueError(
+                f"RS256KeyStore: expected RSA public key, got {type(_pub).__name__}"
+            )
+        self._public_key: RSAPublicKey = _pub
         self.key_id: str = key_id or str(uuid.uuid5(
             uuid.NAMESPACE_DNS,
             self._public_key.public_bytes(
@@ -140,11 +152,11 @@ class RS256KeyStore:
     # ------------------------------------------------------------------ properties
 
     @property
-    def private_key(self):
+    def private_key(self) -> RSAPrivateKey:
         return self._private_key
 
     @property
-    def public_key(self):
+    def public_key(self) -> RSAPublicKey:
         return self._public_key
 
     # ------------------------------------------------------------------ sign / verify
@@ -216,10 +228,9 @@ class RS256KeyStore:
         """
         Return the public key as a JSON Web Key dict for /.well-known/jwks.json.
         """
-        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
         import base64
         pub: RSAPublicKey = self._public_key
-        pub_numbers = pub.public_key().public_numbers() if hasattr(pub, 'public_key') else pub.public_numbers()
+        pub_numbers = pub.public_numbers()
         def _b64(n: int) -> str:
             byte_length = (n.bit_length() + 7) // 8
             return base64.urlsafe_b64encode(
