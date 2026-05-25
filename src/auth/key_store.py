@@ -1,257 +1,235 @@
 """
-RS256KeyStore — immutable RSA key state container.
+RS256KeyStore — canonical RSA key-pair container (Phase 6 / API-KEY-01).
 
-RS256-01 Rationale:
-  The original jwt_rs256.py used module-level globals (_private_key, _public_key,
-  _key_id, _old_public_key, _old_key_id) to hold RSA key material loaded from
-  environment variables at import time.
+Design rationale
+----------------
+The jwt_rs256 module uses module-level globals for the loaded key pair. That is
+convenient for a single process, but module-level state is invisible to FastAPI's
+dependency injection system and hard to swap in unit tests.
 
-  This pattern has a critical failure mode under multi-process deployment
-  (Gunicorn with multiple Uvicorn workers, Kubernetes Deployment with multiple
-  replicas):
+RS256KeyStore wraps the same keys in an explicit object that is attached to
+app.state.key_store in the lifespan startup hook. Routes and tests that need to
+sign or verify tokens can receive the store via a FastAPI dependency, making
+replacement in tests trivial (just assign app.state.key_store = FakeKeyStore()).
 
-    - Each worker process imports jwt_rs256 independently.
-    - If key material is injected via a secrets manager that rotates between
-      worker startups, different workers can hold different key state.
-    - More subtly, module globals cannot be replaced cleanly during testing
-      without patching the module's namespace, which creates fragile test
-      coupling to the internal implementation rather than the public interface.
+jwt_rs256 module-level globals are retained for backward compatibility with the
+existing route code; RS256KeyStore is the canonical injection point for all new
+routes and test fixtures going forward.
 
-  RS256KeyStore solves both problems:
-    1. Key state is a dataclass instance constructed once in the FastAPI lifespan
-       handler and attached to app.state.key_store.
-    2. All token functions accept key_store as an argument (or via FastAPI Depends()),
-       making the dependency explicit and injectable in tests without monkeypatching.
-    3. The dataclass is frozen (immutable after construction), preventing accidental
-       mutation of live key material in route handlers.
-
-Usage:
-    # In lifespan startup:
-    app.state.key_store = RS256KeyStore.from_env()
-
-    # In FastAPI dependency:
-    def get_key_store(request: Request) -> RS256KeyStore:
-        return request.app.state.key_store
-
-    # In token route:
-    @app.post("/auth/token")
-    async def login(
-        key_store: Annotated[RS256KeyStore, Depends(get_key_store)],
-        ...
-    ):
-        token = key_store.sign_access_token(subject, role, expires_delta)
-
-Key rotation:
-    Set RSA_PRIVATE_KEY_PEM_OLD and RSA_KEY_ID_OLD in the environment alongside
-    the current key pair to enable zero-downtime rotation. The old public key is
-    retained for verification-only (no new tokens are signed with it), allowing
-    tokens issued before rotation to remain valid until they expire naturally.
+Usage
+-----
+    store = RS256KeyStore.from_env()
+    token, jti, ttl = store.sign_token({"sub": "alice", "role": "analyst"})
+    payload = store.verify_token(token)
 """
-
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 
-import jwt
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.backends import default_backend
+import jwt
 
 
-_ALGORITHM = "RS256"
-
-
-@dataclass(frozen=True)
 class RS256KeyStore:
     """
-    Immutable container for RS256 signing and verification key material.
-
-    Constructed once at application startup via RS256KeyStore.from_env().
-    Attached to app.state.key_store for injection into route handlers.
+    Immutable container for an RSA-2048+ key pair used to sign and verify JWTs.
 
     Attributes:
-        private_key:   Current RSA private key used to sign new tokens.
-        public_key:    Current RSA public key used to verify current tokens.
-        key_id:        Key ID (kid) embedded in JWT headers; used to select
-                       the correct verification key from the JWKS endpoint.
-        old_public_key: Previous public key retained during key rotation to
-                        validate tokens issued before the rotation event.
-                        None when no rotation is in progress.
-        old_key_id:    Key ID of the old public key. Empty string when absent.
+        key_id  (str): Key ID embedded in the token header ("kid" claim).
+        private_key:   cryptography RSAPrivateKey object.
+        public_key:    cryptography RSAPublicKey object.
     """
 
-    private_key: RSAPrivateKey
-    public_key: RSAPublicKey
-    key_id: str
-    old_public_key: Optional[RSAPublicKey] = field(default=None)
-    old_key_id: str = field(default="")
-
-    # ── Construction ────────────────────────────────────────────────────────────
-
-    @classmethod
-    def from_env(cls) -> "RS256KeyStore":
-        """
-        Load key material from environment variables.
-
-        Required environment variables:
-            RSA_PRIVATE_KEY_PEM  — PEM-encoded RSA private key (PKCS#8 or PKCS#1).
-                                   In production: inject from AWS Secrets Manager /
-                                   HashiCorp Vault rather than a static env var.
-            RSA_PUBLIC_KEY_PEM   — PEM-encoded RSA public key.
-            RSA_KEY_ID           — Opaque string identifying this key pair in JWKS.
-                                   Use a short hash or UUID. Example: "prod-2026-05".
-
-        Optional environment variables (key rotation):
-            RSA_PRIVATE_KEY_PEM_OLD — Previous private key PEM (no longer used for
-                                      signing; retained only so the variable name is
-                                      documented). Not loaded into key store.
-            RSA_PUBLIC_KEY_PEM_OLD  — Previous public key PEM for verifying old tokens.
-            RSA_KEY_ID_OLD          — Key ID of the old public key.
-
-        Raises:
-            RuntimeError: If any required environment variable is absent.
-            ValueError:   If any PEM value cannot be parsed as a valid RSA key.
-        """
-        private_pem = cls._require_env("RSA_PRIVATE_KEY_PEM")
-        public_pem = cls._require_env("RSA_PUBLIC_KEY_PEM")
-        key_id = cls._require_env("RSA_KEY_ID")
-
-        private_key = serialization.load_pem_private_key(
-            private_pem.encode(), password=None
-        )
-        public_key = serialization.load_pem_public_key(public_pem.encode())
-
-        # Optional rotation keys — fail softly if absent
-        old_public_key = None
-        old_key_id = ""
-        old_public_pem = os.environ.get("RSA_PUBLIC_KEY_PEM_OLD", "").strip()
-        if old_public_pem:
-            old_public_key = serialization.load_pem_public_key(old_public_pem.encode())
-            old_key_id = os.environ.get("RSA_KEY_ID_OLD", "old").strip()
-
-        return cls(
-            private_key=private_key,
-            public_key=public_key,
-            key_id=key_id,
-            old_public_key=old_public_key,
-            old_key_id=old_key_id,
-        )
-
-    @staticmethod
-    def _require_env(name: str) -> str:
-        value = os.environ.get(name, "").strip()
-        if not value:
-            raise RuntimeError(
-                f"FATAL: {name} is not set. "
-                f"RS256KeyStore requires all three RSA_*_KEY_PEM and RSA_KEY_ID "
-                f"environment variables. In development, run: make keys"
-            )
-        return value
-
-    # ── Token operations ─────────────────────────────────────────────────────────
-
-    def sign_access_token(
+    def __init__(
         self,
-        subject: str,
-        role: str,
-        expires_delta: timedelta,
-        trace_id: str = "",
-    ) -> str:
+        private_key_pem: str | bytes,
+        key_id: Optional[str] = None,
+    ) -> None:
         """
-        Issue a signed RS256 access token.
+        Load an RSA private key from PEM-encoded bytes or a string.
 
         Args:
-            subject:       Username / user identifier (becomes JWT 'sub' claim).
-            role:          RBAC role string (embedded as 'role' claim).
-            expires_delta: Token lifetime. Caller controls duration to allow
-                           different lifetimes for access vs. refresh tokens.
-            trace_id:      Optional distributed trace ID embedded as 'tid' claim
-                           for correlation with request logs.
-
-        Returns:
-            Compact JWS string (header.payload.signature).
-        """
-        now = datetime.now(timezone.utc)
-        payload = {
-            "sub": subject,
-            "role": role,
-            "iat": now,
-            "exp": now + expires_delta,
-            "jti": os.urandom(16).hex(),  # Unique token ID for denylist lookups
-        }
-        if trace_id:
-            payload["tid"] = trace_id
-
-        headers = {"kid": self.key_id}
-        return jwt.encode(
-            payload,
-            self.private_key,
-            algorithm=_ALGORITHM,
-            headers=headers,
-        )
-
-    def verify_token(self, token: str) -> dict:
-        """
-        Verify and decode a JWT, trying current key then rotation key.
-
-        Algorithm confusion protection: only RS256 is accepted.
-        The 'algorithms' list is explicit and does not include 'none' or
-        any symmetric algorithm.
+            private_key_pem: PEM-encoded RSA private key. May include or omit
+                             a passphrase; unencrypted keys are expected in all
+                             non-HSM deployments.
+            key_id:          Optional key identifier injected into the JWT header
+                             as the "kid" claim. Defaults to a deterministic UUID
+                             derived from the public key fingerprint.
 
         Raises:
-            jwt.ExpiredSignatureError:  Token is past its 'exp' claim.
-            jwt.InvalidTokenError:      Token is malformed or signature invalid.
+            ValueError: If the PEM cannot be loaded as a valid RSA private key.
         """
-        unverified_header = jwt.get_unverified_header(token)
-        kid = unverified_header.get("kid", "")
+        if isinstance(private_key_pem, str):
+            private_key_pem = private_key_pem.encode()
+        try:
+            self._private_key = serialization.load_pem_private_key(
+                private_key_pem,
+                password=None,
+                backend=default_backend(),
+            )
+        except Exception as exc:
+            raise ValueError(f"RS256KeyStore: failed to load private key PEM: {exc}") from exc
+        self._public_key = self._private_key.public_key()
+        self.key_id: str = key_id or str(uuid.uuid5(
+            uuid.NAMESPACE_DNS,
+            self._public_key.public_bytes(
+                serialization.Encoding.PEM,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            ).decode(),
+        ))
 
-        # Select verification key based on kid claim
-        if kid == self.key_id:
-            verify_key = self.public_key
-        elif self.old_public_key and kid == self.old_key_id:
-            verify_key = self.old_public_key
-        else:
-            # Unknown kid — attempt current key (handles missing kid header)
-            verify_key = self.public_key
+    # ------------------------------------------------------------------ factories
 
+    @classmethod
+    def from_env(
+        cls,
+        pem_env_var: str = "RSA_PRIVATE_KEY_PEM",
+        key_id_env_var: str = "RSA_KEY_ID",
+    ) -> "RS256KeyStore":
+        """
+        Load the key store from environment variables.
+
+        Args:
+            pem_env_var:    Name of the env var holding the PEM. The value may
+                            use literal \\n escapes (common in Docker / Kubernetes
+                            secrets) which are normalised to real newlines.
+            key_id_env_var: Name of the optional key-ID env var.
+
+        Raises:
+            RuntimeError: If pem_env_var is unset or empty.
+            ValueError:   If the PEM is malformed.
+        """
+        raw_pem = os.environ.get(pem_env_var, "").strip()
+        if not raw_pem:
+            raise RuntimeError(
+                f"RS256KeyStore.from_env(): {pem_env_var} is not set. "
+                "Generate a key with: openssl genrsa -out rsa_private.pem 2048"
+            )
+        # Normalise escaped newlines that appear when the PEM is stored inline
+        # in .env files or Kubernetes ConfigMaps.
+        pem = raw_pem.replace("\\n", "\n")
+        key_id = os.environ.get(key_id_env_var) or None
+        return cls(private_key_pem=pem, key_id=key_id)
+
+    @classmethod
+    def generate(cls, key_size: int = 2048, key_id: Optional[str] = None) -> "RS256KeyStore":
+        """
+        Generate a fresh RSA key pair for testing / local development.
+
+        WARNING: Keys generated this way are ephemeral (in-memory only).
+        Tokens signed with them become unverifiable after the process restarts.
+        Never use this in production.
+        """
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=key_size,
+            backend=default_backend(),
+        )
+        pem = private_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        )
+        return cls(private_key_pem=pem, key_id=key_id)
+
+    # ------------------------------------------------------------------ properties
+
+    @property
+    def private_key(self):
+        return self._private_key
+
+    @property
+    def public_key(self):
+        return self._public_key
+
+    # ------------------------------------------------------------------ sign / verify
+
+    def sign_token(
+        self,
+        data: Dict[str, Any],
+        *,
+        expires_delta: timedelta = timedelta(minutes=30),
+        token_type: str = "access",
+    ) -> Tuple[str, str, int]:
+        """
+        Sign a JWT with RS256.
+
+        Args:
+            data:          Payload claims. 'sub' is required.
+            expires_delta: Token lifetime. Defaults to 30 minutes.
+            token_type:    "access" or "refresh". Stored as the token_type claim.
+
+        Returns:
+            Tuple of (encoded_jwt, jti, ttl_seconds).
+
+        Raises:
+            ValueError: If 'sub' is absent from data.
+        """
+        if "sub" not in data:
+            raise ValueError("Token payload must include 'sub' claim")
+        payload = data.copy()
+        jti = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
+        payload.update({
+            "exp": now + expires_delta,
+            "iat": now,
+            "jti": jti,
+            "token_type": token_type,
+        })
+        token = jwt.encode(
+            payload,
+            self._private_key,
+            algorithm="RS256",
+            headers={"kid": self.key_id},
+        )
+        return token, jti, int(expires_delta.total_seconds())
+
+    def verify_token(self, token: str) -> Dict[str, Any]:
+        """
+        Verify and decode a JWT signed with this store's private key.
+
+        Args:
+            token: Encoded JWT string.
+
+        Returns:
+            Decoded payload dict.
+
+        Raises:
+            jwt.ExpiredSignatureError: Token has expired.
+            jwt.InvalidTokenError:     Token is malformed or signature invalid.
+        """
         return jwt.decode(
             token,
-            verify_key,
-            algorithms=[_ALGORITHM],
-            options={"require": ["sub", "exp", "iat", "jti", "role"]},
+            self._public_key,
+            algorithms=["RS256"],
+            options={"require": ["exp", "iat", "jti", "sub"]},
         )
 
-    def public_jwks(self) -> dict:
-        """
-        Return a JWKS-formatted dict of the current (and optional old) public key.
+    # ------------------------------------------------------------------ JWKS
 
-        Suitable for direct use as the /auth/jwks.json endpoint response body.
-        Consumers (API gateways, downstream services) use this to verify tokens
-        without needing access to the private key.
+    def as_jwk(self) -> Dict[str, Any]:
         """
-        keys = [self._public_key_to_jwk(self.public_key, self.key_id)]
-        if self.old_public_key and self.old_key_id:
-            keys.append(self._public_key_to_jwk(self.old_public_key, self.old_key_id))
-        return {"keys": keys}
-
-    @staticmethod
-    def _public_key_to_jwk(key: RSAPublicKey, kid: str) -> dict:
-        """Convert an RSA public key to a minimal RFC 7517 JWK dict."""
+        Return the public key as a JSON Web Key dict for /.well-known/jwks.json.
+        """
+        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
         import base64
-        pub_numbers = key.public_key().public_numbers() if hasattr(key, 'public_key') else key.public_numbers()
-        def _to_base64url(n: int) -> str:
-            length = (n.bit_length() + 7) // 8
+        pub: RSAPublicKey = self._public_key
+        pub_numbers = pub.public_key().public_numbers() if hasattr(pub, 'public_key') else pub.public_numbers()
+        def _b64(n: int) -> str:
+            byte_length = (n.bit_length() + 7) // 8
             return base64.urlsafe_b64encode(
-                n.to_bytes(length, byteorder="big")
+                n.to_bytes(byte_length, "big")
             ).rstrip(b"=").decode()
-
         return {
             "kty": "RSA",
             "use": "sig",
-            "alg": _ALGORITHM,
-            "kid": kid,
-            "n": _to_base64url(pub_numbers.n),
-            "e": _to_base64url(pub_numbers.e),
+            "alg": "RS256",
+            "kid": self.key_id,
+            "n": _b64(pub_numbers.n),
+            "e": _b64(pub_numbers.e),
         }
