@@ -1,6 +1,23 @@
 # =============================================================================
 # MkDocs GitHub Pages Deploy
 # =============================================================================
+# Changelog (Conventional Commits — type(scope): summary):
+#   2026-05-25 v1.0.0 CI-28 feat(docs): initial MkDocs Material + GitHub Pages deploy
+#   2026-05-25 v1.0.1 CI-37 fix(docs): add digest reference block; add inline SHA
+#                    comments on all action uses (F-03 — convention compliance)
+# =============================================================================
+#
+# ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
+#   actions/checkout@v4.3.0
+#     -> ef36d1093e2975a02b4c6a03c8b73990a59a478f
+#   actions/setup-python@v5.6.0
+#     -> a26af69be951a213d495a4c3e4e4022e16d87065
+#   actions/upload-pages-artifact@v5.0.0
+#     -> fc324d3547104276b827a68afc52ff2a11cc49c9
+#   actions/deploy-pages@v5.0.0
+#     -> cd2ce8fcbc39b97be8ca5fce6e763baed58fa128
+# =============================================================================
+#
 # Builds the MkDocs Material site and deploys to GitHub Pages (gh-pages branch).
 #
 # Trigger: push to main; pull_request to main (build-only, no deploy)
@@ -29,7 +46,7 @@ jobs:
     name: Build MkDocs site
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.3.0
+      - uses: actions/checkout@v4.3.0  # ef36d1093e2975a02b4c6a03c8b73990a59a478f
         with:
           fetch-depth: 0  # full history for git-revision-date plugin if added later
 
