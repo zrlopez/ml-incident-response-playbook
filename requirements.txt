@@ -70,7 +70,7 @@ httpx==0.28.1
 opentelemetry-api==1.27.0
 opentelemetry-sdk==1.27.0
 opentelemetry-instrumentation-fastapi==0.48b0
-opentelemetry-exporter-otlp-proto-grpc==1.27.0
+opentelemetry-exporter-otlp-proto-grpc==1.42.1
 prometheus-fastapi-instrumentator==7.0.0
 # NOTE: protobuf is a transitive dep via opentelemetry-proto==1.27.0 which
 # caps it at <5.0. CVE-2026-0994 cannot be pinned to 5.x without breaking
