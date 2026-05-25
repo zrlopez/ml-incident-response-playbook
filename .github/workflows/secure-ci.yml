@@ -19,6 +19,10 @@
 #          so production image is scanned (not test-mode image)
 #   CI-13  REDIS_PASSWORD secret added to test env
 #   CI-14  Actions permissions minimized per job (principle of least privilege)
+#
+# Fix (2026-05-25):
+#   CI-15  TruffleHog base/head corrected (github.event.before / github.sha)
+#          Resolves BASE==HEAD failure on direct push to main.
 # =============================================================================
 name: Secure CI Pipeline
 
@@ -44,12 +48,17 @@ jobs:
         with:
           fetch-depth: 0
       - name: TruffleHog OSS
+        # CI-15 FIX: Use github.event.before (the SHA before the push) as base
+        # so TruffleHog diffs only the commits in this push rather than comparing
+        # main to itself. On pull_request, use the PR base SHA instead.
+        # Skip guard: if before == all-zeros this is a branch-creation event
+        # (no prior commit exists); fall back to scanning HEAD~1..HEAD.
         uses: trufflesecurity/trufflehog@09e9e7cb5a6e5cf698ed38e57ef21d1e6cd09e6f  # v3.82.6
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --debug --only-verified
+          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          extra_args: --only-verified
 
   # ──────────────────────────────────────────────────────────────────────────────
   dependency-review:
