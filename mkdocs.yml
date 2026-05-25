@@ -10,7 +10,7 @@ site_description: >-
   Production-grade ML incident response API — architecture, runbooks,
   monitoring, governance, and CI/CD documentation.
 site_author: Zachary Ryan Lopez
-site_url: https://zrlopez.github.io/ml-incident-response-playbook/
+site_url: https://mlops.zrl.dev/
 
 repo_name: zrlopez/ml-incident-response-playbook
 repo_url: https://github.com/zrlopez/ml-incident-response-playbook

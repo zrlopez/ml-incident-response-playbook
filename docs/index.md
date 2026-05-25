@@ -1,7 +1,7 @@
 # ML Incident Response Playbook
 
 [![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml/badge.svg)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml)
-[![Docs](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/docs.yml/badge.svg)](https://zrlopez.github.io/ml-incident-response-playbook/)
+[![Docs](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/docs.yml/badge.svg)](https://mlops.zrl.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/LICENSE)
 
 A **production-grade FastAPI service** for detecting, triaging, and resolving
@@ -46,5 +46,5 @@ See [Setup](setup.md) and [Deployment](deployment.md) for full details.
 - **[API Reference](api_reference.md)** — endpoint contracts, auth flows, error schemas
 - **[Monitoring](monitoring.md)** — Prometheus metrics, alert rules, drift detection
 - **[Governance](governance.md)** — data handling, PII policy, SLA definitions
-- **[Runbooks](troubleshooting.md)** — on-call triage steps
+- **[Troubleshooting](troubleshooting.md)** — on-call triage steps
 - **[Contributing](CONTRIBUTING.md)** — branch model, commit convention, PR checklist
