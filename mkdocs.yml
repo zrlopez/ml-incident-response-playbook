@@ -90,6 +90,8 @@ nav:
     - Governance Exception Register: policies/governance-exception-register.md
     - Secrets Management: policies/secrets_management.md
   - Deployment: deployment.md
+  - CI/CD:
+    - CI Conventions: ci-conventions.md
   - Operations:
     - Onboarding: onboarding.md
     - Operational Principles: operational_principles.md
