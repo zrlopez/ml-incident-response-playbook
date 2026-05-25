@@ -36,32 +36,48 @@ flowchart LR
 - Sample incident logs and postmortem artifacts.
 - Starter Python modules for logging, incident tracking, validation, and anomaly checks.
 - Documentation pages for onboarding, governance, deployment, setup, and monitoring.
-- CI-ready repository structure with Docker and workflow templates.
+- CI-ready repository structure with Docker and hardened GitHub Actions workflows.
 
 ## Repository Structure
 
 ```text
 ml-incident-response-playbook/
-├── runbooks/
-├── templates/
-├── diagrams/
-├── examples/
-├── metrics/
+├── .github/
+│   └── workflows/
+│       ├── secure-ci.yml          # Hardened CI pipeline (TruffleHog, Bandit, mypy, Trivy, SBOM)
+│       └── workflow_template.yml  # Reusable workflow template
+├── api/                           # FastAPI application code
+├── alembic/                       # Database migration environment
+├── configs/                       # Environment and service configuration files
+├── dashboards/                    # Grafana or observability dashboard definitions
+├── dbt/                           # dbt models and data transformation layer
 ├── docs/
-├── src/
-├── pipelines/
-├── orchestration/
-├── monitoring/
-├── dashboards/
-├── configs/
-├── infrastructure/
-├── tests/
-├── scripts/
-├── api/
-├── ml_models/
-├── validation/
-├── observability/
-└── ci_cd/
+│   ├── diagrams/                  # Mermaid flowcharts for each incident type
+│   ├── templates/                 # Escalation, postmortem, and update templates
+│   └── policies/                  # Governance and security policy documents
+├── examples/                      # Sample incident logs and postmortem artifacts
+├── infrastructure/                # IaC and deployment manifests
+├── metrics/                       # KPI definitions and metric tracking
+├── migrations/                    # Alembic migration scripts
+├── ml_models/                     # Model artifacts and evaluation scaffolding
+├── observability/                 # Logging helpers, drift checks, anomaly detection
+├── orchestration/                 # Airflow DAGs and scheduling templates
+├── pipelines/                     # Data pipeline definitions
+├── runbooks/                      # Step-by-step incident response runbooks
+├── scripts/                       # Utility and seed scripts
+├── src/                           # Shared library code
+├── tests/                         # Pytest test suite
+├── validation/                    # Data validation rules and schema checks
+├── Dockerfile
+├── Dockerfile.dev
+├── docker-compose.yml
+├── Makefile
+├── pyproject.toml
+├── requirements.txt
+├── requirements-dev.txt
+├── requirements-airflow.txt
+├── README.md
+└── SECURITY.md
 ```
 
 ## Installation
@@ -122,7 +138,7 @@ This project can be published as a static documentation site with GitHub Pages o
 
 ## CI/CD Overview
 
-The repo includes a GitHub Actions workflow template for validation, formatting, tests, and documentation checks. This helps demonstrate DevOps maturity and branch-safe delivery practices.
+The repo includes a hardened GitHub Actions pipeline (`secure-ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating at 75%, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. A reusable `workflow_template.yml` is also provided for new service onboarding.
 
 ## Roadmap
 
