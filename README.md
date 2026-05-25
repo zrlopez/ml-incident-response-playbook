@@ -4,7 +4,7 @@
 ![Docs](https://img.shields.io/badge/docs-Markdown%20%2B%20Mermaid-0A66C2)
 ![Stack](https://img.shields.io/badge/stack-GitHub%20%2B%20Python%20%2B%20Docker-111827)
 ![License](https://img.shields.io/badge/license-MIT-blue)
-[![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/ci.yml)
+[![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml/badge.svg?branch=main)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml)
 
 A production-style operational documentation repo for ML and AI incident response.
 
@@ -44,8 +44,8 @@ flowchart LR
 ml-incident-response-playbook/
 ├── .github/
 │   └── workflows/
-│       ├── secure-ci.yml          # Hardened CI pipeline (TruffleHog, Bandit, mypy, Trivy, SBOM)
-│       └── workflow_template.yml  # Reusable workflow template
+│       ├── secured_ci.yml         # Hardened CI pipeline (TruffleHog, Bandit, mypy, Trivy, SBOM)
+│       └── codeql.yml             # GitHub CodeQL analysis workflow
 ├── api/                           # FastAPI application code
 ├── alembic/                       # Database migration environment
 ├── configs/                       # Environment and service configuration files
@@ -138,7 +138,7 @@ This project can be published as a static documentation site with GitHub Pages o
 
 ## CI/CD Overview
 
-The repo includes a hardened GitHub Actions pipeline (`secure-ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating at 75%, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. A reusable `workflow_template.yml` is also provided for new service onboarding.
+The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥60% on unit tests** (SQLite, fast) and **≥40% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
 
 ## Roadmap
 
