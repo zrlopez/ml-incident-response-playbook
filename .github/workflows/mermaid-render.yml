@@ -1,6 +1,19 @@
 # =============================================================================
 # Mermaid Diagram Renderer
 # =============================================================================
+# Changelog (Conventional Commits — type(scope): summary):
+#   2026-05-25 v1.0.0 CI-28 feat(docs): initial Mermaid render workflow
+#   2026-05-25 v1.0.1 CI-38 fix(ci): SHA-pin actions/checkout; add digest reference
+#                    block (closes [GAP: mermaid-render.yml checkout not SHA-pinned])
+# =============================================================================
+#
+# ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
+#   actions/checkout@v4.3.0
+#     -> ef36d1093e2975a02b4c6a03c8b73990a59a478f
+#   actions/setup-node@v4.4.0
+#     -> 49933ea5288caeca8642d1e84afbd3f7d6820020
+# =============================================================================
+#
 # Converts every docs/diagrams/*.mmd source file to a PNG artifact and
 # commits the rendered images back to docs/diagrams/rendered/ on the branch.
 #
@@ -27,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.3.0
+        uses: actions/checkout@v4.3.0  # ef36d1093e2975a02b4c6a03c8b73990a59a478f
         with:
           fetch-depth: 0
 
