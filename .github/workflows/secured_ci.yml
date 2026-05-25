@@ -359,6 +359,9 @@ jobs:
     needs: container-scan
     steps:
       - name: Summarise gate results
+        env:
+          GIT_REF: ${{ github.ref }}
+          GIT_SHA: ${{ github.sha }}
         run: |
           echo "========================================"
           echo "  DEPLOYMENT READINESS GATE SUMMARY"
@@ -370,6 +373,6 @@ jobs:
           echo "container-scan (trivy) ....... passed (hard gate)"
           echo "sbom ......................... generated (SPDX, 365-day retention)"
           echo "========================================"
-          echo "  Branch: ${{ github.ref }}"
-          echo "  SHA:    ${{ github.sha }}"
+          echo "  Branch: $GIT_REF"
+          echo "  SHA:    $GIT_SHA"
           echo "========================================"
