@@ -2,11 +2,14 @@
 Incident tracker — production-grade SQLAlchemy async ORM + repository.
 
 Remediation history:
-  R-05    Replaced 6-line flat-file appender with async ORM + connection pool
-  CR-1    Removed create_all bootstrap; startup now delegates to Alembic (2026-05-23)
-  CR-2    Wired IncidentRepository.update_status() through domain state machine (2026-05-23)
-  OPEN-01 Explicit updated_at write on every status/metadata transition (2026-05-24)
-  OPEN-02 Cursor-based (keyset) pagination on list_open() and list_by_severity() (2026-05-24)
+  R-05      Replaced 6-line flat-file appender with async ORM + connection pool
+  CR-1      Removed create_all bootstrap; startup now delegates to Alembic (2026-05-23)
+  CR-2      Wired IncidentRepository.update_status() through domain state machine (2026-05-23)
+  OPEN-01   Explicit updated_at write on every status/metadata transition (2026-05-24)
+  OPEN-02   Cursor-based (keyset) pagination on list_open() and list_by_severity() (2026-05-24)
+  KEYSET-01 Compound (created_at, id) tiebreaker added to keyset cursor WHERE clause
+            to prevent silent row drops when incidents share the same created_at timestamp.
+            See alembic/versions/xxxx_add_keyset_composite_index.py for the covering index.
 
 Architecture:
   - SQLAlchemy 2.0 async ORM (asyncpg for PostgreSQL, aiosqlite for test)
@@ -26,10 +29,14 @@ State-machine discipline (CR-2):
   - Invalid transitions raise InvalidTransitionError (HTTP 409 in the API layer).
   - Every transition attempt — allowed or rejected — is audit-logged.
 
-Pagination discipline (OPEN-02):
+Pagination discipline (OPEN-02 + KEYSET-01):
   - list_open() and list_by_severity() accept an optional before_id cursor.
-  - When supplied, a keyset WHERE filters to rows older than the cursor row.
-  - This avoids full-table scans that offset-based slicing in Python caused.
+  - KEYSET-01: The cursor WHERE now uses a compound (created_at, id) predicate:
+      WHERE (created_at < cursor.created_at)
+         OR (created_at = cursor.created_at AND id < cursor.id)
+    This ensures stable, gapless pagination even when multiple incidents are
+    created within the same timestamp tick.
+  - The ix_incidents_keyset index (btree on created_at, id) covers this predicate.
 
 Database URLs:
   - Local / test:  DATABASE_URL=sqlite+aiosqlite:///./incidents.db
@@ -44,7 +51,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
 import structlog
-from sqlalchemy import DateTime, Enum as SAEnum, String, Text, text, select
+from sqlalchemy import DateTime, Enum as SAEnum, String, Text, and_, or_, text, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -139,7 +146,14 @@ class Incident(Base):
     )
 
     def to_dict(self) -> dict:
-        """Serialise to a JSON-safe dict for API responses."""
+        """Serialise to a JSON-safe dict for API responses.
+
+        PYDANTIC-01 NOTE: The canonical API-layer serialiser is now
+        src.schemas.incident.IncidentResponse, which is a typed Pydantic model
+        that validates response shape at the serialization boundary. Use that
+        for all new API routes. to_dict() is retained for backward compatibility
+        with existing internal callers and tests.
+        """
         return {
             "id": self.id,
             "title": self.title,
@@ -288,6 +302,35 @@ class IncidentRepository:
         """Retrieve a single incident by primary key. Returns None if not found."""
         return await self._session.get(Incident, incident_id)
 
+    def _keyset_cursor_clause(self, cursor_row: Incident):
+        """
+        Build a compound keyset cursor WHERE clause for stable pagination.
+
+        KEYSET-01: Single-column cursor (created_at < cursor.created_at) is
+        ambiguous when multiple incidents share the same created_at timestamp —
+        rows created in the same tick can be silently skipped or duplicated
+        depending on the DB page boundary.
+
+        The compound predicate:
+            (created_at < cursor.created_at)
+            OR (created_at = cursor.created_at AND id < cursor.id)
+
+        ..guarantees gapless, stable pagination as long as (created_at, id) is
+        the ORDER BY key and the ix_incidents_keyset index covers both columns.
+
+        Note: String UUID comparison is lexicographically ordered and consistent
+        within a single page; it is NOT chronologically ordered. This is acceptable
+        here because the tiebreaker is only invoked within the same timestamp tick,
+        where insertion order within that tick is non-deterministic regardless.
+        """
+        return or_(
+            Incident.created_at < cursor_row.created_at,
+            and_(
+                Incident.created_at == cursor_row.created_at,
+                Incident.id < cursor_row.id,
+            ),
+        )
+
     async def list_open(
         self,
         limit: int = 100,
@@ -296,12 +339,13 @@ class IncidentRepository:
         """
         Return non-CLOSED incidents ordered newest-first.
 
-        OPEN-02: Keyset (cursor) pagination via before_id.
+        OPEN-02 + KEYSET-01: Compound keyset (cursor) pagination via before_id.
           - When before_id is None, returns the first page (newest limit rows).
-          - When before_id is supplied, returns rows whose created_at is strictly
-            older than the cursor row's created_at, enabling efficient seek-method
-            pagination without full-table scans.
+          - When before_id is supplied, the compound predicate
+            (created_at, id) ensures gapless pagination even under high-velocity
+            creation where multiple incidents can share the same created_at tick.
           - Limit is hard-capped at 1000.
+          - Backed by ix_incidents_keyset composite index (btree on created_at, id).
 
         Args:
             limit:     Maximum rows to return (default 100, hard cap 1000).
@@ -315,7 +359,7 @@ class IncidentRepository:
         stmt = (
             select(Incident)
             .where(Incident.status != IncidentStatus.CLOSED)
-            .order_by(Incident.created_at.desc())
+            .order_by(Incident.created_at.desc(), Incident.id.desc())
             .limit(effective_limit)
         )
 
@@ -326,7 +370,7 @@ class IncidentRepository:
                     f"Cursor incident_id '{before_id}' not found. "
                     "Pass a valid id from the previous page."
                 )
-            stmt = stmt.where(Incident.created_at < cursor_row.created_at)
+            stmt = stmt.where(self._keyset_cursor_clause(cursor_row))
 
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
@@ -340,7 +384,7 @@ class IncidentRepository:
         """
         Return open incidents for a given severity, newest first.
 
-        OPEN-02: Same keyset cursor semantics as list_open().
+        OPEN-02 + KEYSET-01: Same compound cursor semantics as list_open().
 
         Args:
             severity:  Filter to this severity level.
@@ -357,7 +401,7 @@ class IncidentRepository:
                 Incident.severity == severity,
                 Incident.status != IncidentStatus.CLOSED,
             )
-            .order_by(Incident.created_at.desc())
+            .order_by(Incident.created_at.desc(), Incident.id.desc())
             .limit(effective_limit)
         )
 
@@ -368,7 +412,7 @@ class IncidentRepository:
                     f"Cursor incident_id '{before_id}' not found. "
                     "Pass a valid id from the previous page."
                 )
-            stmt = stmt.where(Incident.created_at < cursor_row.created_at)
+            stmt = stmt.where(self._keyset_cursor_clause(cursor_row))
 
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
