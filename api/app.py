@@ -15,6 +15,8 @@ Findings addressed:
   MED-06   configure_logging() called at startup
   R-03     Redis-backed distributed JWT denylist replaces process-local set
   R-20     OTel tracing bootstrap via observability/otel_setup.py
+  ARCH-01  RS256 token signing when RSA_PRIVATE_KEY_PEM is set (Phase 2)
+  ARCH-07  _USERS stub allowlist guard — blocks staging bypass (Phase 2)
 """
 from __future__ import annotations
 
@@ -98,15 +100,25 @@ _user_repo: AbstractUserRepository | None = None
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 # ── Stub user store ───────────────────────────────────────────────────────
-# PRODUCTION GATE: Hard-fail on startup if ENVIRONMENT=production.
-# Replace with PostgresUserRepository before any production deployment.
-# See api/user_repository.py for the production implementation contract.
-if ENVIRONMENT == "production":
+# ARCH-07: Explicit allowlist guard — only 'development' and 'test' may run
+# the in-memory _USERS stub. Any other ENVIRONMENT value (including 'staging',
+# 'uat', 'preprod', or a typo) raises a FATAL error at startup.
+# Rationale: the previous guard (ENVIRONMENT == 'production') was a single-value
+# blocklist; a misconfigured staging deployment with ENVIRONMENT='staging' would
+# silently run the stub user store with in-memory credentials.
+_STUB_ALLOWED_ENVIRONMENTS = {"development", "test"}
+if ENVIRONMENT not in _STUB_ALLOWED_ENVIRONMENTS:
     raise RuntimeError(
         "\n"
-        "  FATAL: Stub user store must not run in production.\n"
-        "  Action: Wire PostgresUserRepository in api/user_repository.py\n"
-        "  and inject it via the lifespan context before deploying.\n"
+        f"  FATAL: In-memory _USERS stub is not permitted in ENVIRONMENT='{ENVIRONMENT}'.\n"
+        "  The stub is only safe in: development, test.\n"
+        "\n"
+        "  If this is a production/staging deployment:\n"
+        "    Action: Wire PostgresUserRepository in api/user_repository.py\n"
+        "    and set DATABASE_URL=postgresql+asyncpg://... before starting.\n"
+        "\n"
+        "  If this is a local environment incorrectly named:\n"
+        "    Fix: Set ENVIRONMENT=development in your .env file.\n"
     )
 
 # CRIT-A REMEDIATION (Phase 0): All plaintext fallback passwords removed.
@@ -238,6 +250,18 @@ class IncidentUpdate(BaseModel):
 
 
 # ── JWT helpers ────────────────────────────────────────────────────────────
+#
+# ARCH-01 (Phase 2): create_access_token, create_refresh_token, and decode_token
+# now route through jwt_rs256 when RS256 keys are loaded (RSA_PRIVATE_KEY_PEM set).
+# The HS256 path is retained as a fallback for dev/CI environments where
+# RSA_PRIVATE_KEY_PEM is intentionally absent.
+#
+# Routing logic:
+#   jwt_rs256.rs256_available() → True  ⟹  RS256 path (sign_token / verify_token)
+#   jwt_rs256.rs256_available() → False ⟹  HS256 path (PyJWT direct, existing code)
+#
+# Keys are loaded in the lifespan startup hook; rs256_available() is safe to call
+# at any point after startup.
 
 def create_access_token(
     data: Dict[str, Any],
@@ -245,6 +269,9 @@ def create_access_token(
 ) -> Tuple[str, str, int]:
     """
     Create a signed JWT access token.
+
+    Routes through RS256 (jwt_rs256.sign_token) when RSA keys are loaded;
+    falls back to HS256 (PyJWT direct) in dev/CI.
 
     Args:
         data: Payload claims to encode. Must include 'sub' and 'role'.
@@ -259,10 +286,16 @@ def create_access_token(
     """
     if "sub" not in data or "role" not in data:
         raise ValueError("Token payload must include 'sub' and 'role' claims")
+    delta = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    # ARCH-01: Prefer RS256 when keys are loaded.
+    if jwt_rs256.rs256_available():
+        return jwt_rs256.sign_token(data.copy(), expires_delta=delta, token_type="access")
+
+    # HS256 fallback (dev/CI only)
     to_encode = data.copy()
     jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    delta = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     expire = now + delta
     to_encode.update({
         "exp": expire,
@@ -280,6 +313,9 @@ def create_refresh_token(
     """
     Create a signed JWT refresh token.
 
+    Routes through RS256 (jwt_rs256.sign_token) when RSA keys are loaded;
+    falls back to HS256 (PyJWT direct) in dev/CI.
+
     Args:
         data: Payload claims to encode. Must include 'sub'.
 
@@ -291,10 +327,16 @@ def create_refresh_token(
     """
     if "sub" not in data:
         raise ValueError("Refresh token payload must include 'sub' claim")
+    delta = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+    # ARCH-01: Prefer RS256 when keys are loaded.
+    if jwt_rs256.rs256_available():
+        return jwt_rs256.sign_token(data.copy(), expires_delta=delta, token_type="refresh")
+
+    # HS256 fallback (dev/CI only)
     to_encode = data.copy()
     jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    delta = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     expire = now + delta
     to_encode.update({
         "exp": expire,
@@ -307,8 +349,20 @@ def create_refresh_token(
 
 
 def decode_token(token: str) -> Dict[str, Any]:
-    """Decode and validate a JWT with an explicit algorithm allowlist."""
+    """
+    Decode and validate a JWT.
+
+    Routes through RS256 (jwt_rs256.verify_token) when keys are loaded;
+    falls back to HS256 (PyJWT direct) in dev/CI.
+    Both paths enforce an explicit algorithm allowlist — no 'none' or
+    algorithm-confusion attacks possible in either branch.
+    """
     try:
+        # ARCH-01: Prefer RS256 verification path when keys are loaded.
+        if jwt_rs256.rs256_available():
+            return jwt_rs256.verify_token(token)
+
+        # HS256 fallback (dev/CI only)
         payload = jwt.decode(
             token,
             JWT_SECRET,
@@ -624,12 +678,17 @@ async def readiness() -> JSONResponse:
     checks: Dict[str, str] = {}
     all_ok = True
 
-    # JWT subsystem check
+    # JWT subsystem check — exercises the active signing path (RS256 or HS256)
     try:
         _test_payload = {"sub": "__healthcheck__", "role": "_probe"}
         test_token, test_jti, _ = create_access_token(_test_payload, timedelta(seconds=5))
-        jwt.decode(test_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        # Verify using the same active path
+        if jwt_rs256.rs256_available():
+            jwt_rs256.verify_token(test_token)
+        else:
+            jwt.decode(test_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         checks["jwt_subsystem"] = "ok"
+        checks["jwt_algorithm"] = "RS256" if jwt_rs256.rs256_available() else "HS256"
     except Exception as exc:
         checks["jwt_subsystem"] = f"error: {exc}"
         all_ok = False
