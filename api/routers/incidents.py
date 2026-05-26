@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_current_user, require_role
+from src.incident_tracker import InvalidTransitionError  # noqa: E402
 from api.rate_limit import check_user_rate_limit
 from api.schemas import IncidentCreate, StatusUpdate, IncidentUpdate
 from src.incident_tracker import IncidentStatus, SeverityLevel, get_session
@@ -146,6 +147,9 @@ async def update_incident_status(
             new_status=new_status_enum,
             transitioned_by=current_user["username"],
         )
+    except InvalidTransitionError:
+        # Let the app-level exception handler return 409 with structured body.
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     return IncidentResponse.model_validate(record.to_dict())
