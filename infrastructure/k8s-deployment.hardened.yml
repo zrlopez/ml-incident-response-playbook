@@ -1,15 +1,18 @@
 # =============================================================================
 # ML Incident Response API - Hardened Kubernetes Manifests
-# Remediation 2026-05-23
+# Remediation 2026-05-23 / 2026-05-26
 # K8S-01: Fixed ALL `meta:` typos -> `metadata:` (deployment was undeployable)
 # K8S-02: Pin container image to SHA digest
 # K8S-03: Scope egress port 5432 to DB namespace/pod selector
 # K8S-04: TLS Ingress with cert-manager
+# K8S-05 (R-07): Fix Prometheus scrape port annotation 8000 -> 8080
+# K8S-06 (R-18): Add HorizontalPodAutoscaler (minReplicas=2, maxReplicas=10)
+# K8S-07 (R-18): Add Redis egress rule to NetworkPolicy
 # =============================================================================
 ---
 apiVersion: v1
 kind: Namespace
-metadata:                     # FIXED: was `meta:`
+metadata:                     # FIXED K8S-01: was `meta:`
   name: ml-platform
   labels:
     pod-security.kubernetes.io/enforce: restricted
@@ -17,15 +20,20 @@ metadata:                     # FIXED: was `meta:`
 ---
 apiVersion: v1
 kind: ServiceAccount
-metadata:                     # FIXED: was `meta:`
+metadata:                     # FIXED K8S-01: was `meta:`
   name: ml-incident-api-sa
   namespace: ml-platform
   annotations:
+    # IRSA: this annotation binds the K8s ServiceAccount to an AWS IAM role
+    # via OIDC federation. The pod does NOT need automountServiceAccountToken
+    # for IRSA — the token is injected as a projected volume by the EKS
+    # pod identity webhook, separate from the default SA token.
+    # See: https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
     eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/ml-incident-api-role"
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata:                     # FIXED: was `meta:`
+metadata:                     # FIXED K8S-01: was `meta:`
   name: ml-incident-api
   namespace: ml-platform
   labels:
@@ -36,15 +44,24 @@ spec:
     matchLabels:
       app: ml-incident-api
   template:
-    metadata:                 # FIXED: was `meta:`
+    metadata:                 # FIXED K8S-01: was `meta:`
       labels:
         app: ml-incident-api
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8000"
+        # K8S-05 FIX: was 8000 (app container port). Prometheus scrape must
+        # target the metrics endpoint port. Uvicorn binds 8080 externally;
+        # /metrics is served on 8080. Update if a dedicated metrics port
+        # (e.g. 9090) is introduced via prometheus-fastapi-instrumentator.
+        prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
+        # KEDA annotation for future event-driven autoscaling migration
+        keda.sh/scaler: "cpu"
     spec:
       serviceAccountName: ml-incident-api-sa
+      # automountServiceAccountToken=false: prevents default SA token from being
+      # mounted. IRSA uses a separate OIDC-scoped token injected by the EKS
+      # pod identity webhook — not the default token. Safe to disable here.
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -54,12 +71,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          # FIXED: was mutable tag `ml-incident-api:1.0.0`
-          # Replace placeholder with actual digest from CI pipeline.
+          # K8S-02: Replace placeholder with actual digest from CI pipeline.
+          # CI pipeline outputs: docker/build-push-action -> outputs.digest
+          # Usage: image: ml-incident-api@sha256:<digest from CI>
           image: ml-incident-api@sha256:REPLACE_WITH_DIGEST_FROM_CI
           imagePullPolicy: Always
           ports:
-            - containerPort: 8000
+            - containerPort: 8080
           env:
             - name: ENVIRONMENT
               value: "production"
@@ -68,6 +86,11 @@ spec:
                 secretKeyRef:
                   name: ml-incident-api-secrets
                   key: jwt-secret-key
+            - name: REDIS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ml-incident-api-secrets
+                  key: redis-auth-token
           resources:
             requests:
               cpu: "100m"
@@ -90,13 +113,13 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 8000
+              port: 8080
             initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
             httpGet:
-              path: /ready
-              port: 8000
+              path: /healthz/ready
+              port: 8080
             initialDelaySeconds: 10
             periodSeconds: 15
       volumes:
@@ -110,7 +133,7 @@ spec:
 ---
 apiVersion: v1
 kind: Service
-metadata:                     # FIXED: was `meta:`
+metadata:                     # FIXED K8S-01: was `meta:`
   name: ml-incident-api-svc
   namespace: ml-platform
 spec:
@@ -118,7 +141,7 @@ spec:
     app: ml-incident-api
   ports:
     - port: 80
-      targetPort: 8000
+      targetPort: 8080
   type: ClusterIP
 ---
 apiVersion: networking.k8s.io/v1
@@ -150,7 +173,7 @@ spec:
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
-metadata:                     # FIXED: was `meta:`
+metadata:                     # FIXED K8S-01: was `meta:`
   name: ml-incident-api-netpol
   namespace: ml-platform
 spec:
@@ -164,14 +187,14 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: ingress-nginx
       ports:
-        - port: 8000
+        - port: 8080
   egress:
     - ports:
         - port: 53
           protocol: UDP
         - port: 53
           protocol: TCP
-    # FIXED: scoped to DB namespace + pod label (was 0.0.0.0/0)
+    # K8S-03: PostgreSQL egress scoped to DB namespace + pod label
     - to:
         - namespaceSelector:
             matchLabels:
@@ -181,6 +204,16 @@ spec:
               app: postgresql
       ports:
         - port: 5432
+    # K8S-07 (R-18): Redis egress — was missing from original manifest
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ml-data
+          podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - port: 6379
     - to:
         - namespaceSelector:
             matchLabels:
@@ -191,7 +224,7 @@ spec:
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
-metadata:                     # FIXED: was `meta:`
+metadata:                     # FIXED K8S-01: was `meta:`
   name: ml-incident-api-pdb
   namespace: ml-platform
 spec:
@@ -199,3 +232,47 @@ spec:
   selector:
     matchLabels:
       app: ml-incident-api
+---
+# K8S-06 (R-18): HorizontalPodAutoscaler
+# Scales ml-incident-api between 2 and 10 replicas based on CPU + memory.
+# CPU target: 70% of requested 100m = triggers scale-out above ~70m usage.
+# Memory target: 80% of requested 256Mi = triggers scale-out above ~205Mi.
+# Scale-down stabilization: 5 minutes (prevents flapping).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ml-incident-api-hpa
+  namespace: ml-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ml-incident-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
