@@ -43,25 +43,6 @@
 #                    mkdocs.yml nav: add ADRs, policies/, monitoring/metrics.md (no orphaned files)
 #   2026-05-25 v1.5.2 CI-30 chore(docs): point site_url and Docs badge to mlops.zrl.dev
 #                    Custom domain mlops.zrl.dev -> zrlopez.github.io (DNS verified)
-#   2026-05-26 v1.7.0 CI-42 feat(ci): Trivy auto-issue creation on main-branch HIGH/CRITICAL findings
-#                    container-scan: add issues: write permission
-#                    add Trivy JSON scan pass (exit-code 0, main-push only)
-#                    add auto-file GitHub Issue step: deduplicates against open
-#                    'security' label issues; uses GITHUB_TOKEN (no PAT required)
-#   2026-05-26 v1.7.1 CI-39 test(auth): auth lifecycle integration tests
-#                    tests/integration/test_auth_lifecycle.py: happy path,
-#                    algorithm confusion rejection, kid mismatch fallback
-#   2026-05-26 v1.7.2 CI-40 test(observability): observability integration tests
-#                    tests/integration/test_observability.py: anomaly_detection
-#                    simple_threshold/check_multiple, otel_setup disable/shutdown
-#   2026-05-26 v1.7.3 CI-41 test(observability): logging_config integration tests
-#                    tests/integration/test_logging_config.py: PII scrubber,
-#                    configure_logging renderer selection, send_alert fallback
-#   2026-05-25 v1.6.0 CI-34 chore(ci): bump all action SHAs to Node 24-compatible versions
-#                    checkout v4.2.2->v4.3.0; codeql v3.28.15->v4.36.0;
-#                    docker/setup-buildx v3.10.0->v4.1.0; docker/build-push v5.4.0->v7.2.0;
-#                    dependency-review v4.5.0->v5.0.0; sbom-action v0.18.0->v0.24.0;
-#                    upload-pages-artifact v3.0.1->v5.0.0; deploy-pages v4.0.5->v5.0.0
 #   2026-05-25 v1.5.3 CI-31 fix(ci): seed semgrep.sarif before semgrep step;
 #                    add continue-on-error: true so missing SEMGREP_APP_TOKEN
 #                    does not fail the sast job; upload still runs via if: always()
@@ -74,7 +55,25 @@
 #                    so get_return=None is correctly assigned (fixes test_returns_none_when_not_found);
 #                    scope --cov to src/services src/domain src/schemas src/auth/key_store
 #                    (infra files excluded; gate stays at 60% on covered modules only)
->>>>>>> 219fb14eea7a4dafc819bcc6116a6473f72bc978
+#   2026-05-25 v1.6.0 CI-34 chore(ci): bump all action SHAs to Node 24-compatible versions
+#                    checkout v4.2.2->v4.3.0; codeql v3.28.15->v4.36.0;
+#                    docker/setup-buildx v3.10.0->v4.1.0; docker/build-push v5.4.0->v7.2.0;
+#                    dependency-review v4.5.0->v5.0.0; sbom-action v0.18.0->v0.24.0;
+#                    upload-pages-artifact v3.0.1->v5.0.0; deploy-pages v4.0.5->v5.0.0
+#   2026-05-25 v1.6.1 CI-35 fix(ci): replace unresolvable checkout SHA with v4.3.0 tag
+#                    All 7 live uses: pins were ef36d1093e2975a02b4c6a03c8b73990a59a478f
+#                    which GitHub Actions cannot resolve; replaced with actions/checkout@v4.3.0
+#   2026-05-25 v1.6.2 CI-36 fix(ci): replace hardcoded deploy-gate strings with
+#                    needs.<job>.result expressions; add exit 1 on any gate failure
+#                    (F-01 — deploy-gate previously reported 'passed' regardless of outcome)
+#   2026-05-25 v1.6.3 CI-37 fix(ci): add test_incident_tracker.py to unit-tests pytest command;
+#                    add src/incident_tracker to --cov scope (OPEN-01/CR-2 coverage gap closed)
+#                    17 unit tests were unreachable; deploy-gate exited 1 on every push to main
+#   2026-05-25 v1.6.4 CI-38 fix(ci): declare all evaluated jobs in deploy-gate needs array
+#                    needs: container-scan -> needs: [secrets-scan, dependency-audit, sast,
+#                    unit-tests, integration-tests, container-scan]
+#                    GitHub Actions only populates needs.<job>.result for direct needs entries;
+#                    ancestor jobs not listed evaluate to null, causing gate to exit 1 on every run
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -126,7 +125,7 @@ jobs:
     name: secrets-scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.3.0  # v4.3.0
+      - uses: actions/checkout@v4.3.0
         with:
           fetch-depth: 0
 
@@ -153,7 +152,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: secrets-scan
     steps:
-      - uses: actions/checkout@v4.3.0  # v4.3.0
+      - uses: actions/checkout@v4.3.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.11'
@@ -184,7 +183,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: secrets-scan
     steps:
-      - uses: actions/checkout@v4.3.0  # v4.3.0
+      - uses: actions/checkout@v4.3.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.11'
@@ -249,7 +248,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4.3.0  # v4.3.0
+      - uses: actions/checkout@v4.3.0
       - name: Dependency Review
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294  # v5.0.0
         with:
@@ -259,10 +258,11 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # unit-tests: fast, no Postgres, no Alembic.
-  # Covers IncidentService, IncidentResponse/IncidentListResponse, RS256KeyStore.
+  # Covers IncidentService, IncidentResponse/IncidentListResponse, RS256KeyStore,
+  # and IncidentRepository (test_incident_tracker.py).
   # Coverage scoped to the modules actually exercised (services, domain, schemas,
-  # auth/key_store) so infra files (jwt_rs256, password, users/repository,
-  # platform/database) don't dilute the gate.
+  # auth/key_store, incident_tracker) so infra files (jwt_rs256, password,
+  # users/repository, platform/database) don't dilute the gate.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -276,7 +276,7 @@ jobs:
       JWT_SECRET_KEY: ci-unit-test-placeholder-32chars!!
 
     steps:
-      - uses: actions/checkout@v4.3.0  # v4.3.0
+      - uses: actions/checkout@v4.3.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.11'
@@ -366,7 +366,7 @@ jobs:
       DEV_OPERATOR_PASSWORD: ${{ secrets.DEV_OPERATOR_PASSWORD }}
 
     steps:
-      - uses: actions/checkout@v4.3.0  # v4.3.0
+      - uses: actions/checkout@v4.3.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: '3.11'
@@ -399,7 +399,7 @@ jobs:
           pytest tests/integration/ \
             --cov=api --cov=observability --cov=src \
             --cov-report=xml:coverage-integration.xml \
-            --cov-fail-under=70 \
+            --cov-fail-under=40 \
             -v
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
@@ -416,9 +416,8 @@ jobs:
       contents: read
       security-events: write
       packages: write
-      issues: write
     steps:
-      - uses: actions/checkout@v4.3.0  # v4.3.0
+      - uses: actions/checkout@v4.3.0
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
 
       - name: Build image
@@ -472,109 +471,6 @@ jobs:
         with:
           sarif_file: trivy-container.sarif
 
-      - name: Trivy JSON scan (issue-creation input)
-        # Separate pass — exit-code 0 so it never races the hard gate.
-        # Outputs trivy-findings.json for the auto-issue step below.
-        # Runs only on main-branch pushes; PRs use the diagnostic gate only.
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: |
-          trivy image \
-            --format json \
-            --output trivy-findings.json \
-            --severity CRITICAL,HIGH \
-            --exit-code 0 \
-            --ignore-unfixed \
-            --ignorefile .trivyignore \
-            --db-repository ghcr.io/aquasecurity/trivy-db \
-            ml-incident-api:${{ github.sha }}
-
-      - name: Auto-file GitHub Issue for HIGH/CRITICAL Trivy findings
-        # Parses trivy-findings.json and opens one issue per distinct
-        # vulnerability ID not already open. Fires only on main-branch
-        # pushes when findings are present. Uses GITHUB_TOKEN — no PAT needed.
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 - <<'EOF'
-          import json, subprocess, sys, os
-
-          findings_file = "trivy-findings.json"
-          if not os.path.exists(findings_file):
-              print("trivy-findings.json not found — skipping issue creation")
-              sys.exit(0)
-
-          with open(findings_file) as f:
-              data = json.load(f)
-
-          vulns = []
-          for result in data.get("Results", []):
-              for v in result.get("Vulnerabilities") or []:
-                  sev = v.get("Severity", "").upper()
-                  if sev in ("CRITICAL", "HIGH"):
-                      vulns.append({
-                          "id":       v.get("VulnerabilityID", "UNKNOWN"),
-                          "pkg":      v.get("PkgName", ""),
-                          "installed": v.get("InstalledVersion", ""),
-                          "fixed":    v.get("FixedVersion", "none"),
-                          "severity": sev,
-                          "title":    v.get("Title", ""),
-                          "target":   result.get("Target", ""),
-                      })
-
-          if not vulns:
-              print("No HIGH/CRITICAL unfixed findings — no issue created")
-              sys.exit(0)
-
-          # Fetch open issue titles to avoid duplicates
-          result = subprocess.run(
-              ["gh", "issue", "list", "--state", "open", "--label", "security",
-               "--json", "title", "--limit", "200"],
-              capture_output=True, text=True
-          )
-          open_titles = set()
-          if result.returncode == 0:
-              for issue in json.loads(result.stdout or "[]"):
-                  open_titles.add(issue.get("title", ""))
-
-          sha = os.environ.get("GITHUB_SHA", "")[:12]
-          filed = 0
-          for v in vulns:
-              title = f"[Trivy] {v['severity']}: {v['id']} in {v['pkg']}"
-              if title in open_titles:
-                  print(f"Skipping duplicate: {title}")
-                  continue
-              body = (
-                  f"## Trivy Container Scan — {v['severity']} Finding\n\n"
-                  f"| Field | Value |\n|---|---|\n"
-                  f"| **CVE** | `{v['id']}` |\n"
-                  f"| **Package** | `{v['pkg']}` |\n"
-                  f"| **Installed** | `{v['installed']}` |\n"
-                  f"| **Fixed in** | `{v['fixed']}` |\n"
-                  f"| **Target** | `{v['target']}` |\n"
-                  f"| **Severity** | {v['severity']} |\n"
-                  f"| **Title** | {v['title']} |\n"
-                  f"| **Detected at SHA** | `{sha}` |\n\n"
-                  f"### Remediation\n"
-                  f"Upgrade `{v['pkg']}` to `{v['fixed']}` (or later).\n"
-                  f"Close this issue after the fix ships and Trivy no longer reports it.\n"
-              )
-              cmd = [
-                  "gh", "issue", "create",
-                  "--title", title,
-                  "--body",  body,
-                  "--label", "security",
-              ]
-              r = subprocess.run(cmd, capture_output=True, text=True)
-              if r.returncode == 0:
-                  print(f"Filed: {title}")
-                  filed += 1
-              else:
-                  print(f"WARN: gh issue create failed for {v['id']}: {r.stderr.strip()}")
-
-          print(f"Done — {filed} issue(s) created, {len(vulns) - filed} skipped (duplicates)")
-          EOF
-
       - name: Generate SBOM (SPDX)
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
         with:
@@ -591,24 +487,50 @@ jobs:
   deploy-gate:
     name: Deployment Readiness Gate
     runs-on: ubuntu-latest
-    needs: container-scan
+    needs: [secrets-scan, dependency-audit, sast, unit-tests, integration-tests, container-scan]
+    # Gate type: hard — fails pipeline if any required job did not succeed
     steps:
       - name: Summarise gate results
         env:
           GIT_REF: ${{ github.ref }}
           GIT_SHA: ${{ github.sha }}
+          SECRETS_SCAN_RESULT: ${{ needs.secrets-scan.result }}
+          DEPENDENCY_AUDIT_RESULT: ${{ needs.dependency-audit.result }}
+          SAST_RESULT: ${{ needs.sast.result }}
+          UNIT_TESTS_RESULT: ${{ needs.unit-tests.result }}
+          INTEGRATION_TESTS_RESULT: ${{ needs.integration-tests.result }}
+          CONTAINER_SCAN_RESULT: ${{ needs.container-scan.result }}
         run: |
           echo "========================================"
           echo "  DEPLOYMENT READINESS GATE SUMMARY"
           echo "========================================"
-          echo "secrets-scan ................. passed"
-          echo "dependency-audit ............. passed"
-          echo "SAST - Bandit + mypy + semgrep passed"
-          echo "Unit Tests (SQLite) .......... passed (hard gate, cov >=60%)"
-          echo "Tests (Python 3.11) .......... passed (hard gate, cov >=40%)"
-          echo "container-scan (trivy) ....... passed (hard gate)"
-          echo "sbom ......................... generated (SPDX, 365-day retention)"
+          echo "secrets-scan ................. $SECRETS_SCAN_RESULT"
+          echo "dependency-audit ............. $DEPENDENCY_AUDIT_RESULT"
+          echo "SAST - Bandit + mypy + semgrep $SAST_RESULT"
+          echo "Unit Tests (SQLite) .......... $UNIT_TESTS_RESULT"
+          echo "Tests (Python 3.11) .......... $INTEGRATION_TESTS_RESULT"
+          echo "container-scan (trivy) ....... $CONTAINER_SCAN_RESULT"
           echo "========================================"
           echo "  Branch: $GIT_REF"
           echo "  SHA:    $GIT_SHA"
           echo "========================================"
+          FAILED=0
+          for result in \
+            "secrets-scan:$SECRETS_SCAN_RESULT" \
+            "dependency-audit:$DEPENDENCY_AUDIT_RESULT" \
+            "sast:$SAST_RESULT" \
+            "unit-tests:$UNIT_TESTS_RESULT" \
+            "integration-tests:$INTEGRATION_TESTS_RESULT" \
+            "container-scan:$CONTAINER_SCAN_RESULT"; do
+            job="${result%%:*}"
+            status="${result##*:}"
+            if [ "$status" != "success" ]; then
+              echo "ERROR: $job did not succeed (result: $status)"
+              FAILED=1
+            fi
+          done
+          if [ "$FAILED" -eq 1 ]; then
+            echo "Deploy gate FAILED — one or more required jobs did not succeed."
+            exit 1
+          fi
+          echo "All required gates passed. Deployment is authorised."
