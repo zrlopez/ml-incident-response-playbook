@@ -89,7 +89,6 @@ nav:
   - Monitoring & Observability:
     - Overview: monitoring.md
     - Metrics: metrics.md
-    - Extended Metrics: monitoring/metrics.md
   - Governance:
     - Overview: governance.md
     - Governance Exception Register: policies/governance-exception-register.md
