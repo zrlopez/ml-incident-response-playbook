@@ -78,6 +78,12 @@ opentelemetry-sdk==1.27.0
 opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-exporter-otlp-proto-grpc==1.27.0
 prometheus-fastapi-instrumentator==7.0.0
+# R-17: prometheus-client pinned as direct dependency.
+#   monitoring_example.py imports prometheus_client (Counter, Gauge, Histogram)
+#   directly. Previously only present as a transitive dep of
+#   prometheus-fastapi-instrumentator; direct pin required for supply-chain
+#   hygiene and reproducible builds.
+prometheus-client==0.21.1
 # NOTE: protobuf is a transitive dep via opentelemetry-proto==1.27.0 which
 # caps it at <5.0. CVE-2026-0994 cannot be pinned to 5.x without breaking
 # the otel stack. Accepted risk documented in .trivyignore. Track as tech

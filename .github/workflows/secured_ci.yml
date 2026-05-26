@@ -92,6 +92,12 @@
 #                    instrumentation-fastapi 0.62b0 hard-requires semantic-conventions==0.62b0.
 #                    Pip cannot satisfy both == pins simultaneously -> ResolutionImpossible.
 #                    0.63b0 confirmed on PyPI 2026-05-26; aligns contrib to semantic-conventions==0.63b1.
+#   2026-05-26 v1.7.0 CI-44 feat(test): expand unit-tests to cover observability/ package
+#                    Add tests/unit/test_drift_check.py, test_monitoring_example.py,
+#                    test_anomaly_detection.py to pytest command.
+#                    Add --cov=observability to unit-tests coverage scope.
+#                    Raise --cov-fail-under 60 -> 65 (observability now measured).
+#                    Closes R-19. Paired with R-17 prometheus-client==0.21.1 direct pin.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -276,11 +282,12 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # unit-tests: fast, no Postgres, no Alembic.
-  # Covers IncidentService, IncidentResponse/IncidentListResponse, RS256KeyStore,
-  # and IncidentRepository (test_incident_tracker.py).
-  # Coverage scoped to the modules actually exercised (services, domain, schemas,
-  # auth/key_store, incident_tracker) so infra files (jwt_rs256, password,
-  # users/repository, platform/database) don't dilute the gate.
+  # Covers:
+  #   src/   — IncidentService, schemas, domain, RS256KeyStore, IncidentRepository
+  #   observability/ — drift_check, monitoring_example, anomaly_detection
+  # Coverage scoped to measured modules only; infra files (jwt_rs256, password,
+  # users/repository, platform/database) excluded so they don't dilute the gate.
+  # CI-44: observability/ added; --cov-fail-under raised 60 -> 65.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -326,14 +333,18 @@ jobs:
             tests/test_incident_schema.py \
             tests/test_key_store.py \
             tests/test_incident_tracker.py \
+            tests/unit/test_drift_check.py \
+            tests/unit/test_monitoring_example.py \
+            tests/unit/test_anomaly_detection.py \
             --cov=src/services \
             --cov=src/domain \
             --cov=src/schemas \
             --cov=src/auth/key_store \
             --cov=src/incident_tracker \
+            --cov=observability \
             --cov-report=xml:coverage-unit.xml \
             --cov-report=term-missing \
-            --cov-fail-under=60 \
+            --cov-fail-under=65 \
             -v
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
