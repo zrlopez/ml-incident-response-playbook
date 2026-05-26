@@ -170,9 +170,9 @@ class TestIncidentServiceListOpen:
         incidents = [_make_incident(incident_id=f"i{n}") for n in range(3)]
         service, repo = _service_with_mock_repo(list_open_return=incidents)
         result = asyncio.get_event_loop().run_until_complete(
-            service.list_open(limit=3, before_id="cursor-id")
+            service.list_open(limit=3, before_id="00000000-0000-0000-0000-000000000001")
         )
-        repo.list_open.assert_awaited_once_with(limit=3, before_id="cursor-id")
+        repo.list_open.assert_awaited_once_with(limit=3, before_id="00000000-0000-0000-0000-000000000001")
         assert result == incidents
 
     def test_list_open_empty_page_is_valid(self):
