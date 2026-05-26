@@ -82,6 +82,16 @@
 #   2026-05-25 v1.6.7 CI-41 chore(ci): close starlette==0.52.1 Dependabot PR (PR-25, not-planned)
 #                    fastapi==0.121.3 caps starlette<0.51.0; bump is irresolvable without a
 #                    paired fastapi upgrade. Tracked as tech debt pending fastapi 0.122.x release.
+#   2026-05-26 v1.6.8 CI-42 fix(deps): align opentelemetry-api/instrumentation-fastapi to sdk 1.42.1 / 0.62b0
+#                    Root cause: opentelemetry-api was left at 1.27.0 when CI-40 bumped sdk to 1.42.1.
+#                    sdk hard-requires api==<same version>; ResolutionImpossible in dep-audit + SAST.
+#                    SARIF upload errors were pure downstream cascade. Fixed: api 1.27.0->1.42.1,
+#                    instrumentation-fastapi 0.48b0->0.62b0.
+#   2026-05-26 v1.6.9 CI-43 fix(deps): bump opentelemetry-instrumentation-fastapi 0.62b0->0.63b0
+#                    Root cause: sdk 1.42.1 hard-requires semantic-conventions==0.63b1;
+#                    instrumentation-fastapi 0.62b0 hard-requires semantic-conventions==0.62b0.
+#                    Pip cannot satisfy both == pins simultaneously -> ResolutionImpossible.
+#                    0.63b0 confirmed on PyPI 2026-05-26; aligns contrib to semantic-conventions==0.63b1.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):

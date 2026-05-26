@@ -15,7 +15,8 @@
 #   • All versions are pinned exactly (==) for reproducible builds.
 #   • Run `pip-compile --generate-hashes requirements.in` to regenerate
 #     with hash verification enabled for supply-chain hardening.
-#   • Run `pip-audit -r requirements.txt` weekly (automated in CI).\n#   • Dependabot watches this file for patch/minor upgrades.
+#   • Run `pip-audit -r requirements.txt` weekly (automated in CI).
+#   • Dependabot watches this file for patch/minor upgrades.
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Web framework ──────────────────────────────────────────────────────────
@@ -66,14 +67,16 @@ redis[hiredis]==5.3.1
 httpx==0.28.1
 
 # ── Observability ───────────────────────────────────────────────────────────
-# CI-42: aligned full OTel stack to a single consistent release.
-# opentelemetry-api was pinned at 1.27.0 while sdk was at 1.42.1 — sdk
-# hard-requires api==<same version>, causing ResolutionImpossible in CI.
-# Contrib instrumentation versioning: sdk 1.42.x → instrumentation 0.62b0
-# (0.63b0 does not exist on PyPI as of 2026-05-25).
+# CI-42: aligned full OTel core stack to a single consistent release.
+#   opentelemetry-api was pinned at 1.27.0 while sdk was at 1.42.1 — sdk
+#   hard-requires api==<same version>, causing ResolutionImpossible in CI.
+# CI-43: bumped instrumentation-fastapi 0.62b0→0.63b0.
+#   sdk 1.42.1 hard-requires semantic-conventions==0.63b1;
+#   instrumentation-fastapi 0.62b0 hard-requires semantic-conventions==0.62b0.
+#   0.63b0 confirmed present on PyPI as of 2026-05-26.
 opentelemetry-api==1.42.1
 opentelemetry-sdk==1.42.1
-opentelemetry-instrumentation-fastapi==0.62b0
+opentelemetry-instrumentation-fastapi==0.63b0
 opentelemetry-exporter-otlp-proto-grpc==1.42.1
 prometheus-fastapi-instrumentator==7.0.0
 # NOTE: protobuf is a transitive dep via opentelemetry-proto which caps it
