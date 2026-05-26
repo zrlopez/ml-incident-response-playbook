@@ -155,6 +155,21 @@ class AbstractUserRepository(ABC):
         """
         ...
 
+    @abstractmethod
+    async def disable_user(self, username: str) -> bool:
+        """
+        Soft-delete a user account by setting disabled=True.
+
+        Used by GDPR Art. 17 erasure endpoint. Soft delete preserves the
+        account row for audit-trail integrity (GDPR Art. 5(1)(e)) while
+        preventing further authentication.
+
+        Returns True if the user was found and disabled, False if not found.
+        Hard deletion after the 30-day retention period is handled by a
+        separate background job (see docs/dpo_runbook.md).
+        """
+        ...
+
 
 # ── PostgreSQL implementation ────────────────────────────────────────────────────────────────
 class PostgresUserRepository(AbstractUserRepository):
@@ -220,6 +235,27 @@ class PostgresUserRepository(AbstractUserRepository):
         log.info("auth.login_success", username=username, role=user.role)
         return user
 
+    async def disable_user(self, username: str) -> bool:
+        async with self._session_factory() as session:
+            async with session.begin():
+                result = await session.execute(
+                    update(UserRecord)
+                    .where(UserRecord.username == username)
+                    .values(
+                        disabled=True,
+                        updated_at=datetime.now(timezone.utc),
+                    )
+                    .returning(UserRecord.username)
+                )
+                row = result.fetchone()
+        if row:
+            log.warning(
+                "gdpr.user_disabled",
+                username=username,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+        return row is not None
+
 
 # ── In-memory test implementation ────────────────────────────────────────────────────────────
 class InMemoryUserRepository(AbstractUserRepository):
@@ -258,6 +294,19 @@ class InMemoryUserRepository(AbstractUserRepository):
         if new_hash:
             await self.update_password_hash(username, new_hash)
         return user
+
+    async def disable_user(self, username: str) -> bool:
+        if username not in self._store:
+            return False
+        self._store[username].disabled = True
+        self._store[username].updated_at = datetime.now(timezone.utc)
+        log.warning(
+            "gdpr.user_disabled",
+            username=username,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            store="in_memory",
+        )
+        return True
 
 
 # ── Session factory (matches incident_tracker.py pattern) ─────────────────────────────

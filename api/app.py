@@ -377,6 +377,29 @@ async def authenticate_user(
     return user
 
 
+def get_user_repo(request: Request):
+    """
+    FastAPI dependency / helper: return the AbstractUserRepository attached
+    to app.state at lifespan startup. Used by GDPR routes and other endpoints
+    that need direct repository access outside the auth flow.
+    """
+    repo = getattr(request.app.state, "user_repo", None)
+    if repo is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User repository not available.",
+        )
+    return repo
+
+
+def get_denylist(request: Request):
+    """
+    Helper: return the RedisDenylist attached to app.state.
+    Used by GDPR erasure to revoke the current token immediately on account deletion.
+    """
+    return _denylist
+
+
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     request: Request,
