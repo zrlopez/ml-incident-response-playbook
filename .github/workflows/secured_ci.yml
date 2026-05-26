@@ -113,6 +113,14 @@
 #                    tests/test_incident_service.py, test_incident_schema.py, test_key_store.py,
 #                    test_incident_tracker.py were moved to tests/unit/ but CI paths were not updated.
 #                    exit code 4 (no tests collected) on every unit-tests run since the move.
+#   2026-05-26 v1.8.0 CI-49 feat(test): add observability coverage tests; wire ETL coverage gaps
+#                    Added tests/unit/test_logging_config.py (logging_config.py: PII scrubbing,
+#                    configure_logging, audit(), AlertLevel, send_alert() sync/async dispatch).
+#                    Added tests/unit/test_otel_setup.py (otel_setup.py: configure_otel happy path,
+#                    SDK disabled, ImportError graceful degradation, FastAPI instrumentor,
+#                    shutdown_otel lifecycle). Added tests/unit/test_etl_coverage_gaps.py (32 tests
+#                    targeting previously-uncovered ETL lines 121-460). All three files wired into
+#                    pytest command. Coverage gate remains 68%; actual projected coverage ~80%+.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -358,6 +366,9 @@ jobs:
             tests/unit/test_monitoring_example.py \
             tests/unit/test_anomaly_detection.py \
             tests/unit/test_etl_validation.py \
+            tests/unit/test_etl_coverage_gaps.py \
+            tests/unit/test_logging_config.py \
+            tests/unit/test_otel_setup.py \
             --cov=src/services \
             --cov=src/domain \
             --cov=src/schemas \
