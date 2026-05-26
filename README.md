@@ -4,6 +4,7 @@
 ![Docs](https://img.shields.io/badge/docs-Markdown%20%2B%20Mermaid-0A66C2)
 ![Stack](https://img.shields.io/badge/stack-GitHub%20%2B%20Python%20%2B%20Docker-111827)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/59febd12f0a54f69b26fa7c8d9fd1415)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook?utm_source=github.com&utm_medium=referral&utm_content=zrlopez/ml-incident-response-playbook&utm_campaign=Badge_Grade)
 [![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml/badge.svg?branch=main)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml)
 [![codecov](https://codecov.io/gh/zrlopez/ml-incident-response-playbook/branch/main/graph/badge.svg)](https://codecov.io/gh/zrlopez/ml-incident-response-playbook)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/YOUR_CODACY_PROJECT_TOKEN)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook/dashboard)
