@@ -18,10 +18,9 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from api.config import JWT_SECRET, JWT_ALGORITHM
-from api.dependencies import _deps_module as _deps
+import api.dependencies as _deps
 from src.auth import jwt_rs256
 from src.auth.tokens import create_access_token
-import api.dependencies as _deps
 
 router = APIRouter(tags=["ops"])
 
