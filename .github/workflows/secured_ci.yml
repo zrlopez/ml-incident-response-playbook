@@ -66,6 +66,9 @@
 #   2026-05-25 v1.6.2 CI-36 fix(ci): replace hardcoded deploy-gate strings with
 #                    needs.<job>.result expressions; add exit 1 on any gate failure
 #                    (F-01 — deploy-gate previously reported 'passed' regardless of outcome)
+#   2026-05-25 v1.6.3 CI-37 fix(ci): add test_incident_tracker.py to unit-tests pytest command;
+#                    add src/incident_tracker to --cov scope (OPEN-01/CR-2 coverage gap closed)
+#                    17 unit tests were unreachable; deploy-gate exited 1 on every push to main
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -250,10 +253,11 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # unit-tests: fast, no Postgres, no Alembic.
-  # Covers IncidentService, IncidentResponse/IncidentListResponse, RS256KeyStore.
+  # Covers IncidentService, IncidentResponse/IncidentListResponse, RS256KeyStore,
+  # and IncidentRepository (test_incident_tracker.py).
   # Coverage scoped to the modules actually exercised (services, domain, schemas,
-  # auth/key_store) so infra files (jwt_rs256, password, users/repository,
-  # platform/database) don't dilute the gate.
+  # auth/key_store, incident_tracker) so infra files (jwt_rs256, password,
+  # users/repository, platform/database) don't dilute the gate.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -298,10 +302,12 @@ jobs:
             tests/test_incident_service.py \
             tests/test_incident_schema.py \
             tests/test_key_store.py \
+            tests/test_incident_tracker.py \
             --cov=src/services \
             --cov=src/domain \
             --cov=src/schemas \
             --cov=src/auth/key_store \
+            --cov=src/incident_tracker \
             --cov-report=xml:coverage-unit.xml \
             --cov-report=term-missing \
             --cov-fail-under=60 \
