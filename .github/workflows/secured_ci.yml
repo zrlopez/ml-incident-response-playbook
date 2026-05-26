@@ -69,6 +69,11 @@
 #   2026-05-25 v1.6.3 CI-37 fix(ci): add test_incident_tracker.py to unit-tests pytest command;
 #                    add src/incident_tracker to --cov scope (OPEN-01/CR-2 coverage gap closed)
 #                    17 unit tests were unreachable; deploy-gate exited 1 on every push to main
+#   2026-05-25 v1.6.4 CI-38 fix(ci): declare all evaluated jobs in deploy-gate needs array
+#                    needs: container-scan -> needs: [secrets-scan, dependency-audit, sast,
+#                    unit-tests, integration-tests, container-scan]
+#                    GitHub Actions only populates needs.<job>.result for direct needs entries;
+#                    ancestor jobs not listed evaluate to null, causing gate to exit 1 on every run
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -482,7 +487,7 @@ jobs:
   deploy-gate:
     name: Deployment Readiness Gate
     runs-on: ubuntu-latest
-    needs: container-scan
+    needs: [secrets-scan, dependency-audit, sast, unit-tests, integration-tests, container-scan]
     # Gate type: hard — fails pipeline if any required job did not succeed
     steps:
       - name: Summarise gate results
