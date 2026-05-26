@@ -343,6 +343,14 @@ jobs:
           path: coverage-unit.xml
           retention-days: 30
 
+      - name: Upload unit test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-unit.xml
+          flags: unit
+
   integration-tests:
     name: "Tests (Python 3.11)"
     runs-on: ubuntu-latest
@@ -425,6 +433,14 @@ jobs:
           name: coverage-integration
           path: coverage-integration.xml
           retention-days: 30
+
+      - name: Upload integration test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-integration.xml
+          flags: integration
 
   container-scan:
     name: Container Build + Trivy + SBOM
