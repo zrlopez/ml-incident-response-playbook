@@ -286,7 +286,7 @@ class RS256KeyStore:
 
     def sign_token(
         self,
-         Dict[str, Any],
+        Dict[str, Any],
         expires_delta: timedelta = timedelta(minutes=30),
         token_type: str = "access",
     ) -> Tuple[str, str, int]:
