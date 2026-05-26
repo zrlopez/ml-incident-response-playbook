@@ -102,7 +102,7 @@ def test_send_alert_falls_back_to_structured_log_when_channels_disabled(monkeypa
     monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
     monkeypatch.delenv("PAGERDUTY_ROUTING_KEY", raising=False)
 
-    with patch.object(logging_config._alert_log, "info") as info_mock, \
+    with patch.object(logging_config._alert_log, "warning") as warning_mock, \
          patch.object(logging_config._alert_log, "error") as error_mock:
         logging_config.send_alert(
             "Model drift detected",
@@ -112,5 +112,5 @@ def test_send_alert_falls_back_to_structured_log_when_channels_disabled(monkeypa
             psi_score=0.31,
         )
 
-    info_mock.assert_called()
+    warning_mock.assert_called()
     error_mock.assert_not_called()

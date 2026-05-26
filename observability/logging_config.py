@@ -56,14 +56,16 @@ _REDACTED_KEYS = frozenset({
 })
 
 
-def _scrub_value(value: Any) -> Any:
+def _scrub_value(value: Any, key: str = "") -> Any:
+    if key.lower() in _REDACTED_KEYS:
+        return "[REDACTED]"
     if isinstance(value, str):
         v = _JWT_RE.sub("[JWT_REDACTED]", value)
         v = _EMAIL_RE.sub("[EMAIL_REDACTED]", v)
         v = _PHONE_RE.sub("[PHONE_REDACTED]", v)
         return v
     if isinstance(value, dict):
-        return {k: _scrub_value(v) for k, v in value.items()}
+        return {k: _scrub_value(v, key=k) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return type(value)(_scrub_value(i) for i in value)
     return value
@@ -77,7 +79,7 @@ def _pii_scrubber(
         if key.lower() in _REDACTED_KEYS:
             scrubbed[key] = "[REDACTED]"
         else:
-            scrubbed[key] = _scrub_value(value)
+            scrubbed[key] = _scrub_value(value, key=key)
     return scrubbed
 
 

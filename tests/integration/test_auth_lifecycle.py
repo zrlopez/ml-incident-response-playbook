@@ -116,12 +116,15 @@ async def app_client(rs256_keys, sqlite_engine) -> AsyncGenerator[AsyncClient, N
       decodes the Bearer token via verify_token.
     - get_session is overridden with an in-memory SQLite session so no
       Postgres is required for the auth-path HTTP assertion.
+    - _denylist is patched with a no-op stub so Redis is not required.
     """
     os.environ.setdefault("JWT_SECRET_KEY", "test-secret-minimum-32-chars-xxxxxxxxxxxx")
 
     from api.app import app
     from src.incident_tracker import get_session
     from sqlalchemy.ext.asyncio import async_sessionmaker
+    import api.app as _app_module
+    from unittest.mock import AsyncMock, MagicMock
 
     factory = async_sessionmaker(sqlite_engine, expire_on_commit=False)
 
@@ -134,6 +137,12 @@ async def app_client(rs256_keys, sqlite_engine) -> AsyncGenerator[AsyncClient, N
                 await session.rollback()
                 raise
 
+    # Stub out Redis denylist so the test doesn't need a running Redis.
+    # is_revoked always returns False (no tokens are revoked).
+    stub_denylist = MagicMock()
+    stub_denylist.is_revoked = AsyncMock(return_value=False)
+    _app_module._denylist = stub_denylist
+
     app.dependency_overrides[get_session] = override_get_session
 
     async with AsyncClient(
@@ -143,6 +152,7 @@ async def app_client(rs256_keys, sqlite_engine) -> AsyncGenerator[AsyncClient, N
         yield client
 
     app.dependency_overrides.clear()
+    _app_module._denylist = None  # restore to uninitialised state
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +241,7 @@ def test_hs256_token_is_rejected(rs256_keys):
         algorithm="HS256",
     )
 
-    with pytest.raises(jwt.exceptions.DecodeError):
+    with pytest.raises((jwt.exceptions.DecodeError, jwt.exceptions.InvalidAlgorithmError)):
         verify_token(hs256_token)
 
 
