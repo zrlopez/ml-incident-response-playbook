@@ -74,6 +74,14 @@
 #                    unit-tests, integration-tests, container-scan]
 #                    GitHub Actions only populates needs.<job>.result for direct needs entries;
 #                    ancestor jobs not listed evaluate to null, causing gate to exit 1 on every run
+#   2026-05-25 v1.6.5 CI-39 chore(deps): bump asyncpg 0.30.0->0.31.0
+#                    Resolves GHSA-7f4w-j353-w3mg; no API changes vs 0.30.x.
+#   2026-05-25 v1.6.6 CI-40 chore(deps): bump opentelemetry-sdk + opentelemetry-exporter-otlp-proto-grpc
+#                    1.27.0->1.42.1; resolves upstream OTEL compatibility gap;
+#                    protobuf<5.0 constraint remains (see .trivyignore tech-debt note)
+#   2026-05-25 v1.6.7 CI-41 chore(ci): close starlette==0.52.1 Dependabot PR (PR-25, not-planned)
+#                    fastapi==0.121.3 caps starlette<0.51.0; bump is irresolvable without a
+#                    paired fastapi upgrade. Tracked as tech debt pending fastapi 0.122.x release.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
