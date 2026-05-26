@@ -54,7 +54,7 @@ from api.rate_limit import check_user_rate_limit
 from src.users.repository import PostgresUserRepository, AbstractUserRepository
 from src.auth.password import hash_password, verify_password
 from src.auth import jwt_rs256
-from src.auth.key_store import RS256KeyStore
+from src.auth.key_store import RS256KeyStore, KeyRotationStore
 from src.incident_tracker import (
     IncidentStatus,
     SeverityLevel,
@@ -508,8 +508,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _rs256_active = jwt_rs256.load_keys()
     if _rs256_active:
         try:
-            app.state.key_store = RS256KeyStore.from_env()
-            log.info("jwt.key_store_loaded", key_id=app.state.key_store.key_id)
+            app.state.key_store = KeyRotationStore.from_env()
+            log.info("jwt.key_store_loaded", key_id=app.state.key_store.key_id, pool_size=len(app.state.key_store.all_keys))
         except Exception as _ks_exc:
             # Non-fatal: key_store unavailable means new routes fall back gracefully
             log.warning("jwt.key_store_load_failed", error=str(_ks_exc))
