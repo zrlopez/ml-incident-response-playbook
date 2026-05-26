@@ -109,6 +109,10 @@
 #                    requirements-dev.txt pins 2.9.0. Different versions audit differently.
 #                    Aligned to single source of truth: requirements-dev.txt.
 #                    Closes R-26.
+#   2026-05-26 v1.7.3 CI-48 fix(ci): update unit test paths from tests/ to tests/unit/
+#                    tests/test_incident_service.py, test_incident_schema.py, test_key_store.py,
+#                    test_incident_tracker.py were moved to tests/unit/ but CI paths were not updated.
+#                    exit code 4 (no tests collected) on every unit-tests run since the move.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -304,6 +308,7 @@ jobs:
   # Coverage scoped to measured modules only; infra files excluded.
   # CI-44: observability/ added; --cov-fail-under raised 60 -> 65.
   # CI-45: pipelines/ added; test_etl_validation.py wired; gate raised 65 -> 68.
+  # CI-48: test paths corrected to tests/unit/ prefix.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -345,10 +350,10 @@ jobs:
       - name: pytest unit tests
         run: |
           pytest \
-            tests/test_incident_service.py \
-            tests/test_incident_schema.py \
-            tests/test_key_store.py \
-            tests/test_incident_tracker.py \
+            tests/unit/test_incident_service.py \
+            tests/unit/test_incident_schema.py \
+            tests/unit/test_key_store.py \
+            tests/unit/test_incident_tracker.py \
             tests/unit/test_drift_check.py \
             tests/unit/test_monitoring_example.py \
             tests/unit/test_anomaly_detection.py \
