@@ -50,11 +50,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import math
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Tuple, cast
 
 import jwt
 from cryptography.hazmat.primitives import serialization
@@ -127,7 +126,9 @@ def load_keys() -> bool:
     old_public_pem = os.environ.get("RSA_OLD_PUBLIC_KEY_PEM", "").strip()
     if old_public_pem:
         try:
-            _old_public_key = cast(RSAPublicKey, serialization.load_pem_public_key(old_public_pem.encode()))
+            _old_public_key = cast(  # noqa: E501
+                RSAPublicKey, serialization.load_pem_public_key(old_public_pem.encode())
+            )
             _old_key_id = _pem_to_key_id(_old_public_key)
             log.info("jwt_rs256.old_key_loaded_rotation_window", old_key_id=_old_key_id)
         except Exception as exc:

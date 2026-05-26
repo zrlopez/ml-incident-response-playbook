@@ -61,7 +61,6 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from src.config import get_settings
 from src.domain.incident_lifecycle import (
-    ALLOWED_STATUS_TRANSITIONS,
     IncidentStatus,
     SeverityLevel,
     validate_status_transition,

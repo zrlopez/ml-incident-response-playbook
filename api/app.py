@@ -29,7 +29,6 @@ Findings addressed:
 from __future__ import annotations
 
 import os
-import re
 import uuid
 import time
 from contextlib import asynccontextmanager
@@ -53,7 +52,7 @@ from api.redis_denylist import RedisDenylist
 from api.gdpr_routes import router as gdpr_router
 from api.rate_limit import check_user_rate_limit
 from src.users.repository import PostgresUserRepository, AbstractUserRepository
-from src.auth.password import hash_password, verify_password, maybe_rehash
+from src.auth.password import hash_password, verify_password
 from src.auth import jwt_rs256
 from src.auth.key_store import RS256KeyStore
 from src.incident_tracker import (
@@ -140,9 +139,9 @@ def _require_dev_password(env_var: str) -> str:
     return value
 
 
-_DEV_ADMIN_PW    = _require_dev_password("DEV_ADMIN_PASSWORD")
-_DEV_ANALYST_PW  = _require_dev_password("DEV_ANALYST_PASSWORD")
-_DEV_OPERATOR_PW = _require_dev_password("DEV_OPERATOR_PASSWORD")
+_DEV_ADMIN_PW    = _require_dev_password("DEV_ADMIN_PASSWORD")   # noqa: E221
+_DEV_ANALYST_PW  = _require_dev_password("DEV_ANALYST_PASSWORD")  # noqa: E221
+_DEV_OPERATOR_PW = _require_dev_password("DEV_OPERATOR_PASSWORD")  # noqa: E221
 
 _USERS: Dict[str, Dict[str, Any]] = {
     "admin": {
@@ -534,6 +533,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 app.include_router(gdpr_router)
 
 # CR-2: Map InvalidTransitionError → HTTP 409 Conflict
+
+
 @app.exception_handler(InvalidTransitionError)
 async def _invalid_transition_handler(
     request: Request, exc: InvalidTransitionError

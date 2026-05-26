@@ -40,7 +40,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 
 log = structlog.get_logger(__name__)

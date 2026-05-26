@@ -231,6 +231,7 @@ class RS256KeyStore:
         import base64
         pub: RSAPublicKey = self._public_key
         pub_numbers = pub.public_numbers()
+
         def _b64(n: int) -> str:
             byte_length = (n.bit_length() + 7) // 8
             return base64.urlsafe_b64encode(

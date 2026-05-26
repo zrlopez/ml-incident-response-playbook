@@ -23,7 +23,6 @@ Remediation history:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import re
@@ -47,7 +46,7 @@ _alert_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="alert-di
 
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", re.IGNORECASE)
 _PHONE_RE = re.compile(r"\b(\+?1[\s\-.]?)?\(?[0-9]{3}\)?[\s\-.]?[0-9]{3}[\s\-.]?[0-9]{4}\b")
-_JWT_RE   = re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*")
+_JWT_RE   = re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*")  # noqa: E221
 
 _REDACTED_KEYS = frozenset({
     "password", "passwd", "secret", "token", "jwt", "authorization",
@@ -159,16 +158,16 @@ class AlertLevel(str, Enum):
     enabling direct pass-through to the PD payload without mapping.
     """
     CRITICAL = "critical"
-    ERROR    = "error"
-    WARNING  = "warning"
-    INFO     = "info"
+    ERROR    = "error"     # noqa: E221
+    WARNING  = "warning"   # noqa: E221
+    INFO     = "info"      # noqa: E221
 
 
 # Environment-driven channel activation.
 # Set SLACK_WEBHOOK_URL and/or PAGERDUTY_ROUTING_KEY in the environment
 # (or via Kubernetes Secrets) to activate those channels.
 # Both channels are independent; either, neither, or both may be active.
-_SLACK_WEBHOOK_URL   = os.getenv("SLACK_WEBHOOK_URL", "")
+_SLACK_WEBHOOK_URL   = os.getenv("SLACK_WEBHOOK_URL", "")    # noqa: E221
 _PAGERDUTY_ROUTING_KEY = os.getenv("PAGERDUTY_ROUTING_KEY", "")
 
 # PagerDuty Events v2 endpoint (public, no auth in URL)

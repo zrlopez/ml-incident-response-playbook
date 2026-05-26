@@ -28,10 +28,9 @@ Production note:
 """
 from __future__ import annotations
 
-import time
 import asyncio
 from collections.abc import MutableMapping
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -65,7 +64,9 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
 
     MAX_BYTES: int = 1 * 1024 * 1024  # 1 MB — tune per deployment
 
-    async def dispatch(self, request: Request, call_next: Callable[..., Awaitable[Response]]) -> Response:
+    async def dispatch(  # noqa: E501
+        self, request: Request, call_next: Callable[..., Awaitable[Response]]
+    ) -> Response:
         # Fast path: Content-Length header is present and oversized
         content_length_header = request.headers.get("content-length")
         if content_length_header is not None:
@@ -181,7 +182,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._environment = environment
 
-    async def dispatch(self, request: Request, call_next: Callable[..., Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[..., Awaitable[Response]]
+    ) -> Response:
         response = await call_next(request)
 
         # Core security headers — all environments
@@ -233,7 +236,9 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
 
     TIMEOUT_SECONDS: float = 30.0
 
-    async def dispatch(self, request: Request, call_next: Callable[..., Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[..., Awaitable[Response]]
+    ) -> Response:
         try:
             return await asyncio.wait_for(
                 call_next(request),
