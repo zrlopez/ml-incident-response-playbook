@@ -116,3 +116,5 @@ sbom*.spdx
 
 # NOTE: .dockerignore is intentionally tracked — it protects image build context
 # and should be reviewed alongside Dockerfile changes.
+node_modules/
+package-lock.json
