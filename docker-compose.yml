@@ -10,6 +10,9 @@
 #   INFRA-1 Added security_opt, read_only FS, tmpfs for writable paths
 #   INFRA-2 Added mem_limit to prevent container memory exhaustion
 #   INFRA-3 network_mode default bridge replaced with explicit named network
+#   R-36    Fixed broken volume YAML (redis_ → redis_data:)
+#   R-37    Bumped OTEL collector 0.99.0 → 0.127.0 (CVE range <0.116 resolved)
+#   R-38    Bumped Jaeger 1.57 → 1.67.0
 #
 # Prerequisites:
 #   cp .env.example .env
@@ -59,7 +62,7 @@ services:
     # INFRA-3: Isolated network — no default bridge
     networks:
       - internal
-    # Development reload command. Remove --reload in staging/prod.
+    # Dev only — remove --reload for staging/prod; CMD in Dockerfile applies
     command: uvicorn api.app:app --host 0.0.0.0 --port 8080 --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -95,7 +98,7 @@ services:
       --loglevel notice
       --tcp-backlog 128
     volumes:
-      - redis_/data
+      - redis_data:/data
     environment:
       # Expose password to healthcheck redis-cli call
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -116,7 +119,8 @@ services:
 
   # ───────────────────────────────────────────────────────────────────
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.99.0
+    # R-37: Bumped from 0.99.0 — GHSA-2025-0003 affected versions < 0.116
+    image: otel/opentelemetry-collector-contrib:0.127.0
     # LOW-B REMEDIATION: Bind to loopback. OTel gRPC/HTTP should only be
     # reachable from within the compose network and from localhost tooling.
     ports:
@@ -136,7 +140,8 @@ services:
 
   # ───────────────────────────────────────────────────────────────────
   jaeger:
-    image: jaegertracing/all-in-one:1.57
+    # R-38: Bumped from 1.57 to current stable
+    image: jaegertracing/all-in-one:1.67.0
     # LOW-B REMEDIATION: Jaeger UI bound to loopback only. The trace UI
     # contains internal service topology — never expose on LAN in production.
     ports:
@@ -154,7 +159,7 @@ services:
 
 # ───────────────────────────────────────────────────────────────────
 volumes:
-  redis_
+  redis_data:
     driver: local
 
 # INFRA-3: Explicit named network isolates compose services from the

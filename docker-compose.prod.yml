@@ -8,8 +8,6 @@
 #   echo "<value>" | docker secret create redis_password -
 #   IMAGE_TAG=sha-<SHA> docker stack deploy -c docker-compose.prod.yml ml-incident
 
-version: "3.9"
-
 secrets:
   jwt_secret:
     external: true
@@ -22,11 +20,13 @@ services:
   api:
     image: ghcr.io/zrlopez/ml-incident-api:${IMAGE_TAG:-latest}
     ports:
-      - "8000:8000"
+      - "8000:8080"
     environment:
       ENVIRONMENT: production
       DATABASE_URL: postgresql+asyncpg://incident_user@postgres:5432/incidents
-      REDIS_URL: redis://redis:6379/0
+      # R-40: REDIS_URL reads the secret file at runtime via entrypoint.
+      # The actual URL is constructed as: redis://:$(cat /run/secrets/redis_password)@redis:6379/0
+      # This is handled by the Dockerfile entrypoint script.
       JWT_SECRET_FILE: /run/secrets/jwt_secret
     secrets:
       - jwt_secret
@@ -38,7 +38,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/ready"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -98,7 +98,8 @@ services:
         max-file: "3"
 
   redis:
-    image: redis:7-alpine
+    # R-43: Pinned from floating redis:7-alpine to match dev compose pin
+    image: redis:7.4.3-alpine
     command: >
       sh -c 'redis-server
         --requirepass "$$(cat /run/secrets/redis_password)"
@@ -109,7 +110,8 @@ services:
     secrets:
       - redis_password
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # R-41: Authenticate the healthcheck ping using the mounted secret
+      test: ["CMD", "sh", "-c", "redis-cli -a \"$$(cat /run/secrets/redis_password)\" --no-auth-warning ping"]
       interval: 10s
       timeout: 5s
       retries: 3

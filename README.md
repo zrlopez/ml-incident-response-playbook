@@ -1,7 +1,7 @@
 # ML Incident Response Playbook + Runbook System
 
 ![Status](https://img.shields.io/badge/status-portfolio--ready-brightgreen)
-![Docs](https://img.shields.io/badge/docs-Markdown%20%2B%20Mermaid-0A66C2)
+[![Docs](https://img.shields.io/website-up-down-green-red/https/mlops.zrl.dev.svg?label=docs)](https://mlops.zrl.dev)
 ![Stack](https://img.shields.io/badge/stack-GitHub%20%2B%20Python%20%2B%20Docker-111827)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml/badge.svg?branch=main)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml)
@@ -105,7 +105,7 @@ pip install -r requirements.txt
 
 ```bash
 docker build -t ml-incident-response-playbook .
-docker run --rm -p 8000:8000 ml-incident-response-playbook
+docker run --rm -p 8080:8080 ml-incident-response-playbook
 ```
 
 If you use Docker Compose, start the supporting services with:
@@ -140,15 +140,13 @@ This project can be published as a static documentation site with GitHub Pages o
 
 ## CI/CD Overview
 
-The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥60% on unit tests** (SQLite, fast) and **≥40% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
+The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥68% on unit tests** (SQLite, fast) and **≥40% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
 
 ## Roadmap
 
 - Add richer sample incident records.
 - Expand validation and monitoring examples.
-- Add a docs site build pipeline.
 - Add a richer observability demo.
-- Add automated Mermaid rendering in CI.
 
 ## Contributing
 
@@ -208,7 +206,7 @@ Before marking your PR ready for review, confirm:
 - [ ] Docstrings added for any new public functions or classes.
 - [ ] No secrets, credentials, or real PII appear in any file
   (the CI TruffleHog scan will block the merge if found).
-- [ ] `REMEDIATION_LOG.md` updated if your change addresses a tracked finding.
+- [ ] `MASTER_ACTION_TRACKER.md` updated if your change addresses a tracked finding.
 - [ ] `SECURITY.md` updated if you change the security control surface.
 - [ ] `.env.example` updated if you add new environment variables.
 - [ ] Markdown runbooks or templates follow the existing style
@@ -228,7 +226,7 @@ Before marking your PR ready for review, confirm:
 If your change touches authentication, authorization, secrets handling, or
 dependency versions:
 
-- Reference the relevant `ARCH-*` or `CRIT-*` finding ID from `REMEDIATION_LOG.md`.
+- Reference the relevant `ARCH-*` or `CRIT-*` finding ID from `MASTER_ACTION_TRACKER.md`.
 - Add or update tests in `tests/test_api.py` covering the security behavior.
 - For vulnerability reports, follow the [Security Policy](SECURITY.md) —
   **do not open a public issue for unpatched vulnerabilities**.

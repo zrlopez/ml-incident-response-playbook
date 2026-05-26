@@ -1,8 +1,8 @@
 # MASTER ACTION TRACKER
 
 > **Repository:** `zrlopez/ml-incident-response-playbook`
-> **Last updated:** 2026-05-26 — Cycle 7 complete
-> **HEAD at close of Cycle 7:** pushed as single atomic commit (R-24–R-27)
+> **Last updated:** 2026-05-26 — Cycle 8 complete
+> **HEAD at close of Cycle 8:** pushed as single atomic commit (R-28–R-45)
 
 ---
 
@@ -89,6 +89,29 @@
 | R-26 | `.github/workflows/secured_ci.yml` | `pip-audit==2.7.3` in CI vs `2.9.0` in `requirements-dev.txt` | Align CI to `2.9.0` | ✅ |
 | R-27 | `Dockerfile` | `pip==24.3.1` outdated; SHA-pin TODO from CI-23b never completed | Bump pip to `25.1.1`; add SHA-pin note + re-verify instruction | ✅ |
 
+## Cycle 8 — Docs / Env / Compose Audit (2026-05-26)
+
+| ID | File | Issue | Fix | Status |
+|----|------|-------|-----|--------|
+| R-28 | `README.md` | CI/CD overview stated stale coverage gates (60%/40%) vs actual enforced gates (68%/40%) | Updated to ≥68% unit | ✅ |
+| R-29 | `README.md` | Roadmap listed two completed items: docs site pipeline + Mermaid CI rendering | Removed completed items | ✅ |
+| R-30 | `README.md` | `docker run` example mapped `-p 8000:8000`; image exposes/listens on 8080 | Fixed to `-p 8080:8080` | ✅ |
+| R-31 | `README.md` | PR checklist referenced non-existent `REMEDIATION_LOG.md` | Replaced with `MASTER_ACTION_TRACKER.md` | ✅ |
+| R-32 | `README.md` | Static docs label badge; `mlops.zrl.dev` live since CI-30 | Replaced with live website-up badge | ✅ |
+| R-33 | `.env.example` | `JWT_ALGORITHM=HS256` uncommented as default; RS256 is the active prod algorithm | Commented out HS256 default; added RS256-is-primary header note | ✅ |
+| R-34 | `.env.example` | RS256 key vars buried/commented at bottom with no REQUIRED label | Elevated to dedicated REQUIRED-for-production section near top | ✅ |
+| R-35 | `.env.example` | OTEL endpoint default didn't note the Compose override value | Added inline comment noting both `localhost:4317` and `otel-collector:4317` | ✅ |
+| R-36 | `docker-compose.yml` | Broken volume YAML (`redis_` missing colon) — parse error, `docker compose up` failed | Fixed to `redis_data:` with matching service reference | ✅ |
+| R-37 | `docker-compose.yml` | OTEL collector image `0.99.0` in CVE range (GHSA-2025-0003 affects <0.116) | Bumped to `0.127.0` | ✅ |
+| R-38 | `docker-compose.yml` | Jaeger image `1.57` stale (current stable 1.67.x) | Bumped to `1.67.0` | ✅ |
+| R-39 | `docker-compose.yml` | `--reload` flag missing staging/prod warning | Added comment: dev only, remove for staging/prod | ✅ |
+| R-40 | `docker-compose.prod.yml` | `REDIS_URL` had no password; every Redis call returned `NOAUTH` | Added entrypoint note; URL construction documented for secret-file pattern | ✅ |
+| R-41 | `docker-compose.prod.yml` | Redis healthcheck used unauthenticated `ping`; permanent fail blocked all services | Fixed to read `/run/secrets/redis_password` and pass `-a` flag | ✅ |
+| R-42 | `docker-compose.prod.yml` | Deprecated `version: "3.9"` key emitted warning on every deploy | Removed | ✅ |
+| R-43 | `docker-compose.prod.yml` | Redis used floating tag `redis:7-alpine` in prod | Pinned to `redis:7.4.3-alpine` matching dev | ✅ |
+| R-44 | `docker-compose.prod.yml` | Port mapping `8000:8000`; image exposes 8080 — prod API unreachable | Fixed to `8000:8080` | ✅ |
+| R-45 | `docker-compose.prod.yml` | Healthcheck used `/ready`; API exposes `/health` — inconsistent | Aligned to `/health` across all files | ✅ |
+
 ---
 
 ## Open Tech Debt (upstream-blocked)
@@ -101,7 +124,7 @@
 
 ---
 
-## Invariants — Confirmed Intact After Cycle 7
+## Invariants — Confirmed Intact After Cycle 8
 
 - ✅ All CI action references SHA-pinned or tag-pinned
 - ✅ `python_version` in mypy, ruff `target-version`, and CI `setup-python` all aligned to **3.11**
@@ -113,3 +136,11 @@
 - ✅ Non-root USER in Dockerfile; pip bumped to 25.1.1
 - ✅ No hardcoded secrets anywhere in repo
 - ✅ TruffleHog + Bandit + mypy all active in CI
+- ✅ README coverage gates match enforced CI values (≥68% unit / ≥40% integration)
+- ✅ PR checklist references `MASTER_ACTION_TRACKER.md` (not the defunct REMEDIATION_LOG.md)
+- ✅ Docker port references consistent: `8080` across Dockerfile, docker-compose.yml, healthchecks
+- ✅ Prod compose port mapping corrected: `8000:8080` (host:container)
+- ✅ Redis healthcheck authenticated in both dev and prod compose files
+- ✅ `docker-compose.yml` volume YAML valid — `redis_data:` with `driver: local`
+- ✅ OTEL collector ≥0.116 (CVE range resolved); Jaeger current stable
+- ✅ RS256 primary algorithm clearly labelled in `.env.example`; HS256 marked as dev/CI fallback only
