@@ -12,10 +12,10 @@
   }
 }%%
 flowchart TD
-    A(["\uD83D\uDD34 ALERT: Model Degradation\nml_model_accuracy_p95 < 0.92"])
+    A(["🔴 ALERT: Model Degradation\nml_model_accuracy_p95 < 0.92"])
     A --> B{"Alert verified?\nCheck Grafana: Model Health dashboard"}
 
-    B -- "Noise / flapping" --> B1(["\u2705 Close alert\nDocument as false positive\nin #ml-ops-alerts"])
+    B -- "Noise / flapping" --> B1(["✅ Close alert\nDocument as false positive\nin #ml-ops-alerts"])
     B -- "Confirmed breach" --> C["Assign Incident Commander\nOpen #ml-incidents-sev{N}\nNotify @ml-platform-sre"]
 
     C --> D{"Deployment\nin last 4 hours?\nkubectl rollout history"}
@@ -35,7 +35,7 @@ flowchart TD
     J --> K
 
     K -- "Yes" --> L["Monitor for 15 consecutive minutes\nSend stakeholder update\nEvery 15 min if SEV-1"]
-    K -- "No, SEV-1 threshold" --> M(["\uD83D\uDEA8 ESCALATE\nML Platform Lead + VP Engineering\nActivate SEV-1 bridge channel"])
+    K -- "No, SEV-1 threshold" --> M(["🚨 ESCALATE\nML Platform Lead + VP Engineering\nActivate SEV-1 bridge channel"])
     K -- "No, SEV-2" --> N["Engage model owner\nfor deeper root cause analysis"]
 
     N --> K
@@ -43,7 +43,7 @@ flowchart TD
     L --> O{"Stable for\n15+ consecutive minutes?"}
     O -- "No, degraded again" --> D
     O -- "Yes" --> P["Document full timeline\nAssign preventive action items\nwith owners + due dates"]
-    P --> Q(["\u2705 RESOLVE INCIDENT\nUpdate ticket: status=resolved\nSchedule postmortem within 48h"])
+    P --> Q(["✅ RESOLVE INCIDENT\nUpdate ticket: status=resolved\nSchedule postmortem within 48h"])
 
     style A fill:#dc2626,color:#fff,stroke:#991b1b
     style B1 fill:#16a34a,color:#fff,stroke:#15803d

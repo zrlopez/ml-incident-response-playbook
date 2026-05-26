@@ -1,1 +1,193 @@
-{"incident_id":"INC-001","category":"data_quality","severity":"SEV-2","status":"mitigated"}
+{
+  "schema_version": "1.1.0",
+  "incident_id": "INC-2026-0047",
+  "title": "ML Model Drift — Fraud Detection Pipeline SEV-2",
+  "category": "model_drift",
+  "subcategory": "feature_distribution_shift",
+  "severity": "SEV-2",
+  "status": "RESOLVED",
+  "environment": "production",
+  "region": "us-central-1",
+
+  "model": {
+    "model_id": "fraud-detector-v3.2.1",
+    "pipeline_id": "fraud-pipeline-prod",
+    "model_version": "3.2.1",
+    "serving_endpoint": "/api/v1/predict/fraud",
+    "framework": "scikit-learn",
+    "last_trained": "2026-04-10T08:00:00Z",
+    "training_dataset_version": "fraud-train-2026-Q1"
+  },
+
+  "drift_signal": {
+    "drift_score": 0.31,
+    "drift_threshold": 0.15,
+    "detection_method": "PSI",
+    "affected_features": [
+      "transaction_amount_zscore",
+      "merchant_category_encoded",
+      "time_since_last_transaction_hrs"
+    ],
+    "baseline_window": "2026-04-01T00:00:00Z / 2026-04-30T23:59:59Z",
+    "detection_window": "2026-05-20T00:00:00Z / 2026-05-22T23:59:59Z",
+    "false_positive_rate_baseline": 0.023,
+    "false_positive_rate_incident": 0.071,
+    "precision_drop_pct": 18.4,
+    "affected_prediction_volume": 142800
+  },
+
+  "slo_breach": {
+    "slo_id": "SLO-FRAUD-01",
+    "slo_name": "Fraud Model Precision ≥ 85% (30-day rolling)",
+    "threshold": 0.85,
+    "observed_value": 0.793,
+    "breach_confirmed": true,
+    "breach_detected_at": "2026-05-22T14:03:00Z"
+  },
+
+  "timestamps": {
+    "created_at": "2026-05-22T13:58:44Z",
+    "acknowledged_at": "2026-05-22T14:11:02Z",
+    "investigating_at": "2026-05-22T14:15:30Z",
+    "mitigating_at": "2026-05-22T15:40:00Z",
+    "resolved_at": "2026-05-22T18:22:17Z",
+    "closed_at": "2026-05-23T09:00:00Z",
+    "updated_at": "2026-05-23T09:00:00Z"
+  },
+
+  "metrics": {
+    "mtta_minutes": 12,
+    "mttr_minutes": 261,
+    "ttr_minutes": 263,
+    "time_to_mitigate_minutes": 101,
+    "time_in_investigating_minutes": 85,
+    "time_in_mitigating_minutes": 162
+  },
+
+  "escalation_chain": [
+    {
+      "step": 1,
+      "role": "On-Call ML Engineer",
+      "handle": "@oncall-ml",
+      "notified_at": "2026-05-22T14:11:02Z",
+      "channel": "PagerDuty"
+    },
+    {
+      "step": 2,
+      "role": "ML Platform Lead",
+      "handle": "@ml-platform-lead",
+      "notified_at": "2026-05-22T14:45:00Z",
+      "channel": "Slack #incidents-sev2",
+      "trigger": "No mitigation path identified within 30 min of acknowledge"
+    },
+    {
+      "step": 3,
+      "role": "Data Engineering On-Call",
+      "handle": "@oncall-dataeng",
+      "notified_at": "2026-05-22T15:20:00Z",
+      "channel": "Slack #incidents-sev2",
+      "trigger": "Upstream feature pipeline suspected as root cause"
+    }
+  ],
+
+  "root_cause": {
+    "summary": "Upstream feature pipeline (fraud-features-daily) ingested a corrupted merchant category encoding table deployed at 2026-05-22T02:00:00Z. This caused merchant_category_encoded to collapse 47 distinct categories into 12, sharply shifting the feature distribution vs. training baseline.",
+    "contributing_factors": [
+      "No schema validation on encoding table ingestion",
+      "dbt model did not assert distinct count on merchant_category_encoded",
+      "Drift monitoring alert threshold had not been reviewed since model v2.x"
+    ],
+    "blast_radius": "142,800 inference requests over ~28 hours returned degraded precision scores"
+  },
+
+  "remediation": {
+    "immediate": [
+      "Rolled back fraud-features-daily pipeline to 2026-05-21T02:00:00Z snapshot",
+      "Re-served affected batch with corrected features",
+      "Disabled auto-deploy for encoding table updates pending schema gate"
+    ],
+    "rollback_reference": "fraud-features-daily@sha256:a3f1b8c",
+    "follow_up": [
+      "Add dbt assert: distinct(merchant_category_encoded) >= 40",
+      "Add schema contract validation on encoding table ingestion (OPEN-05)",
+      "Lower drift alert threshold from 0.15 to 0.10 for production fraud model",
+      "Schedule model retraining with May data by 2026-06-10"
+    ]
+  },
+
+  "timeline": [
+    {
+      "ts": "2026-05-22T02:00:00Z",
+      "state": null,
+      "event": "Corrupted encoding table deployed to feature pipeline"
+    },
+    {
+      "ts": "2026-05-22T13:58:44Z",
+      "state": "OPEN",
+      "event": "Drift monitor alert fired — PSI score 0.31 exceeded threshold 0.15"
+    },
+    {
+      "ts": "2026-05-22T14:03:00Z",
+      "state": "OPEN",
+      "event": "SLO breach confirmed — fraud model precision at 79.3%"
+    },
+    {
+      "ts": "2026-05-22T14:11:02Z",
+      "state": "INVESTIGATING",
+      "event": "On-call ML engineer acknowledged; began triage on serving endpoint"
+    },
+    {
+      "ts": "2026-05-22T14:45:00Z",
+      "state": "INVESTIGATING",
+      "event": "Root cause narrowed to feature distribution shift; data eng escalated"
+    },
+    {
+      "ts": "2026-05-22T15:20:00Z",
+      "state": "INVESTIGATING",
+      "event": "Corrupted encoding table identified — pipeline input confirmed bad"
+    },
+    {
+      "ts": "2026-05-22T15:40:00Z",
+      "state": "MITIGATING",
+      "event": "Pipeline rollback initiated to 2026-05-21 snapshot"
+    },
+    {
+      "ts": "2026-05-22T16:55:00Z",
+      "state": "MITIGATING",
+      "event": "Rollback complete; re-serving affected batch with corrected features"
+    },
+    {
+      "ts": "2026-05-22T18:22:17Z",
+      "state": "RESOLVED",
+      "event": "Precision restored to 87.1%; SLO breach cleared; monitoring nominal"
+    },
+    {
+      "ts": "2026-05-23T09:00:00Z",
+      "state": "CLOSED",
+      "event": "PIR completed; follow-up tickets filed; incident closed"
+    }
+  ],
+
+  "pir": {
+    "required": true,
+    "trigger": "SLO breach + >100 min TTM",
+    "completed_at": "2026-05-23T09:00:00Z",
+    "doc_link": "docs/templates/postmortem_template.md",
+    "action_items_filed": 4
+  },
+
+  "tags": [
+    "model-drift",
+    "feature-pipeline",
+    "fraud-detection",
+    "slo-breach",
+    "rollback",
+    "data-quality"
+  ],
+
+  "reported_by": "drift-monitor-alertmanager",
+  "assigned_to": "@oncall-ml",
+  "slack_thread": "https://slack.example.com/archives/C_INCIDENTS/p1716386324",
+  "runbook_ref": "runbooks/model_drift_runbook.md",
+  "related_incidents": []
+}

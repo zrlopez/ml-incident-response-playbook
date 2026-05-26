@@ -1,0 +1,89 @@
+# =============================================================================
+# Mermaid Diagram Renderer
+# =============================================================================
+# Changelog (Conventional Commits — type(scope): summary):
+#   2026-05-25 v1.0.0 CI-28 feat(docs): initial Mermaid render workflow
+#   2026-05-25 v1.0.1 CI-38 fix(ci): SHA-pin actions/checkout; add digest reference
+#                    block (closes [GAP: mermaid-render.yml checkout not SHA-pinned])
+# =============================================================================
+#
+# ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
+#   actions/checkout@v4.3.0
+#     -> ef36d1093e2975a02b4c6a03c8b73990a59a478f
+#   actions/setup-node@v4.4.0
+#     -> 49933ea5288caeca8642d1e84afbd3f7d6820020
+# =============================================================================
+#
+# Converts every docs/diagrams/*.mmd source file to a PNG artifact and
+# commits the rendered images back to docs/diagrams/rendered/ on the branch.
+#
+# Trigger: push to main/develop when a .mmd file changes, or manual dispatch.
+# Output:  docs/diagrams/rendered/<name>.png  (committed back to branch)
+# Tool:    @mermaid-js/mermaid-cli (mmdc) via npx — no global install required.
+# =============================================================================
+name: Mermaid Render
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'docs/diagrams/**.mmd'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  render-diagrams:
+    name: Render Mermaid diagrams to PNG
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.3.0  # ef36d1093e2975a02b4c6a03c8b73990a59a478f
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: '20'
+
+      - name: Install Puppeteer system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libpangocairo-1.0-0
+
+      - name: Create output directory
+        run: mkdir -p docs/diagrams/rendered
+
+      - name: Render all .mmd files to PNG
+        run: |
+          for mmd_file in docs/diagrams/*.mmd; do
+            base=$(basename "$mmd_file" .mmd)
+            echo "Rendering: $mmd_file -> docs/diagrams/rendered/${base}.png"
+            npx --yes @mermaid-js/mermaid-cli@11 mmdc \
+              --input "$mmd_file" \
+              --output "docs/diagrams/rendered/${base}.png" \
+              --backgroundColor white \
+              --width 1200 \
+              --puppeteerConfigFile /dev/null
+          done
+
+      - name: List rendered outputs
+        run: ls -lh docs/diagrams/rendered/
+
+      - name: Commit rendered PNGs back to branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/diagrams/rendered/*.png
+          if git diff --cached --quiet; then
+            echo "No diagram changes to commit."
+          else
+            git commit -m "ci(docs): auto-render Mermaid diagrams to PNG [skip ci]"
+            git push
+          fi

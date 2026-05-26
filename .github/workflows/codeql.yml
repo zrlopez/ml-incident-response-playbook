@@ -20,10 +20,10 @@
 #   P1-04: codeql-action steps SHA-pinned to verified commit digest (2026-05-24)
 #
 # ACTION SHA DIGEST REFERENCE:
-#   github/codeql-action/init@v3.28.15
-#   github/codeql-action/autobuild@v3.28.15
-#   github/codeql-action/analyze@v3.28.15
-#     -> 45775bd8235c68ba998cffa5171334d58593da47  (commit SHA, not tag object SHA)
+#   github/codeql-action/init@v4.36.0
+#   github/codeql-action/autobuild@v4.36.0
+#   github/codeql-action/analyze@v4.36.0
+#     -> 7211b7c8077ea37d8641b6271f6a365a22a5fbfa
 #
 # NOTE: Default Setup must be DISABLED in Settings -> Code security -> Code scanning
 # for this advanced workflow to upload SARIF without conflict.
@@ -55,19 +55,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@v4.3.0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
+        uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa  # v4.36.0
         with:
           languages: python
           queries: security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
+        uses: github/codeql-action/autobuild@7211b7c8077ea37d8641b6271f6a365a22a5fbfa  # v4.36.0
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@45775bd8235c68ba998cffa5171334d58593da47  # v3.28.15
+        uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa  # v4.36.0
         with:
           category: "/language:python"
           upload: true

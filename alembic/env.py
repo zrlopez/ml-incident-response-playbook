@@ -20,10 +20,16 @@ Usage:
 Database URL resolution order:
     1. DATABASE_URL environment variable
     2. alembic.ini sqlalchemy.url (fallback, dev only)
+
+Notes:
+  - run_migrations_online() includes a ThreadPoolExecutor fallback for
+    environments where an event loop is already running (e.g. pytest-asyncio).
+    This prevents RuntimeError: 'This event loop is already running'.
 """
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import os
 from logging.config import fileConfig
 
@@ -32,13 +38,13 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-# ── Import all ORM models so Alembic autogenerate can see them ────────────
+# ── Import all ORM models so Alembic autogenerate can see them ────────────────
 # Both modules share the same DeclarativeBase (src.incident_tracker.Base)
 # so importing them here is sufficient — Alembic will diff against Base.metadata.
 from src.incident_tracker import Base  # noqa: F401  (Incident model registered here)
 from src.users.repository import UserRecord  # noqa: F401  (UserRecord registered here)
 
-# ── Alembic Config ────────────────────────────────────────────────────────
+# ── Alembic Config ─────────────────────────────────────────────────────────────
 config = context.config
 
 # Interpret the config file for Python logging.
@@ -61,7 +67,7 @@ def get_database_url() -> str:
     return "sqlite+aiosqlite:///./incidents.db"
 
 
-# ── Offline migrations (generates SQL without a live DB connection) ────────
+# ── Offline migrations (generates SQL without a live DB connection) ────────────
 def run_migrations_offline() -> None:
     """
     Run migrations in 'offline' mode.
@@ -76,18 +82,20 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
+        include_schemas=True,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
-# ── Online migrations (async engine) ─────────────────────────────────────
+# ── Online migrations (async engine) ──────────────────────────────────────────
 def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
         compare_server_default=True,
+        include_schemas=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -95,7 +103,6 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_async_migrations() -> None:
     """Create async engine, acquire connection, run migrations."""
-    # Override sqlalchemy.url from env so alembic.ini never needs real creds
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = get_database_url()
 
@@ -112,11 +119,27 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    """Entry point for online migrations (called by Alembic CLI)."""
-    asyncio.run(run_async_migrations())
+    """
+    Entry point for online migrations (called by Alembic CLI).
+
+    Handles two runtime contexts:
+      1. No running event loop (standard CLI use) — calls asyncio.run() directly.
+      2. Running event loop already present (e.g. pytest-asyncio, Jupyter) —
+         uses a ThreadPoolExecutor to run migrations in a fresh thread with its
+         own event loop, preventing RuntimeError: 'This event loop is already running'.
+    """
+    try:
+        asyncio.get_running_loop()
+        # A loop is already running — delegate to a thread with its own loop.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(asyncio.run, run_async_migrations())
+            future.result()
+    except RuntimeError:
+        # No running loop — safe to call asyncio.run() directly.
+        asyncio.run(run_async_migrations())
 
 
-# ── Dispatch ──────────────────────────────────────────────────────────────
+# ── Dispatch ───────────────────────────────────────────────────────────────────
 if context.is_offline_mode():
     run_migrations_offline()
 else:

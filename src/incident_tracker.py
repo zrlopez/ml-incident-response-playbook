@@ -2,9 +2,14 @@
 Incident tracker — production-grade SQLAlchemy async ORM + repository.
 
 Remediation history:
-  R-05  Replaced 6-line flat-file appender with async ORM + connection pool
-  CR-1  Removed create_all bootstrap; startup now delegates to Alembic (2026-05-23)
-  CR-2  Wired IncidentRepository.update_status() through domain state machine (2026-05-23)
+  R-05      Replaced 6-line flat-file appender with async ORM + connection pool
+  CR-1      Removed create_all bootstrap; startup now delegates to Alembic (2026-05-23)
+  CR-2      Wired IncidentRepository.update_status() through domain state machine (2026-05-23)
+  OPEN-01   Explicit updated_at write on every status/metadata transition (2026-05-24)
+  OPEN-02   Cursor-based (keyset) pagination on list_open() and list_by_severity() (2026-05-24)
+  KEYSET-01 Compound (created_at, id) tiebreaker added to keyset cursor WHERE clause
+            to prevent silent row drops when incidents share the same created_at timestamp.
+            See alembic/versions/xxxx_add_keyset_composite_index.py for the covering index.
 
 Architecture:
   - SQLAlchemy 2.0 async ORM (asyncpg for PostgreSQL, aiosqlite for test)
@@ -24,6 +29,15 @@ State-machine discipline (CR-2):
   - Invalid transitions raise InvalidTransitionError (HTTP 409 in the API layer).
   - Every transition attempt — allowed or rejected — is audit-logged.
 
+Pagination discipline (OPEN-02 + KEYSET-01):
+  - list_open() and list_by_severity() accept an optional before_id cursor.
+  - KEYSET-01: The cursor WHERE now uses a compound (created_at, id) predicate:
+      WHERE (created_at < cursor.created_at)
+         OR (created_at = cursor.created_at AND id < cursor.id)
+    This ensures stable, gapless pagination even when multiple incidents are
+    created within the same timestamp tick.
+  - The ix_incidents_keyset index (btree on created_at, id) covers this predicate.
+
 Database URLs:
   - Local / test:  DATABASE_URL=sqlite+aiosqlite:///./incidents.db
   - Production:    DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/incidents
@@ -37,7 +51,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
 import structlog
-from sqlalchemy import DateTime, Enum as SAEnum, String, Text, text, select
+from sqlalchemy import DateTime, Enum as SAEnum, String, Text, and_, or_, text, select
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -132,7 +146,14 @@ class Incident(Base):
     )
 
     def to_dict(self) -> dict:
-        """Serialise to a JSON-safe dict for API responses."""
+        """Serialise to a JSON-safe dict for API responses.
+
+        PYDANTIC-01 NOTE: The canonical API-layer serialiser is now
+        src.schemas.incident.IncidentResponse, which is a typed Pydantic model
+        that validates response shape at the serialization boundary. Use that
+        for all new API routes. to_dict() is retained for backward compatibility
+        with existing internal callers and tests.
+        """
         return {
             "id": self.id,
             "title": self.title,
@@ -212,12 +233,9 @@ async def init_db() -> None:
         ) from exc
 
     if is_sqlite:
-        # SQLite test/dev: schema bootstrapped by the test suite or a dev helper;
-        # Alembic version check is not applicable.
         log.info("database.migration_check_skipped", reason="sqlite_local_mode")
         return
 
-    # PostgreSQL: warn if migration is behind head.
     try:
         async with _engine.connect() as conn:
             result = await conn.execute(
@@ -233,7 +251,6 @@ async def init_db() -> None:
         else:
             log.info("database.migration_verified", alembic_version=version)
     except Exception as exc:
-        # Non-fatal: alembic_version missing on first deploy before migration runs
         log.warning(
             "database.migration_check_failed",
             detail=str(exc),
@@ -285,18 +302,76 @@ class IncidentRepository:
         """Retrieve a single incident by primary key. Returns None if not found."""
         return await self._session.get(Incident, incident_id)
 
-    async def list_open(self, limit: int = 100) -> list[Incident]:
+    def _keyset_cursor_clause(self, cursor_row: Incident):
         """
-        Return all non-CLOSED incidents ordered newest-first.
-        Limit is hard-capped at 1000 to prevent accidental full-table scans.
+        Build a compound keyset cursor WHERE clause for stable pagination.
+
+        KEYSET-01: Single-column cursor (created_at < cursor.created_at) is
+        ambiguous when multiple incidents share the same created_at timestamp —
+        rows created in the same tick can be silently skipped or duplicated
+        depending on the DB page boundary.
+
+        The compound predicate:
+            (created_at < cursor.created_at)
+            OR (created_at = cursor.created_at AND id < cursor.id)
+
+        ..guarantees gapless, stable pagination as long as (created_at, id) is
+        the ORDER BY key and the ix_incidents_keyset index covers both columns.
+
+        Note: String UUID comparison is lexicographically ordered and consistent
+        within a single page; it is NOT chronologically ordered. This is acceptable
+        here because the tiebreaker is only invoked within the same timestamp tick,
+        where insertion order within that tick is non-deterministic regardless.
+        """
+        return or_(
+            Incident.created_at < cursor_row.created_at,
+            and_(
+                Incident.created_at == cursor_row.created_at,
+                Incident.id < cursor_row.id,
+            ),
+        )
+
+    async def list_open(
+        self,
+        limit: int = 100,
+        before_id: str | None = None,
+    ) -> list[Incident]:
+        """
+        Return non-CLOSED incidents ordered newest-first.
+
+        OPEN-02 + KEYSET-01: Compound keyset (cursor) pagination via before_id.
+          - When before_id is None, returns the first page (newest limit rows).
+          - When before_id is supplied, the compound predicate
+            (created_at, id) ensures gapless pagination even under high-velocity
+            creation where multiple incidents can share the same created_at tick.
+          - Limit is hard-capped at 1000.
+          - Backed by ix_incidents_keyset composite index (btree on created_at, id).
+
+        Args:
+            limit:     Maximum rows to return (default 100, hard cap 1000).
+            before_id: Cursor — the `id` of the last incident seen on the
+                       previous page. Omit for the first page.
+
+        Raises:
+            ValueError: If before_id is provided but does not exist.
         """
         effective_limit = min(limit, 1000)
         stmt = (
             select(Incident)
             .where(Incident.status != IncidentStatus.CLOSED)
-            .order_by(Incident.created_at.desc())
+            .order_by(Incident.created_at.desc(), Incident.id.desc())
             .limit(effective_limit)
         )
+
+        if before_id is not None:
+            cursor_row = await self.get(before_id)
+            if cursor_row is None:
+                raise ValueError(
+                    f"Cursor incident_id '{before_id}' not found. "
+                    "Pass a valid id from the previous page."
+                )
+            stmt = stmt.where(self._keyset_cursor_clause(cursor_row))
+
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -304,8 +379,21 @@ class IncidentRepository:
         self,
         severity: SeverityLevel,
         limit: int = 100,
+        before_id: str | None = None,
     ) -> list[Incident]:
-        """Return open incidents for a given severity, newest first."""
+        """
+        Return open incidents for a given severity, newest first.
+
+        OPEN-02 + KEYSET-01: Same compound cursor semantics as list_open().
+
+        Args:
+            severity:  Filter to this severity level.
+            limit:     Maximum rows to return (default 100, hard cap 1000).
+            before_id: Cursor — omit for first page.
+
+        Raises:
+            ValueError: If before_id is provided but does not exist.
+        """
         effective_limit = min(limit, 1000)
         stmt = (
             select(Incident)
@@ -313,9 +401,19 @@ class IncidentRepository:
                 Incident.severity == severity,
                 Incident.status != IncidentStatus.CLOSED,
             )
-            .order_by(Incident.created_at.desc())
+            .order_by(Incident.created_at.desc(), Incident.id.desc())
             .limit(effective_limit)
         )
+
+        if before_id is not None:
+            cursor_row = await self.get(before_id)
+            if cursor_row is None:
+                raise ValueError(
+                    f"Cursor incident_id '{before_id}' not found. "
+                    "Pass a valid id from the previous page."
+                )
+            stmt = stmt.where(self._keyset_cursor_clause(cursor_row))
+
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
@@ -339,7 +437,7 @@ class IncidentRepository:
             description=description,
         )
         self._session.add(incident)
-        await self._session.flush()  # Materialise generated ID before commit
+        await self._session.flush()
         log.info(
             "incident.created",
             log_type="audit",
@@ -363,6 +461,13 @@ class IncidentRepository:
         src.domain.incident_lifecycle before any mutation is applied.  Invalid
         transitions are rejected with InvalidTransitionError — no DB write occurs.
 
+        OPEN-01: updated_at is explicitly set on every allowed transition.
+        SQLAlchemy's onupdate= hook only fires on UPDATE statements generated
+        via session.execute(); it does NOT fire on ORM attribute mutations
+        followed by a flush. Without the explicit assignment, updated_at would
+        remain at its creation value after every status change, silently
+        corrupting MTTA/MTTR and incident-age metrics.
+
         Args:
             incident_id:  UUID of the target incident.
             new_status:   Requested target status.
@@ -380,7 +485,6 @@ class IncidentRepository:
 
         current_status = incident.status
 
-        # ─ Domain policy check (CR-2) ────────────────────────────────────────
         decision = validate_status_transition(current_status, new_status)
 
         if not decision.allowed:
@@ -394,11 +498,14 @@ class IncidentRepository:
             )
             raise InvalidTransitionError(decision.reason)
 
-        # ─ Apply mutation ──────────────────────────────────────────────────────
+        now = datetime.now(timezone.utc)
         incident.status = new_status
 
+        # OPEN-01: Explicit timestamp — do not rely on onupdate= hook alone.
+        incident.updated_at = now
+
         if new_status == IncidentStatus.RESOLVED and incident.resolved_at is None:
-            incident.resolved_at = resolved_at or datetime.now(timezone.utc)
+            incident.resolved_at = resolved_at or now
 
         log.info(
             "incident.status_updated",
@@ -406,6 +513,7 @@ class IncidentRepository:
             incident_id=incident_id,
             previous_status=current_status.value,
             new_status=new_status.value,
+            updated_at=now.isoformat(),
             resolved_at=(
                 incident.resolved_at.isoformat() if incident.resolved_at else None
             ),

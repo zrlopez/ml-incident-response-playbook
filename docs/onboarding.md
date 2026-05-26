@@ -63,7 +63,7 @@ Default Grafana credentials are `admin / admin` (change on first login).
 ## 4. Understand the severity model
 
 Every incident is assigned a severity at creation. Familiarise yourself with
-the matrix in [`severity_matrix.md`](../severity_matrix.md) before triaging.
+the matrix in [severity_matrix.md](severity_matrix.md) before triaging.
 
 | Severity | Meaning | Target response |
 |----------|---------|----------------|
@@ -76,15 +76,16 @@ the matrix in [`severity_matrix.md`](../severity_matrix.md) before triaging.
 
 ## 5. Find the right runbook
 
-Runbooks live in `runbooks/`. Each file maps to an incident category:
+Runbooks live in the `runbooks/` directory at the repo root. Each file maps
+to an incident category:
 
 | Incident type | Runbook |
 |---------------|---------|
-| API outage | [`runbooks/api_outage.md`](../runbooks/api_outage.md) |
-| Data quality | [`runbooks/data_quality_incident.md`](../runbooks/data_quality_incident.md) |
-| Model degradation | [`runbooks/model_degradation.md`](../runbooks/model_degradation.md) |
-| Pipeline failure | [`runbooks/pipeline_failure.md`](../runbooks/pipeline_failure.md) |
-| LLM cost spike | [`runbooks/llm_cost_spike.md`](../runbooks/llm_cost_spike.md) |
+| API outage | [runbooks/api_outage.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/runbooks/api_outage.md) |
+| Data quality | [runbooks/data_quality_incident.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/runbooks/data_quality_incident.md) |
+| Model degradation | [runbooks/model_degradation.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/runbooks/model_degradation.md) |
+| Pipeline failure | [runbooks/pipeline_failure.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/runbooks/pipeline_failure.md) |
+| LLM cost spike | [runbooks/llm_cost_spike.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/runbooks/llm_cost_spike.md) |
 
 Each runbook follows the same structure: **Detection → Triage → Mitigation →
 Postmortem**. Read the runbook for your incident type before taking any action.
@@ -94,8 +95,7 @@ Postmortem**. Read the runbook for your incident type before taking any action.
 ## 6. Make your first contribution
 
 1. Fork the repo or create a branch from `main`.
-2. Read [`CONTRIBUTING.md`](../CONTRIBUTING.md) if it exists, otherwise follow
-   the commit message convention in `CHANGELOG.md`.
+2. Read [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions and PR checklist.
 3. Run the test suite before pushing:
 
    ```bash

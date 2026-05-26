@@ -10,7 +10,7 @@
   }
 }%%
 flowchart TD
-    A(["\uD83D\uDD34 ALERT: API Outage\nhttp_requests_total 5xx > 5% or service unreachable"])
+    A(["🔴 ALERT: API Outage\nhttp_requests_total 5xx > 5% or service unreachable"])
     A --> B{"Service reachable?\ncurl https://api.internal/health"}
 
     B -- "Unreachable" --> C{"Infrastructure\nstatus?"}
@@ -30,7 +30,7 @@ flowchart TD
     I --> R
 
     J -- "Yes" --> L["Monitor error rate\nfor 10 consecutive minutes"]
-    J -- "No" --> M(["\uD83D\uDEA8 ESCALATE: SEV-1\nInfra Lead + Platform Lead\nActivate incident bridge"])
+    J -- "No" --> M(["🚨 ESCALATE: SEV-1\nInfra Lead + Platform Lead\nActivate incident bridge"])
 
     R -- "Yes" --> N["kubectl rollout undo\ndeployment/ml-incident-api\nConfirm rollback successful"]
     R -- "No" --> O["Scale replicas if saturation\nEnable circuit breaker\nCheck upstream dependencies"]
@@ -45,7 +45,7 @@ flowchart TD
     Q --> S{"Stable for\n30 consecutive minutes?"}
     S -- "No, degraded again" --> A
     S -- "Yes" --> T["Document timeline\nAssign preventive actions\nwith owners + due dates"]
-    T --> U(["\u2705 RESOLVE INCIDENT\nUpdate ticket: status=resolved\nSchedule postmortem"])
+    T --> U(["✅ RESOLVE INCIDENT\nUpdate ticket: status=resolved\nSchedule postmortem"])
 
     style A fill:#dc2626,color:#fff,stroke:#991b1b
     style M fill:#ea580c,color:#fff,stroke:#c2410c

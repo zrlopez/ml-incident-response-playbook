@@ -1,0 +1,116 @@
+# =============================================================================
+# MkDocs Material — ML Incident Response Playbook
+# =============================================================================
+# Build:   mkdocs build
+# Serve:   mkdocs serve
+# Deploy:  handled by .github/workflows/docs.yml (GitHub Pages)
+# =============================================================================
+site_name: ML Incident Response Playbook
+site_description: >-
+  Production-grade ML incident response API — architecture, runbooks,
+  monitoring, governance, and CI/CD documentation.
+site_author: Zachary Ryan Lopez
+site_url: https://mlops.zrl.dev/
+
+repo_name: zrlopez/ml-incident-response-playbook
+repo_url: https://github.com/zrlopez/ml-incident-response-playbook
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2:
+      arguments:
+        theme: default
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - API Reference: api_reference.md
+  - Data Dictionary: data_dictionary.md
+  - Monitoring & Observability:
+    - Overview: monitoring.md
+    - Metrics: metrics.md
+    - Extended Metrics: monitoring/metrics.md
+  - Governance:
+    - Overview: governance.md
+    - Governance Exception Register: policies/governance-exception-register.md
+    - Secrets Management: policies/secrets_management.md
+  - Deployment: deployment.md
+  - CI/CD:
+    - CI Conventions: ci-conventions.md
+  - Operations:
+    - Onboarding: onboarding.md
+    - Operational Principles: operational_principles.md
+    - Setup: setup.md
+    - Troubleshooting: troubleshooting.md
+    - Severity Matrix: severity_matrix.md
+  - Architecture Decision Records:
+    - ADR-001 Async ORM: adr/ADR-001-async-orm.md
+    - ADR-002 Redis JWT Denylist: adr/ADR-002-redis-jwt-denylist.md
+    - ADR-003 Alembic Migration Strategy: adr/ADR-003-alembic-migration-strategy.md
+    - ADR-004 Structlog OTel Observability: adr/ADR-004-structlog-otel-observability.md
+  - Contributing: CONTRIBUTING.md
+  - Remediation Log: REMEDIATION_LOG.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/zrlopez
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/zacharylopez
+
+copyright: "Copyright &copy; 2026 Zachary Ryan Lopez"

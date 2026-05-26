@@ -1,0 +1,22 @@
+# =============================================================================
+# .trivyignore - Trivy vulnerability exceptions
+# =============================================================================
+# Format: CVE-ID [expiry-date] # reason
+# Expiry dates enforce periodic re-review.
+# All entries must document: affected package, why it cannot be fixed,
+# and the actual risk in this deployment context.
+# =============================================================================
+
+# CVE-2026-0994 | protobuf | CVSS 8.2 HIGH
+# Affected:  google.protobuf.json_format.ParseDict() - uncontrolled recursion
+#            via deeply nested google.protobuf.Any messages -> DoS
+# Why not fixed: opentelemetry-proto==1.27.0 (transitive via
+#   opentelemetry-exporter-otlp-proto-grpc==1.27.0) caps protobuf at <5.0.
+#   Pinning protobuf>=5.29.6 causes ResolutionImpossible breaking all installs.
+# Actual risk: LOW in this context.
+#   - ParseDict() is not called anywhere in application code
+#   - protobuf used exclusively for gRPC OTLP telemetry transport
+#   - No attacker-controlled input reaches protobuf deserialization
+# Remediation path: upgrade otel SDK to protobuf-5.x-compatible release
+# Review by: 2026-08-24
+CVE-2026-0994
