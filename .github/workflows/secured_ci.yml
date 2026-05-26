@@ -343,9 +343,9 @@ jobs:
           path: coverage-unit.xml
           retention-days: 30
 
-      - name: Upload unit test results to Codecov
+      - name: Upload unit coverage reports to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-unit.xml
@@ -434,9 +434,9 @@ jobs:
           path: coverage-integration.xml
           retention-days: 30
 
-      - name: Upload integration test results to Codecov
+      - name: Upload integration coverage reports to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-integration.xml
