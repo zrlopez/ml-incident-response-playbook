@@ -13,12 +13,12 @@ import os
 import pytest
 
 # ---------------------------------------------------------------------------
-# Path resolution: allow `from validation.schema_checks import ...` whether
+# Path resolution: allow `from src.validation.schema_checks import ...` whether
 # pytest is run from the repo root or from tests/unit/.
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from validation.schema_checks import (  # noqa: E402
+from src.validation.schema_checks import (  # noqa: E402
     ALLOWED_CATEGORIES,
     ALLOWED_LIFECYCLE_TRANSITIONS,
     ALLOWED_SEVERITIES,
