@@ -68,7 +68,7 @@ httpx==0.28.1
 
 # ── Observability ───────────────────────────────────────────────────────────
 opentelemetry-api==1.27.0
-opentelemetry-sdk==1.27.0
+opentelemetry-sdk==1.42.1
 opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-exporter-otlp-proto-grpc==1.42.1
 prometheus-fastapi-instrumentator==7.0.0
