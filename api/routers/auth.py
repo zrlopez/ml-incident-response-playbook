@@ -3,7 +3,13 @@ api/routers/auth.py
 ===================
 Authentication routes for the ML Incident Response API.
 
-R-GOD Step 8: Extracted from api/app.py.  Contains:
+R-GOD Step 8: Extracted from api/app.py.
+R-C03 COMPLETE: All _deps._ global reads replaced with Depends(get_denylist)
+                and request.app.state access via FastAPI dependency injection.
+                Routes no longer declare bare `request: Request` — FastAPI
+                would interpret that as a required body field on non-first
+                positional parameters, causing 422s.
+
   POST /auth/token    — issue access + refresh token pair (rate limited 5/min)
   POST /auth/refresh  — rotate refresh token (rate limited 5/min, ARCH-08)
   POST /auth/logout   — revoke current access token via Redis denylist (ARCH-09)
@@ -21,13 +27,15 @@ from api.config import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
     limiter,
+    oauth2_scheme,
 )
 from api.schemas import Token
 from api.dependencies import (
     authenticate_user,
     get_current_user,
+    get_denylist,
 )
-import api.dependencies as _deps
+from api.redis_denylist import RedisDenylist
 from src.auth.tokens import create_access_token, create_refresh_token, decode_token
 
 log = structlog.get_logger(__name__)
@@ -40,10 +48,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def login(
     request: Request,
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
+    denylist=Depends(get_denylist),
 ) -> Token:
     """Issue an access + refresh token pair. Rate limited to 5/min per IP."""
     client_ip = request.client.host if request.client else "unknown"
-    user = await authenticate_user(form.username, form.password, client_ip=client_ip)
+    user_repo = getattr(request.app.state, "user_repo", None)
+    user = await authenticate_user(
+        form.username,
+        form.password,
+        client_ip=client_ip,
+        denylist=denylist,
+        user_repo=user_repo,
+    )
     if not user:
         log.warning("auth.login_failed", username=form.username, log_type="audit")
         raise HTTPException(
@@ -73,7 +89,8 @@ async def login(
 @limiter.limit("5/minute")
 async def refresh_token_endpoint(
     request: Request,
-    token: Annotated[str, Depends(__import__("api.config", fromlist=["oauth2_scheme"]).oauth2_scheme)],
+    token: Annotated[str, Depends(oauth2_scheme)],
+    denylist=Depends(get_denylist),
 ) -> Token:
     """
     Exchange a valid refresh token for a new access + refresh token pair.
@@ -86,20 +103,21 @@ async def refresh_token_endpoint(
             detail="Wrong token type — submit a refresh token",
         )
     old_jti = payload.get("jti", "")
-    if _deps._denylist is None:
+    if denylist is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication service temporarily unavailable",
             headers={"Retry-After": "30"},
         )
-    if await _deps._denylist.is_revoked(old_jti):
+    if await denylist.is_revoked(old_jti):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token has been revoked",
         )
     username: str = payload.get("sub", "")
-    if _deps._user_repo is not None:
-        _record = await _deps._user_repo.get_by_username(username)
+    user_repo = getattr(request.app.state, "user_repo", None)
+    if user_repo is not None:
+        _record = await user_repo.get_by_username(username)
         user: dict | None = _record.to_dict() if _record is not None else None
     else:
         from api.stub_users import _USERS
@@ -109,7 +127,7 @@ async def refresh_token_endpoint(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or disabled",
         )
-    await _deps._denylist.revoke(
+    await denylist.revoke(
         old_jti,
         ttl_seconds=int(timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()),
     )
@@ -134,6 +152,7 @@ async def refresh_token_endpoint(
 @router.post("/logout", status_code=204)
 async def logout(
     current_user: Annotated[dict, Depends(get_current_user)],
+    denylist=Depends(get_denylist),
 ) -> None:
     """
     Revoke the caller's current access token immediately via the Redis denylist.
@@ -141,10 +160,10 @@ async def logout(
     """
     jti = current_user["jti"]
     ttl = ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    if _deps._denylist is None:
+    if denylist is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication service temporarily unavailable",
         )
-    await _deps._denylist.revoke(jti, ttl_seconds=ttl)
+    await denylist.revoke(jti, ttl_seconds=ttl)
     log.info("auth.logout", username=current_user["username"], jti=jti, log_type="audit")

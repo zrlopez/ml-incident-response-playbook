@@ -4,6 +4,8 @@ api/routers/health.py
 Kubernetes liveness and readiness probes.
 
 R-GOD Step 7: Extracted from api/app.py.
+R-C03 COMPLETE: _deps._denylist replaced with request.app.state.denylist.
+
   GET /health  — liveness probe (process alive)
   GET /ready   — readiness probe (JWT subsystem + Redis denylist + env vars)
 """
@@ -14,11 +16,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 import jwt
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from api.config import JWT_SECRET, JWT_ALGORITHM
-import api.dependencies as _deps
 from src.auth import jwt_rs256
 from src.auth.tokens import create_access_token
 
@@ -32,7 +33,7 @@ async def liveness() -> Dict[str, str]:
 
 
 @router.get("/ready", include_in_schema=False)
-async def readiness() -> JSONResponse:
+async def readiness(request: Request) -> JSONResponse:
     """Kubernetes readiness probe — checks all critical dependencies."""
     checks: Dict[str, str] = {}
     all_ok = True
@@ -48,9 +49,12 @@ async def readiness() -> JSONResponse:
     except Exception as exc:
         checks["jwt_subsystem"] = f"error: {exc}"
         all_ok = False
+
+    # R-C03: Read denylist from app.state, not module globals.
+    denylist = getattr(request.app.state, "denylist", None)
     try:
-        if _deps._denylist is not None:
-            await _deps._denylist.ping()
+        if denylist is not None:
+            await denylist.ping()
             checks["redis_denylist"] = "ok"
         else:
             checks["redis_denylist"] = "not_initialised"
@@ -59,10 +63,12 @@ async def readiness() -> JSONResponse:
         checks["redis_denylist"] = f"error: {exc}"
         # R-S04: Denylist degradation does not hard-fail the readiness probe.
         checks["redis_denylist_degraded"] = "true"
+
     for var in ["JWT_SECRET_KEY"]:
         checks[f"env_{var}"] = "ok" if os.getenv(var) else "missing"
         if not os.getenv(var):
             all_ok = False
+
     return JSONResponse(
         status_code=200 if all_ok else 503,
         content={

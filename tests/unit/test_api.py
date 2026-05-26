@@ -64,15 +64,19 @@ class _MockDenylist:
 @pytest.fixture(autouse=True)
 def mock_denylist(monkeypatch):
     """Patch RedisDenylist globally so no test needs a real Redis."""
+    # Patch at the canonical definition site and at the lifespan import site.
+    # R-C03: RedisDenylist is no longer re-imported into api.app, so patch
+    # api.lifespan where it is actually imported and instantiated.
     monkeypatch.setattr("api.redis_denylist.RedisDenylist", _MockDenylist)
-    monkeypatch.setattr("api.app.RedisDenylist", _MockDenylist)
+    monkeypatch.setattr("api.lifespan.RedisDenylist", _MockDenylist)
 
 
 @pytest.fixture(autouse=True)
 def mock_otel(monkeypatch):
     """Suppress OTel SDK initialisation in tests."""
-    monkeypatch.setattr("api.app.configure_otel", lambda **kwargs: None)
-    monkeypatch.setattr("api.app.shutdown_otel", lambda: None)
+    # R-C03: configure_otel / shutdown_otel are imported in api.lifespan, not api.app.
+    monkeypatch.setattr("api.lifespan.configure_otel", lambda **kwargs: None)
+    monkeypatch.setattr("api.lifespan.shutdown_otel", lambda: None)
 
 
 @pytest.fixture

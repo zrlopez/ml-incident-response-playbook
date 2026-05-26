@@ -3,18 +3,18 @@ api/lifespan.py
 ===============
 FastAPI application lifespan — startup and shutdown wiring.
 
-R-GOD Step 6: Extracted from api/app.py.  Owns:
+R-GOD Step 6: Extracted from api/app.py.
+R-C03 COMPLETE: Writes only to app.state; no longer mutates api.dependencies globals.
+R-C04 COMPLETE: _build_engine() lives in src/platform/database.py and is called
+                 only inside this context manager via init_db() — never at import time.
+
+Owns:
   - DB connectivity check + Alembic migration state verification
   - PostgresUserRepository / InMemoryUserRepository wiring to app.state
   - RedisDenylist initialisation and app.state attachment
   - RS256KeyStore loading and JWKS router registration
   - OpenTelemetry bootstrap
   - Graceful shutdown (denylist close, OTel shutdown)
-
-R-C04 NOTE: _build_engine() is called inside this context manager (via init_db()),
-not at module import time.  Once app.py imports lifespan from here instead of
-defining it inline, test fixtures that import token helpers or dependencies will
-no longer trigger engine construction at collection time.
 """
 from __future__ import annotations
 
@@ -27,8 +27,6 @@ from fastapi import FastAPI
 
 from api.config import ENVIRONMENT, REDIS_URL
 from api.redis_denylist import RedisDenylist
-from api.dependencies import _denylist as _dep_denylist  # noqa: F401 — re-exported for mutation
-import api.dependencies as _deps
 from src.users.repository import PostgresUserRepository
 from src.auth import jwt_rs256
 from src.auth.key_store import KeyRotationStore
@@ -55,23 +53,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
         _pg_engine = create_async_engine(database_url, pool_pre_ping=True)
         _pg_session_factory = async_sessionmaker(_pg_engine, expire_on_commit=False)
-        _deps._user_repo = PostgresUserRepository(session_factory=_pg_session_factory)
-        app.state.user_repo = _deps._user_repo
+        app.state.user_repo = PostgresUserRepository(session_factory=_pg_session_factory)
         log.info("user_repo.postgres_wired", environment=ENVIRONMENT)
     else:
         from src.users.repository import InMemoryUserRepository
         from api.stub_users import _USERS
-        _deps._user_repo = InMemoryUserRepository(users=_USERS)
-        app.state.user_repo = _deps._user_repo
+        app.state.user_repo = InMemoryUserRepository(users=_USERS)
         log.warning(
             "user_repo.in_memory_fallback",
             hint="Set DATABASE_URL=postgresql+asyncpg://... to use PostgresUserRepository",
         )
 
-    # Initialise Redis-backed JWT denylist (R-03)
-    _deps._denylist = RedisDenylist(redis_url=REDIS_URL)
-    await _deps._denylist.connect()
-    app.state.redis = _deps._denylist._client
+    # Initialise Redis-backed JWT denylist and attach to app.state.denylist
+    _denylist = RedisDenylist(redis_url=REDIS_URL)
+    await _denylist.connect()
+    app.state.denylist = _denylist
+    app.state.redis = _denylist._client
     log.info("denylist.connected", redis_url=REDIS_URL)
 
     # API-KEY-01: Load RS256KeyStore and attach to app.state
@@ -96,7 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             hint="Set RSA_PRIVATE_KEY_PEM to upgrade to RS256 (ARCH-01)",
         )
 
-    # Bootstrap OpenTelemetry tracing (R-20)
+    # Bootstrap OpenTelemetry tracing
     configure_otel(
         service_name=os.getenv("OTEL_SERVICE_NAME", "ml-incident-api"),
         otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
@@ -106,8 +103,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
-    # ── Shutdown ────────────────────────────────────────────────────────────
-    if _deps._denylist is not None:
-        await _deps._denylist.close()
+    # ── Shutdown ──────────────────────────────────────────────────────────────
+    _shutdown_denylist: RedisDenylist | None = getattr(app.state, "denylist", None)
+    if _shutdown_denylist is not None:
+        await _shutdown_denylist.close()
     shutdown_otel()
     log.info("api.shutdown")

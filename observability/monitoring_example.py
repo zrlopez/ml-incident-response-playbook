@@ -36,7 +36,10 @@ Usage::
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from prometheus_client import Counter, Gauge
 
 import structlog
 

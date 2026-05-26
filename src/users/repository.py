@@ -55,7 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.incident_tracker import Base  # shared DeclarativeBase — Alembic sees both
-from src.auth.password import hash_password, verify_password
+from src.auth.password import hash_password, verify_password, maybe_rehash
 from src.config import get_settings
 
 log = structlog.get_logger(__name__)

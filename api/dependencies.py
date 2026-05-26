@@ -3,20 +3,16 @@ api/dependencies.py
 ===================
 FastAPI dependency providers and auth business logic.
 
-R-GOD Step 5: Extracted from api/app.py.  Contains:
-  - Module-level _denylist / _user_repo globals  (R-C03 marker: replace with app.state)
-  - _record_login_failure()    brute-force counter helper
-  - authenticate_user()        credential verification
-  - get_current_user()         FastAPI dependency
-  - require_role()             RBAC dependency factory
-  - get_user_repo()            app.state helper
-  - get_denylist()             app.state helper
+R-C03 COMPLETE: _denylist and _user_repo bare module-level globals removed.
+All auth functions now read exclusively from request.app.state.
 
-R-C03 NOTE: _denylist and _user_repo are still bare module-level mutable globals
-carried over from app.py.  The shared-state race on worker restart will be
-remediated in R-C03 by converting these to request.app.state reads throughout.
-Do not add new consumers of the bare globals — use get_denylist() / get_user_repo()
-FastAPI deps instead so R-C03 is a single-file change.
+Contains:
+  - _record_login_failure()    brute-force counter helper
+  - authenticate_user()        credential verification (accepts denylist/user_repo via args)
+  - get_current_user()         FastAPI dependency (reads app.state)
+  - require_role()             RBAC dependency factory
+  - get_user_repo()            app.state reader
+  - get_denylist()             app.state reader
 """
 from __future__ import annotations
 
@@ -34,16 +30,10 @@ from src.users.repository import AbstractUserRepository
 
 log = structlog.get_logger(__name__)
 
-# ── R-C03: shared-state race — replace both globals with app.state injection ────
-_denylist: RedisDenylist | None = None
-_user_repo: AbstractUserRepository | None = None
-
 
 async def _record_login_failure(redis_client: Any, failure_key: str) -> None:
     """
     Increment the brute-force counter for a given client key and set its expiry.
-
-    R-C09: Extracted helper; eliminates copy-paste of the Redis pipeline block.
     Failures are always silent — a Redis outage must never block the login attempt.
     """
     try:
@@ -59,9 +49,16 @@ async def authenticate_user(
     username: str,
     password: str,
     client_ip: str = "unknown",
+    *,
+    denylist: RedisDenylist | None = None,
+    user_repo: AbstractUserRepository | None = None,
 ) -> Optional[Dict[str, Any]]:
+    """
+    Verify credentials. Callers must pass denylist and user_repo from
+    request.app.state — no module-level globals are read here.
+    """
     _failure_key = f"login_failures:{client_ip}"
-    _redis = _denylist._client if _denylist is not None else None
+    _redis = denylist._client if denylist is not None else None
 
     if _redis is not None:
         try:
@@ -84,8 +81,8 @@ async def authenticate_user(
             log.warning("auth.brute_force_counter_unavailable", error=str(_redis_exc))
 
     # ── PostgresUserRepository path ────────────────────────────────────────────
-    if _user_repo is not None:
-        result = await _user_repo.authenticate(username, password)
+    if user_repo is not None:
+        result = await user_repo.authenticate(username, password)
         if result is None:
             if _redis is not None:
                 await _record_login_failure(_redis, _failure_key)
@@ -127,10 +124,10 @@ async def authenticate_user(
 
 def get_user_repo(request: Request) -> AbstractUserRepository:
     """
-    FastAPI dependency: return the AbstractUserRepository attached to app.state.
-    Used by GDPR routes and endpoints needing direct repository access.
+    FastAPI dependency: return the AbstractUserRepository from app.state.
+    Raises 503 if not yet initialised (startup failed or not complete).
     """
-    repo = getattr(request.app.state, "user_repo", None)
+    repo: AbstractUserRepository | None = getattr(request.app.state, "user_repo", None)
     if repo is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -141,10 +138,10 @@ def get_user_repo(request: Request) -> AbstractUserRepository:
 
 def get_denylist(request: Request) -> RedisDenylist | None:
     """
-    Helper: return the RedisDenylist attached to app.state.
-    Used by GDPR erasure to revoke the current token on account deletion.
+    FastAPI dependency: return the RedisDenylist from app.state.
+    Returns None if Redis was not initialised (callers must handle gracefully).
     """
-    return _denylist
+    return getattr(request.app.state, "denylist", None)
 
 
 async def get_current_user(
@@ -159,11 +156,13 @@ async def get_current_user(
         )
     jti = payload.get("jti", "")
 
+    denylist: RedisDenylist | None = getattr(request.app.state, "denylist", None)
+
     # R-S04: Fail-open on denylist read errors.
     revoked = False
-    if _denylist is not None:
+    if denylist is not None:
         try:
-            revoked = await _denylist.is_revoked(jti)
+            revoked = await denylist.is_revoked(jti)
         except DenylistUnavailableError:
             log.warning(
                 "auth.denylist_read_unavailable",
@@ -189,8 +188,9 @@ async def get_current_user(
         )
 
     username: str = payload.get("sub", "")
-    if _user_repo is not None:
-        _record = await _user_repo.get_by_username(username)
+    user_repo: AbstractUserRepository | None = getattr(request.app.state, "user_repo", None)
+    if user_repo is not None:
+        _record = await user_repo.get_by_username(username)
         user: dict | None = _record.to_dict() if _record is not None else None
     else:
         from api.stub_users import _USERS
