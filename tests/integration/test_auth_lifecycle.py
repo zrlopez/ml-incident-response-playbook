@@ -159,7 +159,7 @@ async def app_client(rs256_keys, sqlite_engine) -> AsyncGenerator[AsyncClient, N
 # Helper
 # ---------------------------------------------------------------------------
 
-def _make_token(sub: str = "test-admin", role: str = "admin", ttl_seconds: int = 300) -> str:
+def _make_token(sub: str = "admin", role: str = "admin", ttl_seconds: int = 300) -> str:
     """Issue a valid RS256 token using the currently loaded ephemeral key."""
     token, _jti, _ttl = sign_token(
         payload={"sub": sub, "role": role},
