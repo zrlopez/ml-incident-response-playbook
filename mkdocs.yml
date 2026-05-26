@@ -104,6 +104,7 @@ nav:
     - ADR-003 Alembic Migration Strategy: adr/ADR-003-alembic-migration-strategy.md
     - ADR-004 Structlog OTel Observability: adr/ADR-004-structlog-otel-observability.md
   - Contributing: CONTRIBUTING.md
+  - Code of Conduct: CODE_OF_CONDUCT.md
   - Remediation Log: REMEDIATION_LOG.md
 
 extra:
