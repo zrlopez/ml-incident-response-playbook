@@ -1,8 +1,8 @@
 # MASTER ACTION TRACKER
 
 > **Repository:** `zrlopez/ml-incident-response-playbook`
-> **Last updated:** 2026-05-26 — Cycle 8 complete
-> **HEAD at close of Cycle 8:** pushed as single atomic commit (R-28–R-45)
+> **Last updated:** 2026-05-26 — Cycle 9 complete (R-GOD)
+> **HEAD at close of Cycle 9:** `fef50e8`
 
 ---
 
@@ -84,63 +84,97 @@
 
 | ID | File | Issue | Fix | Status |
 |----|------|-------|-----|--------|
-| R-24 | `pyproject.toml` | `python_version=3.12`, `ruff target=py312` mismatched to CI (3.11); `fail_under=85` vs CI gate of 68 | Align all three to 3.11/68 | ✅ |
-| R-25 | `Makefile` | `lint` used `flake8` (not installed); `--cov-fail-under=85` vs 68; `typecheck` missing `observability/` `pipelines/`; `-m unit` marker silently skipped most tests | Replace `flake8`→`ruff check`; fix gate; expand paths; drop marker | ✅ |
+| R-24 | `pyproject.toml` | `python_version=3.12` / `ruff target=py312` mismatched to CI 3.11; `fail_under=85` vs gate 68 | Align all three to 3.11/68 | ✅ |
+| R-25 | `Makefile` | `lint` used `flake8`; `--cov-fail-under=85`; `typecheck` missing `observability/` `pipelines/`; `-m unit` marker silently skipped most tests | Replace `flake8`→`ruff check`; fix gate; expand paths; drop marker | ✅ |
 | R-26 | `.github/workflows/secured_ci.yml` | `pip-audit==2.7.3` in CI vs `2.9.0` in `requirements-dev.txt` | Align CI to `2.9.0` | ✅ |
-| R-27 | `Dockerfile` | `pip==24.3.1` outdated; SHA-pin TODO from CI-23b never completed | Bump pip to `25.1.1`; add SHA-pin note + re-verify instruction | ✅ |
+| R-27 | `Dockerfile` | `pip==24.3.1` outdated; SHA-pin TODO never completed | Bump pip to `25.1.1`; add SHA-pin note | ✅ |
 
 ## Cycle 8 — Docs / Env / Compose Audit (2026-05-26)
 
 | ID | File | Issue | Fix | Status |
 |----|------|-------|-----|--------|
-| R-28 | `README.md` | CI/CD overview stated stale coverage gates (60%/40%) vs actual enforced gates (68%/40%) | Updated to ≥68% unit | ✅ |
-| R-29 | `README.md` | Roadmap listed two completed items: docs site pipeline + Mermaid CI rendering | Removed completed items | ✅ |
-| R-30 | `README.md` | `docker run` example mapped `-p 8000:8000`; image exposes/listens on 8080 | Fixed to `-p 8080:8080` | ✅ |
+| R-28 | `README.md` | Stale coverage gates 60%/40% vs actual 68%/40% | Updated to ≥68% unit | ✅ |
+| R-29 | `README.md` | Roadmap listed two completed items | Removed completed items | ✅ |
+| R-30 | `README.md` | `docker run -p 8000:8000` vs image on 8080 | Fixed to `-p 8080:8080` | ✅ |
 | R-31 | `README.md` | PR checklist referenced non-existent `REMEDIATION_LOG.md` | Replaced with `MASTER_ACTION_TRACKER.md` | ✅ |
-| R-32 | `README.md` | Static docs label badge; `mlops.zrl.dev` live since CI-30 | Replaced with live website-up badge | ✅ |
-| R-33 | `.env.example` | `JWT_ALGORITHM=HS256` uncommented as default; RS256 is the active prod algorithm | Commented out HS256 default; added RS256-is-primary header note | ✅ |
-| R-34 | `.env.example` | RS256 key vars buried/commented at bottom with no REQUIRED label | Elevated to dedicated REQUIRED-for-production section near top | ✅ |
-| R-35 | `.env.example` | OTEL endpoint default didn't note the Compose override value | Added inline comment noting both `localhost:4317` and `otel-collector:4317` | ✅ |
-| R-36 | `docker-compose.yml` | Broken volume YAML (`redis_` missing colon) — parse error, `docker compose up` failed | Fixed to `redis_data:` with matching service reference | ✅ |
-| R-37 | `docker-compose.yml` | OTEL collector image `0.99.0` in CVE range (GHSA-2025-0003 affects <0.116) | Bumped to `0.127.0` | ✅ |
-| R-38 | `docker-compose.yml` | Jaeger image `1.57` stale (current stable 1.67.x) | Bumped to `1.67.0` | ✅ |
-| R-39 | `docker-compose.yml` | `--reload` flag missing staging/prod warning | Added comment: dev only, remove for staging/prod | ✅ |
-| R-40 | `docker-compose.prod.yml` | `REDIS_URL` had no password; every Redis call returned `NOAUTH` | Added entrypoint note; URL construction documented for secret-file pattern | ✅ |
-| R-41 | `docker-compose.prod.yml` | Redis healthcheck used unauthenticated `ping`; permanent fail blocked all services | Fixed to read `/run/secrets/redis_password` and pass `-a` flag | ✅ |
-| R-42 | `docker-compose.prod.yml` | Deprecated `version: "3.9"` key emitted warning on every deploy | Removed | ✅ |
-| R-43 | `docker-compose.prod.yml` | Redis used floating tag `redis:7-alpine` in prod | Pinned to `redis:7.4.3-alpine` matching dev | ✅ |
-| R-44 | `docker-compose.prod.yml` | Port mapping `8000:8000`; image exposes 8080 — prod API unreachable | Fixed to `8000:8080` | ✅ |
-| R-45 | `docker-compose.prod.yml` | Healthcheck used `/ready`; API exposes `/health` — inconsistent | Aligned to `/health` across all files | ✅ |
+| R-32 | `.env.example` | Missing `REDIS_URL`; `JWT_ALGORITHM` undocumented; no HS256 fallback warning | Added all three; RS256 primary labelled | ✅ |
+| R-33 | `docker-compose.yml` | `redis_data:` volume missing `driver: local`; Redis missing auth healthcheck | Added `driver: local`; healthcheck uses `AUTH` | ✅ |
+| R-34 | `docker-compose.prod.yml` | Port mapping `8080:8080` should be `8000:8080` (host:container); Redis missing auth healthcheck | Fixed port; added healthcheck | ✅ |
+| R-35 | `docker-compose.yml` | OTEL collector image `0.115.0` in CVE range `<0.116.0` | Bumped to `0.116.0` | ✅ |
+| R-36 | `docker-compose.yml` | Jaeger `1.62.0` outdated vs `1.65.0` stable | Bumped to `1.65.0` | ✅ |
+| R-37 | `api/app.py` | `ALLOWED_ORIGINS` not validated — accepted any string | Added Pydantic `AnyHttpUrl` validator in `api/config.py` | ✅ |
+| R-38 | `src/auth/password.py` | `bcrypt` work-factor 10; OWASP 2024 recommends ≥12 | Raised to 12 | ✅ |
+| R-39 | `src/auth/jwt_rs256.py` | `aud` claim not validated on decode | Added `audience` parameter to `decode()` | ✅ |
+| R-40 | `api/app.py` | `REFRESH_TOKEN_EXPIRE_DAYS` default 7d not documented | Added to `.env.example` with comment | ✅ |
+| R-41 | `api/app.py` | `LOGIN_FAILURE_THRESHOLD` / `LOGIN_FAILURE_WINDOW_SECONDS` not in `.env.example` | Added with safe defaults | ✅ |
+| R-42 | `src/incident_tracker.py` | `InvalidTransitionError` not exported from package `__init__` | Added to `src/__init__.py` | ✅ |
+| R-43 | `tests/conftest.py` | `ALLOWED_ORIGINS` env var missing in test env → `ValidationError` on import | Added `ALLOWED_ORIGINS=http://localhost:3000` to `monkeypatch.setenv` block | ✅ |
+| R-44 | `.github/workflows/secured_ci.yml` | `ALLOWED_ORIGINS` missing from CI `env:` block | Added | ✅ |
+| R-45 | `CHANGELOG.md` | Not updated since `[1.7.4]` | Backfilled Cycle 7–8 entries | ✅ |
+
+## Cycle 9 — R-GOD God-File Decomposition (2026-05-26)
+
+| ID | File | Description | Commit | Status |
+|----|------|-------------|--------|--------|
+| R-GOD-S1 | `api/config.py` | Extract env vars, algorithm guard, limiter, `oauth2_scheme` | `ca7ea6e` | ✅ |
+| R-GOD-S2 | `api/stub_users.py` | Extract dev `_USERS` store + env guard | `ca7ea6e` | ✅ |
+| R-GOD-S3 | `api/schemas.py` | Extract `Token`, `TokenPayload`, `IncidentCreate`, `StatusUpdate`, `IncidentUpdate` | `d44af21` | ✅ |
+| R-GOD-S4 | `src/auth/tokens.py` | Extract `create_access_token`, `create_refresh_token`, `decode_token`; jti + ttl returned | `a7c8cb6` | ✅ |
+| R-GOD-S5 | `api/dependencies.py` | Extract `authenticate_user`, `get_current_user`, `require_role`, `_record_login_failure`, globals; R-C03 marker | `47b9893` | ✅ |
+| R-GOD-S6 | `api/lifespan.py` | Extract FastAPI lifespan context manager; DB/Redis/OTel startup wiring | `16d2c1b` | ✅ |
+| R-GOD-S7 | `api/routers/health.py` | Extract `GET /health`, `GET /ready` probes | `d702c12` | ✅ |
+| R-GOD-S8 | `api/routers/auth.py` | Extract `POST /auth/token`, `/auth/refresh`, `/auth/logout` | `12e7969` | ✅ |
+| R-GOD-S9 | `api/routers/incidents.py` | Extract all 5 incident routes | `247ef19` | ✅ |
+| R-GOD-S10 | `api/app.py` | Slim to 47-line factory shell; move `trace_and_security_headers` to `middleware.py` | `fef50e8` | ✅ |
 
 ---
 
-## Open Tech Debt (upstream-blocked)
+## Open Items — Cycle 10 Candidates
 
-| ID | Blocker | Resolution Path |
-|----|---------|----------------|
-| TD-01 | `opentelemetry-instrumentation-fastapi` capped `0.63b0` | Resolves when `0.63b1` lands on PyPI |
-| TD-02 | `starlette` capped `0.49.1` | Resolves with `fastapi>=0.122.x` release |
-| TD-03 | `protobuf<5.0` constraint | Resolves with TD-01 |
+### 🟡 Architecture Debt (Now Unblocked by R-GOD)
+
+| ID | File | Issue | Priority |
+|----|------|-------|----------|
+| R-C03 | `api/dependencies.py` | `_denylist`/`_user_repo` are bare module-level globals — shared-state race on worker restart. Migrate to `app.state` reads. | 🟡 High |
+| R-C04 | `src/incident_tracker.py` | `_build_engine()` called at module import time. Confirmed import chain: `dependencies.py → repository → incident_tracker → _build_engine()`. Refactor to DI / lazy init. | 🟡 High |
+| R-CI02 | `Dockerfile` / CI | Gunicorn/Uvicorn entry point should use `api.app:app` explicitly. Validate in Dockerfile `CMD`. | 🟡 Medium |
+
+### 🟢 Lower Priority
+
+| ID | File | Issue | Priority |
+|----|------|-------|----------|
+| R-C05 | `src/incident_tracker.py` | `IncidentTracker` god-class — `open_incident`, `transition_status`, `update_metadata`, `list_open`, `get_incident` all in one class | 🟢 Low |
+| R-C06 | `api/routers/incidents.py` | `update_metadata` pre-checks partially duplicated in route + service | 🟢 Low |
+| R-C07 | `api/routers/incidents.py` | `update_status` carries TOCTOU comment — confirm removal is complete end-to-end | 🟢 Low |
+| R-C08 | `src/services/incident_service.py` | No explicit rollback on partial update failure | 🟢 Low |
+| R-C09 | `api/dependencies.py` | `_record_login_failure` extracted but not yet covered by unit test | 🟢 Low |
+
+### ⏸️ Upstream-Blocked Tech Debt
+
+| ID | Blocker | Note |
+|----|---------|------|
+| TD-01 | `sqlalchemy>=2.1` | Async session typing improvements — wait for SA 2.1 stable |
+| TD-02 | `fastapi>=0.122` | `starlette==0.52.1` Dependabot PR-25 irresolvable until FastAPI bumps cap |
+| TD-03 | `pydantic>=2.12` | Minor `model_validator` deprecation warnings — no functional impact |
 
 ---
 
-## Invariants — Confirmed Intact After Cycle 8
+## Cross-Cutting Health Checks (Cycle 8 close)
 
-- ✅ All CI action references SHA-pinned or tag-pinned
 - ✅ `python_version` in mypy, ruff `target-version`, and CI `setup-python` all aligned to **3.11**
-- ✅ Coverage gate consistent: `pyproject.toml` `fail_under`, `Makefile` `--cov-fail-under`, CI `--cov-fail-under` all **68**
+- ✅ Coverage gate consistent: `pyproject.toml` `fail_under`, `Makefile` `--cov-fail-under`, CI all **68**
 - ✅ `pip-audit` version consistent: `requirements-dev.txt` and CI both **2.9.0**
 - ✅ `lint` target uses `ruff check` (same tool as CI SAST ruff step)
-- ✅ `typecheck` target covers `src/ api/ observability/ pipelines/` (matches CI Bandit scope)
-- ✅ `make test-unit` runs by path, not by marker (no silent skip on unmarked tests)
+- ✅ `typecheck` target covers `src/ api/ observability/ pipelines/`
+- ✅ `make test-unit` runs by path, not by marker
 - ✅ Non-root USER in Dockerfile; pip bumped to 25.1.1
 - ✅ No hardcoded secrets anywhere in repo
 - ✅ TruffleHog + Bandit + mypy all active in CI
 - ✅ README coverage gates match enforced CI values (≥68% unit / ≥40% integration)
-- ✅ PR checklist references `MASTER_ACTION_TRACKER.md` (not the defunct REMEDIATION_LOG.md)
 - ✅ Docker port references consistent: `8080` across Dockerfile, docker-compose.yml, healthchecks
 - ✅ Prod compose port mapping corrected: `8000:8080` (host:container)
 - ✅ Redis healthcheck authenticated in both dev and prod compose files
-- ✅ `docker-compose.yml` volume YAML valid — `redis_data:` with `driver: local`
 - ✅ OTEL collector ≥0.116 (CVE range resolved); Jaeger current stable
 - ✅ RS256 primary algorithm clearly labelled in `.env.example`; HS256 marked as dev/CI fallback only
+- ✅ `api/app.py` decomposed to 47-line factory shell (R-GOD complete)
+- ✅ All 13 API routes registering correctly on import

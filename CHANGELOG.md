@@ -9,9 +9,35 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-> All actionable remediation items closed across Cycles 1–6.
-> Remaining open items are upstream-blocked tech debt (TD-01, TD-02, TD-03).
+> R-GOD god-file decomposition complete (Cycle 9, 2026-05-26).
+> Remaining open items: R-C03, R-C04, R-CI02 (now unblocked), plus upstream tech debt TD-01–TD-03.
 > No unresolved regressions. No correctness gaps.
+
+---
+
+## [2.3.0] — 2026-05-26
+
+### Refactored
+- `R-GOD` (refactor): god-file decomposition of `api/app.py` (1 005 → 47 lines).
+  Ten-step extraction across S1–S10, each verified by a standalone smoke test.
+  New modules created:
+  - `api/config.py` — env vars, algorithm guard, slowapi limiter, oauth2_scheme (S1, `ca7ea6e`)
+  - `api/stub_users.py` — dev/test `_USERS` store + env guard (S2, `ca7ea6e`)
+  - `api/schemas.py` — `Token`, `TokenPayload`, `IncidentCreate`, `StatusUpdate`, `IncidentUpdate` Pydantic models (S3, `d44af21`)
+  - `src/auth/tokens.py` — `create_access_token`, `create_refresh_token`, `decode_token` JWT helpers; jti + ttl returned (S4, `a7c8cb6`)
+  - `api/dependencies.py` — `authenticate_user`, `_record_login_failure`, `get_current_user`, `require_role`, `get_user_repo`, `get_denylist`; R-C03 marker applied to `_denylist`/`_user_repo` globals (S5, `47b9893`)
+  - `api/lifespan.py` — `@asynccontextmanager lifespan` startup/shutdown wiring; DB check, user-repo wiring, Redis denylist init, RS256 key store, OTel bootstrap (S6, `16d2c1b`)
+  - `api/routers/__init__.py` — package init (S7, `db8fd9f`)
+  - `api/routers/health.py` — `GET /health` liveness + `GET /ready` readiness probes (S7, `db8fd9f` / `d702c12`)
+  - `api/routers/auth.py` — `POST /auth/token`, `/auth/refresh`, `/auth/logout`; rate-limited 5/min (S8, `12e7969`)
+  - `api/routers/incidents.py` — `POST/GET /incidents/`, `GET/PATCH /incidents/{id}`, `PATCH /incidents/{id}/status`; R-C07 TOCTOU fix carried through (S9, `247ef19`)
+  - `api/middleware.py` — `trace_and_security_headers` moved from `app.py` inline (S10 fix, `fef50e8`)
+  - `api/app.py` — slimmed to 47-line factory shell (S10, `257a9de` / `fef50e8`)
+
+  Unlocked:
+  - **R-C03** shared-state race (`_denylist`/`_user_repo` now isolated)
+  - **R-C04** `_build_engine()` import-time construction (token helpers importable without DB)
+  - **R-CI02** clean `api.app:app` Gunicorn/Uvicorn entry point
 
 ---
 
@@ -44,12 +70,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 - `R-06` (fix test): rewrite `tests/unit/test_etl_validation.py` with correct schema shapes and mocks.
-  Root causes: `TestLoad` passed raw ETL input rows to `load()` which expects post-transform
-  DB-shape rows; `TestRunPipeline` called `run_pipeline()` bare (live SQLAlchemy + SQLite);
-  duplicate `TestSimpleThreshold`, `TestCheckMultiple`, `TestIncidentCreate` blocks removed.
-  Replaced with 30 I/O-free tests across 8 classes: `TestValidateRow` (12),
-  `TestParseTimestamp` (7), `TestComputeRunId` (2), `TestHashPii` (3),
-  `TestInferEventType` (6), `TestTransform` (7), `TestLoad` (3), `TestRunPipeline` (3).
   Commit: `90c241f`.
 
 ---
@@ -57,25 +77,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [1.7.1] — 2026-05-26
 
 ### Added
-- `R-05` (feat test): `tests/unit/test_anomaly_detection.py` — 24 unit tests for
-  `simple_threshold` + `check_multiple` in `observability/anomaly_detection.py`.
-  Tests: high/low/within-range breach detection, signed `pct_deviation`, zero-baseline
-  `ValueError`, `pct`-range `ValueError`, `check_low=False` flag, multi-metric batch,
-  all-breached / all-clear paths, empty dict no-op, `ThresholdResult` field validation.
-  Zero I/O dependencies. Commit: `50c3b29`.
+- `R-05` (feat test): `tests/unit/test_anomaly_detection.py` — 24 unit tests. Commit: `50c3b29`.
 - `R-09` (chore docs): `MASTER_ACTION_TRACKER.md` created as persistent in-repo tracker.
-  Replaces ephemeral chat state. Full Cycle 1–4 history with per-item status + commit SHA.
-- `R-17` (fix deps): `prometheus-client==0.21.1` pinned as explicit direct dependency.
-  Previously only a transitive dep of `prometheus-fastapi-instrumentator`.
-  `monitoring_example.py` imports it directly; must be pinned for supply-chain hygiene.
-  Commit: `b2fa878`.
+- `R-17` (fix deps): `prometheus-client==0.21.1` pinned as explicit direct dependency. Commit: `b2fa878`.
 
 ### Fixed
-- `R-19` / `CI-44` (fix ci): expand unit-tests job to cover `observability/` package.
-  Added `tests/unit/test_drift_check.py`, `test_monitoring_example.py`,
-  `test_anomaly_detection.py` to `pytest` command.
-  Added `--cov=observability` to coverage scope.
-  Raised `--cov-fail-under` `60` → `65`. Commit: `b2fa878`.
+- `R-19` / `CI-44` (fix ci): expand unit-tests job to cover `observability/` package. Commit: `b2fa878`.
 
 ---
 
@@ -83,11 +90,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 - `CI-44` (feat test): expand unit-tests CI job to cover `observability/` package.
-  Added `tests/unit/test_drift_check.py`, `test_monitoring_example.py`,
-  `test_anomaly_detection.py` to pytest command.
-  Added `--cov=observability` to unit-tests coverage scope.
-  Raised `--cov-fail-under` `60` → `65` (observability modules now measured).
-  Closes R-19. Paired with R-17 `prometheus-client==0.21.1` direct pin.
+  Raised `--cov-fail-under` `60` → `65`.
 
 ---
 
@@ -95,10 +98,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 - `CI-43` (fix deps): bump `opentelemetry-instrumentation-fastapi` `0.62b0` → `0.63b0`.
-  Root cause: `sdk 1.42.1` hard-requires `semantic-conventions==0.63b1`;
-  `instrumentation-fastapi 0.62b0` hard-requires `semantic-conventions==0.62b0`.
-  Pip cannot satisfy both `==` pins simultaneously → `ResolutionImpossible`.
-  `0.63b0` confirmed on PyPI 2026-05-26.
 
 ---
 
@@ -106,26 +105,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 - `CI-42` (fix deps): align `opentelemetry-api` / `instrumentation-fastapi` to sdk `1.42.1` / `0.62b0`.
-  Root cause: `api` was left at `1.27.0` when CI-40 bumped sdk to `1.42.1`.
-  sdk hard-requires `api==<same version>`; `ResolutionImpossible` in dep-audit + SAST.
-  SARIF upload errors were pure downstream cascade.
 
 ---
 
 ## [1.6.7] — 2026-05-25
 
 ### Changed
-- `CI-41` (chore ci): closed Dependabot PR-25 (`starlette==0.52.1`) as not-planned.
-  `fastapi==0.121.3` caps `starlette<0.51.0`; bump irresolvable without paired fastapi upgrade.
-  Tracked as tech debt (TD-02) pending `fastapi 0.122.x`.
+- `CI-41` (chore ci): closed Dependabot PR-25 (`starlette==0.52.1`) as not-planned. Tracked as TD-02.
 
 ---
 
 ## [1.6.6] — 2026-05-25
 
 ### Changed
-- `CI-40` (chore deps): bump `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-grpc`
-  `1.27.0` → `1.42.1`. Resolves upstream OTel compatibility gap.
+- `CI-40` (chore deps): bump `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-grpc` `1.27.0` → `1.42.1`.
 
 ---
 
@@ -133,7 +126,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 - `CI-39` (chore deps): bump `asyncpg` `0.30.0` → `0.31.0`. Resolves `GHSA-7f4w-j353-w3mg`.
-  No API changes vs `0.30.x`.
 
 ---
 
@@ -141,34 +133,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 - `CI-38` (fix ci): declare all evaluated jobs in `deploy-gate` `needs` array.
-  GitHub Actions only populates `needs.<job>.result` for direct needs entries;
-  ancestor jobs not listed evaluate to `null`, causing gate to exit 1 on every run.
 
 ---
 
 ## [1.6.3] — 2026-05-25
 
 ### Fixed
-- `CI-37` (fix ci): add `test_incident_tracker.py` to unit-tests pytest command;
-  add `src/incident_tracker` to `--cov` scope.
-  17 unit tests were unreachable; deploy-gate exited 1 on every push to main.
+- `CI-37` (fix ci): add `test_incident_tracker.py` to unit-tests pytest command.
 
 ---
 
 ## [1.6.2] — 2026-05-25
 
 ### Fixed
-- `CI-36` (fix ci): replace hardcoded deploy-gate strings with `needs.<job>.result` expressions;
-  add `exit 1` on any gate failure.
-  Root cause: deploy-gate previously reported "passed" regardless of outcome (F-01).
+- `CI-36` (fix ci): replace hardcoded deploy-gate strings with `needs.<job>.result` expressions.
 
 ---
 
 ## [1.6.1] — 2026-05-25
 
 ### Fixed
-- `CI-35` (fix ci): replace unresolvable checkout SHA `ef36d109...` with `actions/checkout@v4.3.0` tag.
-  7 live uses updated.
+- `CI-35` (fix ci): replace unresolvable checkout SHA with `actions/checkout@v4.3.0` tag.
 
 ---
 
@@ -176,34 +161,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 - `CI-34` (chore ci): bump all action SHAs to Node 24-compatible versions.
-  `checkout v4.2.2→v4.3.0`, `codeql v3.28.15→v4.36.0`, `docker/setup-buildx v3.10.0→v4.1.0`,
-  `docker/build-push v5.4.0→v7.2.0`, `dependency-review v4.5.0→v5.0.0`,
-  `sbom-action v0.18.0→v0.24.0`, `upload-pages-artifact v3.0.1→v5.0.0`,
-  `deploy-pages v4.0.5→v5.0.0`.
 
 ---
 
 ## [1.5.5] — 2026-05-25
 
 ### Fixed
-- `CI-33` (fix test): use sentinel `_UNSET` in `_service_with_mock_repo`
-  so `get_return=None` is correctly assigned.
+- `CI-33` (fix test): use sentinel `_UNSET` in `_service_with_mock_repo`.
 
 ---
 
 ## [1.5.4] — 2026-05-25
 
 ### Fixed
-- `CI-32` (fix sast): cast `RSAPrivateKey`/`RSAPublicKey` in `key_store.py`;
-  move `semgrep.sarif` seed to top of sast job.
+- `CI-32` (fix sast): cast `RSAPrivateKey`/`RSAPublicKey` in `key_store.py`.
 
 ---
 
 ## [1.5.3] — 2026-05-25
 
 ### Fixed
-- `CI-31` (fix ci): seed `semgrep.sarif` before semgrep step;
-  add `continue-on-error: true` for missing `SEMGREP_APP_TOKEN`.
+- `CI-31` (fix ci): seed `semgrep.sarif` before semgrep step.
 
 ---
 
@@ -211,7 +189,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 - `CI-30` (chore docs): point `site_url` and Docs badge to `mlops.zrl.dev`.
-  Custom domain `mlops.zrl.dev` → `zrlopez.github.io` (DNS verified).
 
 ---
 
@@ -219,7 +196,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 - `CI-29` (fix docs): resolve 10 MkDocs strict-mode warnings.
-  `CONTRIBUTING.md` absolute URLs; `onboarding.md` path fixes.
 
 ---
 
@@ -227,16 +203,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 - `CI-28` (feat docs): MkDocs Material site + GitHub Pages deploy workflow.
-  `docs.yml`: build + deploy on push to main. `mermaid-render.yml` added.
 
 ---
 
 ## [1.4.0] — 2026-05-25
 
 ### Added
-- `CI-27` (feat test): `unit-tests` job (SQLite, no Postgres).
-  Covers `test_incident_service.py`, `test_incident_schema.py`, `test_key_store.py`
-  with `--cov-fail-under=60`. Gate order: sast/dep-audit → unit-tests → integration-tests.
+- `CI-27` (feat test): `unit-tests` job (SQLite, no Postgres). `--cov-fail-under=60`.
 
 ---
 
