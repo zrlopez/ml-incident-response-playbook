@@ -1,5 +1,7 @@
 # =============================================================================
-# ML Incident Response API - Hardened Production Dockerfile
+# ML Incident Response API - Development Dockerfile
+# For local development only — not hardened for production use.
+# Production image: Dockerfile (multi-stage Alpine, non-root, SHA-pinned)
 # Remediation 2026-05-23
 # CRIT-03: Replaced `python -m http.server` CMD with uvicorn
 # =============================================================================
