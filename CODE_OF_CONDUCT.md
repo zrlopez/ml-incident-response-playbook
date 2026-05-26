@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at the contact
-address listed in [SECURITY.md](./SECURITY.md).
+address listed in [SECURITY.md](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/SECURITY.md).
 
 All complaints will be reviewed and investigated promptly and fairly.
 
