@@ -25,6 +25,11 @@ Findings addressed:
   API-RESP-01 Incident routes return typed IncidentResponse Pydantic models (2026-05-25)
   API-CURSOR-01 list_incidents uses DB-level cursor pagination via before_id (2026-05-25)
   API-KEY-01 RS256KeyStore attached to app.state.key_store at startup (2026-05-25)
+  R-C02      RS256 added to _ALLOWED_ALGORITHMS; startup no longer crashes (2026-05-26)
+  R-S04      Denylist read failures now fail-open with audit log (2026-05-26)
+  R-C09      Extracted _record_login_failure() helper; DRY violation resolved (2026-05-26)
+  R-C07      TOCTOU pre-check removed from update_incident_status (2026-05-26)
+  R-C06      update_incident_metadata delegates to IncidentService.update_metadata() (2026-05-26)
 """
 from __future__ import annotations
 
@@ -48,7 +53,7 @@ import structlog
 
 from observability.logging_config import configure_logging
 from observability.otel_setup import configure_otel, shutdown_otel
-from api.redis_denylist import RedisDenylist
+from api.redis_denylist import RedisDenylist, DenylistUnavailableError
 from api.gdpr_routes import router as gdpr_router
 from api.rate_limit import check_user_rate_limit
 from src.users.repository import PostgresUserRepository, AbstractUserRepository
@@ -81,9 +86,15 @@ REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 LOGIN_FAILURE_THRESHOLD: int = int(os.getenv("LOGIN_FAILURE_THRESHOLD", "10"))
 LOGIN_FAILURE_WINDOW_SECONDS: int = int(os.getenv("LOGIN_FAILURE_WINDOW_SECONDS", "60"))
 
-_ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512"}
+# R-C02: RS256 added — ARCH-01 introduced RS256 signing but the allowlist only
+# contained HS-family values, causing startup crash when JWT_ALGORITHM=RS256.
+# "none" and other weak algorithms are intentionally absent from this set.
+_ALLOWED_ALGORITHMS = {"HS256", "HS384", "HS512", "RS256", "RS384", "RS512"}
 if JWT_ALGORITHM not in _ALLOWED_ALGORITHMS:
-    raise ValueError(f"JWT_ALGORITHM must be one of {_ALLOWED_ALGORITHMS}, got '{JWT_ALGORITHM}'")
+    raise ValueError(
+        f"JWT_ALGORITHM must be one of {sorted(_ALLOWED_ALGORITHMS)}, got '{JWT_ALGORITHM}'. "
+        "Weak or unsigned algorithms (e.g. 'none', 'HS1') are not permitted."
+    )
 
 # ── CORS ──────────────────────────────────────────────────────────────
 _raw_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
@@ -91,9 +102,6 @@ ALLOWED_ORIGINS: List[str] = [o.strip() for o in _raw_origins.split(",") if o.st
 
 # ── Rate limiter ─────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
-
-# ── Redis JWT denylist ────────────────────────────────────────────────────
-from api.redis_denylist import DenylistUnavailableError  # noqa: E402
 
 _denylist: RedisDenylist | None = None
 _user_repo: AbstractUserRepository | None = None
@@ -297,15 +305,42 @@ def decode_token(token: str) -> Dict[str, Any]:
 
 
 # ── Auth helpers ─────────────────────────────────────────────────────────────
+
+async def _record_login_failure(redis_client: Any, failure_key: str) -> None:
+    """
+    Increment the brute-force counter for a given client key and set its expiry.
+
+    R-C09: This helper eliminates the 3x copy-paste of the Redis pipeline block
+    that previously appeared inline in authenticate_user for each failure path
+    (repo miss, user-not-found, wrong-password). Failures are always silent —
+    a Redis outage must never block the login attempt itself; it only means
+    brute-force counting is temporarily unavailable.
+
+    Args:
+        redis_client: The raw aioredis client from _denylist._client.
+        failure_key:  Redis key string, e.g. "login_failures:{client_ip}".
+    """
+    try:
+        pipe = redis_client.pipeline()
+        await pipe.incr(failure_key)
+        await pipe.expire(failure_key, LOGIN_FAILURE_WINDOW_SECONDS)
+        await pipe.execute()
+    except Exception as exc:
+        log.warning("auth.brute_force_counter_write_failed", error=str(exc))
+
+
 async def authenticate_user(
     username: str,
     password: str,
     client_ip: str = "unknown",
 ) -> Optional[Dict[str, Any]]:
     _failure_key = f"login_failures:{client_ip}"
-    if _denylist is not None and _denylist._client is not None:
+    _redis = _denylist._client if _denylist is not None else None
+
+    # Check brute-force counter before attempting auth
+    if _redis is not None:
         try:
-            _failure_count = await _denylist._client.get(_failure_key)
+            _failure_count = await _redis.get(_failure_key)
             if _failure_count is not None and int(_failure_count) >= LOGIN_FAILURE_THRESHOLD:
                 log.warning(
                     "auth.brute_force_blocked",
@@ -323,55 +358,44 @@ async def authenticate_user(
         except Exception as _redis_exc:
             log.warning("auth.brute_force_counter_unavailable", error=str(_redis_exc))
 
+    # ── PostgresUserRepository path ───────────────────────────────────
     if _user_repo is not None:
         result = await _user_repo.authenticate(username, password)
         if result is None:
-            if _denylist is not None and _denylist._client is not None:
-                try:
-                    pipe = _denylist._client.pipeline()
-                    await pipe.incr(_failure_key)
-                    await pipe.expire(_failure_key, LOGIN_FAILURE_WINDOW_SECONDS)
-                    await pipe.execute()
-                except Exception:
-                    pass
+            if _redis is not None:
+                await _record_login_failure(_redis, _failure_key)
             return None
-        if _denylist is not None and _denylist._client is not None:
+        if _redis is not None:
             try:
-                await _denylist._client.delete(_failure_key)
+                await _redis.delete(_failure_key)
             except Exception:
                 pass
         return result.to_dict()
 
+    # ── In-memory _USERS stub path (development/test only) ────────────
     user = _USERS.get(username)
     if not user:
+        # Constant-time dummy comparison to prevent username enumeration
         try:
             verify_password(password, hash_password("dummy-constant-time"))
         except Exception:
             pass
-        if _denylist is not None and _denylist._client is not None:
-            try:
-                pipe = _denylist._client.pipeline()
-                await pipe.incr(_failure_key)
-                await pipe.expire(_failure_key, LOGIN_FAILURE_WINDOW_SECONDS)
-                await pipe.execute()
-            except Exception:
-                pass
+        if _redis is not None:
+            await _record_login_failure(_redis, _failure_key)
         return None
+
     if user.get("disabled"):
         return None
+
     if not verify_password(password, user["hashed_password"]):
-        if _denylist is not None and _denylist._client is not None:
-            try:
-                pipe = _denylist._client.pipeline()
-                await pipe.incr(_failure_key)
-                await pipe.expire(_failure_key, LOGIN_FAILURE_WINDOW_SECONDS)
-                await pipe.execute()
-            except Exception:
-                pass
+        if _redis is not None:
+            await _record_login_failure(_redis, _failure_key)
         return None
-    if _denylist is not None and _denylist._client is not None:
+
+    # Successful login — clear failure counter
+    if _redis is not None:
         try:
-            await _denylist._client.delete(_failure_key)
+            await _redis.delete(_failure_key)
         except Exception:
             pass
     return user
@@ -411,22 +435,40 @@ async def get_current_user(
             detail="Wrong token type",
         )
     jti = payload.get("jti", "")
-    try:
-        revoked = await _denylist.is_revoked(jti) if _denylist else False
-        if _denylist is None:
-            raise DenylistUnavailableError("Denylist not initialised")
-    except DenylistUnavailableError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication service temporarily unavailable",
-            headers={"Retry-After": "30"},
+
+    # R-S04: Fail-open on denylist read errors — a Redis outage must not block
+    # ALL authenticated requests (availability > revocation certainty for reads).
+    # Write failures (revoke, logout) remain fail-safe and hard-error separately.
+    # A structured audit warning is emitted so ops can detect Redis degradation.
+    revoked = False
+    if _denylist is not None:
+        try:
+            revoked = await _denylist.is_revoked(jti)
+        except DenylistUnavailableError:
+            log.warning(
+                "auth.denylist_read_unavailable",
+                jti=jti,
+                action="fail_open",
+                log_type="audit",
+                hint="Redis denylist unreachable — revocation check skipped. "
+                     "Investigate Redis connectivity immediately.",
+            )
+            # Fail-open: allow request, but surface degraded status in /ready probe
+    else:
+        log.warning(
+            "auth.denylist_not_initialised",
+            jti=jti,
+            action="fail_open",
+            log_type="audit",
         )
+
     if revoked:
         log.warning("auth.revoked_token_access", jti=jti, log_type="audit")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has been revoked",
         )
+
     username: str = payload.get("sub", "")
     if _user_repo is not None:
         _record = await _user_repo.get_by_username(username)
@@ -502,16 +544,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("denylist.connected", redis_url=REDIS_URL)
 
     # API-KEY-01: Load RS256KeyStore and attach to app.state.
-    # jwt_rs256.load_keys() is still called for backward compat with the existing
-    # rs256_available() / sign_token() / verify_token() wrappers.
-    # RS256KeyStore is the canonical injection point for new routes and tests.
     _rs256_active = jwt_rs256.load_keys()
     if _rs256_active:
         try:
             app.state.key_store = KeyRotationStore.from_env()
-            log.info("jwt.key_store_loaded", key_id=app.state.key_store.key_id, pool_size=len(app.state.key_store.all_keys))
+            log.info(
+                "jwt.key_store_loaded",
+                key_id=app.state.key_store.key_id,
+                pool_size=len(app.state.key_store.all_keys),
+            )
         except Exception as _ks_exc:
-            # Non-fatal: key_store unavailable means new routes fall back gracefully
             log.warning("jwt.key_store_load_failed", error=str(_ks_exc))
             app.state.key_store = None
         app.include_router(jwt_rs256.jwks_router)
@@ -541,7 +583,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title="ML Incident Response API",
-    version="2.2.0",
+    version="2.3.0",
     description=(
         "Production-hardened ML incident management API with JWT auth, "
         "RBAC, cursor pagination, and structured audit logging."
@@ -655,7 +697,9 @@ async def readiness() -> JSONResponse:
             all_ok = False
     except Exception as exc:
         checks["redis_denylist"] = f"error: {exc}"
-        all_ok = False
+        # R-S04: Denylist degradation does not hard-fail the readiness probe —
+        # surface as degraded so Kubernetes routes traffic but alerts fire.
+        checks["redis_denylist_degraded"] = "true"
     for var in ["JWT_SECRET_KEY"]:
         checks[f"env_{var}"] = "ok" if os.getenv(var) else "missing"
         if not os.getenv(var):
@@ -788,13 +832,14 @@ async def logout(
 
 # ── Incident routes (IncidentService-backed) ────────────────────────────────────
 #
-# API-SVC-01: All four routes delegate to IncidentService.
+# API-SVC-01: All routes delegate to IncidentService.
 # API-RESP-01: All routes return typed IncidentResponse via response_model=.
 # API-CURSOR-01: GET /incidents/ uses DB-level cursor pagination (before_id).
-#
-# Status transitions are enforced by the domain state machine via
-# IncidentService.transition_status() → IncidentRepository.update_status().
-# InvalidTransitionError → HTTP 409 via the exception handler above.
+# R-C07: update_incident_status no longer performs a pre-check get_incident() call.
+#        The repository's update_status() owns the existence check and raises
+#        ValueError("Incident not found") which maps to HTTP 404 below.
+# R-C06: update_incident_metadata delegates ALL mutation to IncidentService.update_metadata().
+#        The route no longer touches ORM objects directly.
 
 
 @app.post(
@@ -843,20 +888,14 @@ async def list_incidents(
     """
     List open incidents, newest-first, with cursor-based pagination.
 
-    API-CURSOR-01: Replaces the previous offset-based slice. The DB-level
-    cursor predicate is evaluated in the repository, not in Python. Clients
-    use the returned next_cursor as the ?before_id= parameter for the next page.
-    When next_cursor is null, the caller has reached the last page.
-
-    Query params:
-      limit     — Page size (default 50, max 1000 enforced at repo layer).
-      before_id — Cursor from the previous page's next_cursor field.
+    API-CURSOR-01: The DB-level cursor predicate is evaluated in the repository.
+    Clients use the returned next_cursor as the ?before_id= parameter for the
+    next page. When next_cursor is null, the caller has reached the last page.
     """
     service = IncidentService(session)
     try:
         page = await service.list_open(limit=limit, before_id=before_id)
     except ValueError as exc:
-        # Repository raises ValueError if before_id cursor does not exist
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     incidents = [IncidentResponse.model_validate(i.to_dict()) for i in page]
@@ -908,8 +947,14 @@ async def update_incident_status(
 ) -> IncidentResponse:
     """
     Transition an incident to a new lifecycle status.
-    Valid transitions enforced by the domain state machine.
-    Invalid transitions return HTTP 409 Conflict. Requires operator or admin role.
+
+    R-C07: The pre-check get_incident() call has been removed. The repository's
+    update_status() is the single authoritative existence check — it raises
+    ValueError if the incident does not exist. This eliminates the TOCTOU race
+    window between the pre-check read and the transition write.
+
+    Invalid transitions return HTTP 409 Conflict (via InvalidTransitionError handler).
+    Not-found incidents return HTTP 404. Requires operator or admin role.
     """
     try:
         new_status_enum = IncidentStatus(update.status)
@@ -919,18 +964,15 @@ async def update_incident_status(
             detail=f"Unknown status '{update.status}'.",
         )
     service = IncidentService(session)
-    # 404 check before attempting transition
-    if await service.get_incident(incident_id) is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Incident '{incident_id}' not found.",
+    try:
+        record = await service.transition_status(
+            incident_id=incident_id,
+            new_status=new_status_enum,
+            transitioned_by=current_user["username"],
         )
-    # InvalidTransitionError propagates to the registered 409 exception handler
-    record = await service.transition_status(
-        incident_id=incident_id,
-        new_status=new_status_enum,
-        transitioned_by=current_user["username"],
-    )
+    except ValueError as exc:
+        # Repository raises ValueError("Incident not found") on missing ID
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     return IncidentResponse.model_validate(record.to_dict())
 
 
@@ -947,37 +989,24 @@ async def update_incident_metadata(
 ) -> IncidentResponse:
     """
     Update mutable incident metadata (resolution_notes, severity).
+
+    R-C06: This route no longer directly mutates ORM objects. All field mutation
+    and updated_at stamping is delegated to IncidentService.update_metadata(),
+    which owns the session boundary and ensures consistent audit logging.
+
     Does NOT change lifecycle status — use PATCH /incidents/{id}/status for that.
     Requires operator or admin role.
-
-    OPEN-01: updated_at is explicitly set here after any field mutation.
-    SQLAlchemy's onupdate= hook does not fire on ORM-level attribute assignments
-    followed by a session flush. Without the explicit write, updated_at remains
-    stale after metadata changes, corrupting time-based metric queries.
     """
     service = IncidentService(session)
-    record = await service.get_incident(incident_id)
-    if record is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Incident '{incident_id}' not found.",
+    try:
+        record = await service.update_metadata(
+            incident_id=incident_id,
+            severity=update.severity,
+            resolution_notes=update.resolution_notes,
+            updated_by=current_user["username"],
         )
-    if update.severity is not None:
-        try:
-            record.severity = SeverityLevel(update.severity)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid severity '{update.severity}'.",
-            )
-    if update.resolution_notes is not None:
-        record.description = update.resolution_notes
-    # OPEN-01: Explicit timestamp
-    record.updated_at = datetime.now(timezone.utc)
-    log.info(
-        "incident.metadata_updated",
-        incident_id=incident_id,
-        updated_by=current_user["username"],
-        log_type="audit",
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except HTTPException:
+        raise
     return IncidentResponse.model_validate(record.to_dict())
