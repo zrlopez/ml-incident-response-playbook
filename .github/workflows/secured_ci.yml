@@ -104,6 +104,11 @@
 #                    Add --cov=pipelines to unit-tests coverage scope (etl_template.py).
 #                    Raise --cov-fail-under 65 -> 68 (pipelines/ now measured).
 #                    Closes R-20 + R-21.
+#   2026-05-26 v1.7.2 CI-46 fix(config): align pip-audit 2.7.3->2.9.0 (matches requirements-dev.txt)
+#                    Root cause: dependency-audit job hardcoded pip-audit==2.7.3 while
+#                    requirements-dev.txt pins 2.9.0. Different versions audit differently.
+#                    Aligned to single source of truth: requirements-dev.txt.
+#                    Closes R-26.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -192,7 +197,7 @@ jobs:
 
       - name: pip-audit -- generate JSON artifact
         run: |
-          pip install pip-audit==2.7.3
+          pip install pip-audit==2.9.0
           pip-audit --requirement requirements.txt --format json \
             --output pip-audit-report.json || true
 

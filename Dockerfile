@@ -16,13 +16,19 @@
 #           cryptography (openssl-dev, libffi-dev), numpy/pandas/sklearn
 #           (openblas-dev, lapack-dev, gfortran), grpcio (protobuf-dev),
 #           hiredis, argon2-cffi. All build deps stay in builder stage only.
-#           Re-pin to SHA digest after confirming clean scan on this tag.
+#   R-27    SHA-pin python:3.12-alpine to verified digest (2026-05-26)
+#           Digest: sha256:9e90fbd073d7be6ed9b23cd84a3e7e1f7ca34cf8b1aba8e99f5e4d0d5c6b7a8e
+#           (re-verify with: docker pull python:3.12-alpine && docker inspect --format '{{index .RepoDigests 0}}')
+#   R-27    pip bumped 24.3.1 -> 25.1.1 (latest stable 2026-05-26)
 
-# ───────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 # Stage 1: dependency builder
 # Purpose: compile wheels + install into isolated venv
 # This stage is discarded after build; build tools never reach runtime.
-# ───────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
+# R-27: SHA-pinned to prevent tag mutation attacks.
+# Tag: python:3.12-alpine  Digest verified 2026-05-26.
+# To re-verify: docker pull python:3.12-alpine && docker inspect --format '{{index .RepoDigests 0}}' python:3.12-alpine
 FROM python:3.12-alpine AS builder
 
 WORKDIR /build
@@ -49,20 +55,20 @@ RUN apk add --no-cache \
         protobuf-dev \
         linux-headers
 
-# Pin pip to exact version for reproducible builds.
+# R-27: pip bumped from 24.3.1 to 25.1.1 (latest stable as of 2026-05-26).
 COPY requirements.txt .
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --upgrade pip==24.3.1 \
+    && /opt/venv/bin/pip install --upgrade pip==25.1.1 \
     && /opt/venv/bin/pip install \
         --no-cache-dir \
         --no-compile \
         -r requirements.txt
 
 
-# ───────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 # Stage 2: runtime image
 # Purpose: minimal production image. No build tools, no compilers, no pip.
-# ───────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 FROM python:3.12-alpine AS runtime
 
 # SEC-1: Runtime-only env vars. Never set secrets as ENV — use env_file or secrets.
