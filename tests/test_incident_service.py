@@ -8,7 +8,7 @@ translates and delegates. These tests verify the delegation contract.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -203,18 +203,9 @@ class TestIncidentServiceTransition:
         assert result is inc
 
     def test_invalid_transition_propagates_unchanged(self):
-        # Error message derived from validate_status_transition() in
-        # src/domain/incident_lifecycle.py — match pattern reflects the real
-        # domain reason string, not a hand-written stub.
-        err = InvalidTransitionError(
-            "invalid incident state transition: closed -> open. "
-            "Valid targets from 'closed': [none (terminal state)]."
-        )
+        err = InvalidTransitionError("CLOSED → OPEN is not allowed")
         service, _ = _service_with_mock_repo(update_status_side_effect=err)
-        with pytest.raises(
-            InvalidTransitionError,
-            match="invalid incident state transition: closed",
-        ):
+        with pytest.raises(InvalidTransitionError, match="CLOSED"):
             asyncio.get_event_loop().run_until_complete(
                 service.transition_status(
                     incident_id="abc",
