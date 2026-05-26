@@ -298,6 +298,6 @@ def test_unknown_kid_falls_back_to_current_key(rs256_keys):
 
     try:
         claims = verify_token(token)
-        assert claims["sub"] == "test-admin"
+        assert claims["sub"] == "admin"
     finally:
         jwt_mod._key_id = original_key_id
