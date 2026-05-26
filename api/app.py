@@ -4,16 +4,17 @@ api/app.py
 ML Incident Response API — application factory.
 
 R-GOD: God-file decomposition complete.  This module is now a thin factory
-shell (~40 lines).  All logic has been extracted to dedicated modules:
+shell.  All logic has been extracted to dedicated modules:
 
-  api/config.py          — env, algorithm guard, limiter, oauth2_scheme
-  api/stub_users.py      — dev/test _USERS store and env guard
-  api/schemas.py         — request/response Pydantic models
-  api/dependencies.py    — auth deps, get_current_user, require_role
-  api/lifespan.py        — startup / shutdown wiring
-  src/auth/tokens.py     — JWT sign/verify helpers
-  api/routers/health.py  — GET /health, GET /ready
-  api/routers/auth.py    — POST /auth/token, /auth/refresh, /auth/logout
+  api/config.py            — env, algorithm guard, limiter, oauth2_scheme
+  api/stub_users.py        — dev/test _USERS store and env guard
+  api/schemas.py           — request/response Pydantic models
+  api/dependencies.py      — auth deps, get_current_user, require_role
+  api/lifespan.py          — startup / shutdown wiring
+  api/middleware.py        — all middleware incl. trace_and_security_headers
+  src/auth/tokens.py       — JWT sign/verify helpers
+  api/routers/health.py    — GET /health, GET /ready
+  api/routers/auth.py      — POST /auth/token, /auth/refresh, /auth/logout
   api/routers/incidents.py — POST/GET/PATCH /incidents/*
 
 Unlocks:
@@ -23,10 +24,11 @@ Unlocks:
 """
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi.errors import RateLimitExceeded
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from api.config import ALLOWED_ORIGINS, ENVIRONMENT, limiter
 from api.lifespan import lifespan
@@ -34,15 +36,13 @@ from api.middleware import (
     MaxBodySizeMiddleware,
     SecurityHeadersMiddleware,
     RequestTimeoutMiddleware,
-    trace_and_security_headers,  # noqa: F401 — registered via @app.middleware below
+    trace_and_security_headers,
 )
 from api.gdpr_routes import router as gdpr_router
 from api.routers.health import router as health_router
 from api.routers.auth import router as auth_router
 from api.routers.incidents import router as incidents_router
 from src.incident_tracker import InvalidTransitionError
-from fastapi import Request
-from fastapi.responses import JSONResponse
 
 app = FastAPI(
     title="ML Incident Response API",
@@ -60,6 +60,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
+
 # ── Exception handlers ────────────────────────────────────────────────────────
 @app.exception_handler(InvalidTransitionError)
 async def _invalid_transition_handler(
@@ -73,6 +74,7 @@ async def _invalid_transition_handler(
             "hint": "Check the allowed_transitions for the current incident status.",
         },
     )
+
 
 # ── Middleware ────────────────────────────────────────────────────────────────
 app.add_middleware(SecurityHeadersMiddleware, environment=ENVIRONMENT)
