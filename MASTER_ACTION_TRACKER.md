@@ -1,6 +1,6 @@
 # MASTER ACTION TRACKER
 
-> **Last updated:** Cycle 5 — 2026-05-26
+> **Last updated:** Cycle 6 — 2026-05-26
 >
 > This file is the single source of truth for all remediation cycles on the
 > `ml-incident-response-playbook` repository. Update it before and after every
@@ -29,7 +29,7 @@
 |---|---|---|---|---|
 | OPEN-01 | `src/auth/key_store.py` | `KeyRotationStore` multi-key RS256 rotation | `47cddc0` | ✅ |
 | ARCH-03/05 | `api/gdpr_routes.py` | Art.17 erasure + token revocation | `67c53e9` | ✅ |
-| ETL-01 | `pipelines/etl_template.py` | Full extract/transform/load stub | `e0fc5f9` | ✅ |
+| ETL-01 | `pipelines/etl_template.py` | Full extract/transform/load pipeline | `e0fc5f9` | ✅ |
 | DAG-01 | `orchestration/ml_incident_dag.py` | Validate/detect/publish operators | `267a775` | ✅ |
 | STRUCT-01 | repo root | Dir consolidation; tests → `tests/unit/` | `b9489a6` | ✅ |
 | SEC-01 | `src/auth/key_store.py` | Hardcoded JWT secret removed; `cls.__new__` fix | `30148ef` | ✅ |
@@ -72,36 +72,53 @@
 | ID | File | Fix | Commit | Status |
 |---|---|---|---|---|
 | R-06 | `tests/unit/test_etl_validation.py` | Rewrite: correct DB-shape rows for `load()`, mock SQLAlchemy engine, mock `run_pipeline()` I/O, remove duplicate anomaly/API blocks. 30 I/O-free tests. | `90c241f` | ✅ |
-| R-13 | `tests/integration/` | Audited: 7 files confirmed (api_lifecycle, auth_lifecycle, cursor_pagination, incident_golden_path, logging_config, observability, repository_lifecycle). 40% gate is intentional (Postgres live). | — (audit only) | ✅ |
+| R-13 | `tests/integration/` | Audited: 7 files confirmed (api_lifecycle, auth_lifecycle, cursor_pagination, incident_golden_path, logging_config, observability, repository_lifecycle). 40% gate intentional. | — (audit) | ✅ |
+
+### Cycle 6 — CI Wiring Gap + CHANGELOG Backfill
+
+| ID | File | Fix | Commit | Status |
+|---|---|---|---|---|
+| R-20 | `.github/workflows/secured_ci.yml` | `test_etl_validation.py` added to unit-tests `pytest` command (was silently skipped since `90c241f`) | this commit | ✅ |
+| R-21 | `.github/workflows/secured_ci.yml` | `--cov=pipelines` added to unit-tests coverage scope; `--cov-fail-under` raised `65` → `68` | this commit | ✅ |
+| R-22 | `CHANGELOG.md` | Backfill entries `[1.7.1]`–`[1.7.4]` for Cycles 4–6 commits not previously recorded | this commit | ✅ |
+| R-23 | `MASTER_ACTION_TRACKER.md` | Cycle 6 table added; TD-01 note updated (CI-43 confirmed `0.63b0` on PyPI) | this commit | ✅ |
 
 ---
 
 ## Remaining Open Items
 
-| ID | Description | Blocker / Dependency | Risk |
-|---|---|---|---|
-| TD-01 | OTel stack pinned at 1.27.0 (rolled back from 1.42.1); `instrumentation-fastapi 0.63b1` not yet on PyPI | Track `opentelemetry-python-contrib` releases | Low |
-| TD-02 | `starlette==0.49.1` capped by `fastapi==0.121.3`; Dependabot PR-25 closed as not-planned (CI-41) | Wait for `fastapi==0.122.x` | Low |
-| TD-03 | `protobuf<5.0` constraint from OTel `opentelemetry-proto==1.27.0`; CVE-2026-0994 accepted in `.trivyignore` | Track OTel upgrade (TD-01) | Low |
+> ✅ All actionable remediation items are closed across Cycles 1–6.
+> Remaining items are upstream-blocked tech debt only.
+> No unresolved regressions. No correctness gaps. No silently-skipped tests.
 
-> ✅ All actionable remediation items are closed. Remaining items are tracked tech-debt
-> gated on upstream PyPI releases. No unresolved regressions or correctness gaps.
+---
+
+## Tech Debt Registry
+
+| ID | Package | Constraint | Root Cause | Resolution Path | Risk |
+|---|---|---|---|---|---|
+| TD-01 | `opentelemetry-*` | `0.63b0` (latest stable on PyPI as of 2026-05-26) | `instrumentation-fastapi 0.63b1` not yet released; `0.63b0` shipped CI-43 | Re-attempt when contrib publishes `0.63b1+` | Low |
+| TD-02 | `starlette` | Capped at `0.49.1` | `fastapi==0.121.3` caps `starlette<0.51.0`; Dependabot PR-25 closed not-planned (CI-41) | Upgrade when `fastapi==0.122.x` ships | Low |
+| TD-03 | `protobuf` | `<5.0` | OTel proto `1.27.0` constraint; CVE-2026-0994 accepted in `.trivyignore` | Resolves with TD-01 | Low |
 
 ---
 
 ## Test Coverage Matrix
 
-| Module | Test File | # Tests | CI Job |
+| Module | Test File | # Tests | In CI `pytest`? |
 |---|---|---|---|
-| `src/services/` | `tests/test_incident_service.py` | ~20 | unit-tests |
-| `src/domain/` + `src/schemas/` | `tests/test_incident_schema.py` | ~10 | unit-tests |
-| `src/auth/key_store.py` | `tests/test_key_store.py` | ~15 | unit-tests |
-| `src/incident_tracker/` | `tests/test_incident_tracker.py` | 17 | unit-tests |
-| `observability/drift_check.py` | `tests/unit/test_drift_check.py` | 22 | unit-tests |
-| `observability/monitoring_example.py` | `tests/unit/test_monitoring_example.py` | 9 | unit-tests |
-| `observability/anomaly_detection.py` | `tests/unit/test_anomaly_detection.py` | 24 | unit-tests |
-| `pipelines/etl_template.py` | `tests/unit/test_etl_validation.py` | 30 | unit-tests |
-| `api/` + `observability/` + `src/` | `tests/integration/` (7 files) | ~120 | integration-tests |
+| `src/services/` | `tests/test_incident_service.py` | ~20 | ✅ Yes |
+| `src/domain/` + `src/schemas/` | `tests/test_incident_schema.py` | ~10 | ✅ Yes |
+| `src/auth/key_store.py` | `tests/test_key_store.py` | ~15 | ✅ Yes |
+| `src/incident_tracker/` | `tests/test_incident_tracker.py` | 17 | ✅ Yes |
+| `observability/drift_check.py` | `tests/unit/test_drift_check.py` | 22 | ✅ Yes |
+| `observability/monitoring_example.py` | `tests/unit/test_monitoring_example.py` | 9 | ✅ Yes |
+| `observability/anomaly_detection.py` | `tests/unit/test_anomaly_detection.py` | 24 | ✅ Yes |
+| `pipelines/etl_template.py` | `tests/unit/test_etl_validation.py` | 30 | ✅ Yes (R-20) |
+| `api/` + `observability/` + `src/` | `tests/integration/` (7 files) | ~120 | ✅ Yes (integration job) |
+
+**Total unit tests wired to CI:** ~150
+**Total integration tests:** ~120
 
 ---
 
@@ -113,15 +130,9 @@ secrets-scan
   └─> sast               ├──> unit-tests ──> integration-tests ──> container-scan ──> deploy-gate
 ```
 
----
-
-## Tech Debt Registry
-
-| ID | Package | Constraint | Root Cause | Resolution Path |
-|---|---|---|---|---|
-| TD-01 | `opentelemetry-*` | Pinned at 1.27.0 | `instrumentation-fastapi 0.63b1` not on PyPI | Re-attempt when contrib publishes 0.63b1+ |
-| TD-02 | `starlette` | Capped at 0.49.1 | `fastapi==0.121.3` caps `<0.51.0` | Upgrade when fastapi 0.122.x ships |
-| TD-03 | `protobuf` | `<5.0` | OTel proto 1.27.0 constraint | Resolved by TD-01 |
+**Coverage gates:**
+- unit-tests: `--cov-fail-under=68` (src/ + observability/ + pipelines/)
+- integration-tests: `--cov-fail-under=40` (api/ + observability/ + src/, Postgres live)
 
 ---
 

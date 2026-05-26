@@ -98,6 +98,12 @@
 #                    Add --cov=observability to unit-tests coverage scope.
 #                    Raise --cov-fail-under 60 -> 65 (observability now measured).
 #                    Closes R-19. Paired with R-17 prometheus-client==0.21.1 direct pin.
+#   2026-05-26 v1.7.1 CI-45 fix(ci): wire tests/unit/test_etl_validation.py into unit-tests job
+#                    R-06 wrote 30 tests in 90c241f but never added the file to the pytest
+#                    command. Tests were silently skipped on every CI run since that commit.
+#                    Add --cov=pipelines to unit-tests coverage scope (etl_template.py).
+#                    Raise --cov-fail-under 65 -> 68 (pipelines/ now measured).
+#                    Closes R-20 + R-21.
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
@@ -285,9 +291,10 @@ jobs:
   # Covers:
   #   src/   — IncidentService, schemas, domain, RS256KeyStore, IncidentRepository
   #   observability/ — drift_check, monitoring_example, anomaly_detection
-  # Coverage scoped to measured modules only; infra files (jwt_rs256, password,
-  # users/repository, platform/database) excluded so they don't dilute the gate.
+  #   pipelines/ — etl_template (R-20/R-21: wired in CI-45)
+  # Coverage scoped to measured modules only; infra files excluded.
   # CI-44: observability/ added; --cov-fail-under raised 60 -> 65.
+  # CI-45: pipelines/ added; test_etl_validation.py wired; gate raised 65 -> 68.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -336,15 +343,17 @@ jobs:
             tests/unit/test_drift_check.py \
             tests/unit/test_monitoring_example.py \
             tests/unit/test_anomaly_detection.py \
+            tests/unit/test_etl_validation.py \
             --cov=src/services \
             --cov=src/domain \
             --cov=src/schemas \
             --cov=src/auth/key_store \
             --cov=src/incident_tracker \
             --cov=observability \
+            --cov=pipelines \
             --cov-report=xml:coverage-unit.xml \
             --cov-report=term-missing \
-            --cov-fail-under=65 \
+            --cov-fail-under=68 \
             -v
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
@@ -533,7 +542,6 @@ jobs:
     name: Deployment Readiness Gate
     runs-on: ubuntu-latest
     needs: [secrets-scan, dependency-audit, sast, unit-tests, integration-tests, container-scan]
-    # Gate type: hard — fails pipeline if any required job did not succeed
     steps:
       - name: Summarise gate results
         env:
