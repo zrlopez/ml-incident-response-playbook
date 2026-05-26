@@ -50,12 +50,15 @@ _INCIDENT_SCHEMA = DataFrameSchema(
         "title": Column(str, nullable=False),
         "severity": Column(
             str,
-            checks=Check.isin(["critical", "high", "medium", "low"]),
+            # R-67 FIX: align with API/alembic enum (SEV_1–SEV_4, underscore form from DB)
+            # The incidents table uses Enum("SEV_1","SEV_2","SEV_3","SEV_4")
+            checks=Check.isin(["SEV_1", "SEV_2", "SEV_3", "SEV_4"]),
             nullable=False,
         ),
         "status": Column(
             str,
-            checks=Check.isin(["open", "investigating", "resolved", "closed"]),
+            # R-67 FIX: align with alembic incidentstatus enum
+            checks=Check.isin(["open", "investigating", "mitigating", "resolved", "closed"]),
             nullable=False,
         ),
         "owner": Column(str, nullable=False),
@@ -104,8 +107,9 @@ def _load_incident_dataframe(run_id: str) -> pd.DataFrame:
     df = pd.DataFrame({
         "incident_id": [f"INC-{i:04d}" for i in range(n)],
         "title": [f"Synthetic incident {i}" for i in range(n)],
-        "severity": rng.choice(["critical", "high", "medium", "low"], size=n),
-        "status": rng.choice(["open", "investigating", "resolved", "closed"], size=n),
+        # R-67 FIX: match alembic enum values
+        "severity": rng.choice(["SEV_1", "SEV_2", "SEV_3", "SEV_4"], size=n),
+        "status": rng.choice(["open", "investigating", "mitigating", "resolved", "closed"], size=n),
         "owner": rng.choice(["alice", "bob", "carol", "dave"], size=n),
         "created_at": [now - pd.Timedelta(seconds=int(s)) for s in rng.integers(0, 3600, n)],
     })
@@ -254,8 +258,9 @@ def detect_anomaly(**context: Any) -> dict[str, Any]:
     metrics: dict[str, Any] = {}
 
     # ── 1. Drift: PSI on severity distribution ────────────────────────────
-    _SEVERITY_LEVELS = ["critical", "high", "medium", "low"]
-    _BASELINE_SEVERITY = np.array([0.05, 0.20, 0.50, 0.25])  # expected distribution
+    # R-67 FIX: align severity levels with alembic SEV_1-SEV_4 enum
+    _SEVERITY_LEVELS = ["SEV_1", "SEV_2", "SEV_3", "SEV_4"]
+    _BASELINE_SEVERITY = np.array([0.05, 0.20, 0.50, 0.25])  # expected distribution (SEV_1→SEV_4)
     current_counts = np.array(
         [current_severity_dist.get(s, 0) for s in _SEVERITY_LEVELS], dtype=float
     )
