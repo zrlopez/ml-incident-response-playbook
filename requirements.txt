@@ -67,22 +67,21 @@ redis[hiredis]==5.3.1
 httpx==0.28.1
 
 # ── Observability ───────────────────────────────────────────────────────────
-# CI-42: aligned full OTel core stack to a single consistent release.
-#   opentelemetry-api was pinned at 1.27.0 while sdk was at 1.42.1 — sdk
-#   hard-requires api==<same version>, causing ResolutionImpossible in CI.
-# CI-43: bumped instrumentation-fastapi 0.62b0→0.63b0.
-#   sdk 1.42.1 hard-requires semantic-conventions==0.63b1;
-#   instrumentation-fastapi 0.62b0 hard-requires semantic-conventions==0.62b0.
-#   0.63b0 confirmed present on PyPI as of 2026-05-26.
-opentelemetry-api==1.42.1
-opentelemetry-sdk==1.42.1
-opentelemetry-instrumentation-fastapi==0.63b0
-opentelemetry-exporter-otlp-proto-grpc==1.42.1
+# CI-42/CI-43: attempted upgrade to 1.42.1 stack — REVERTED in CI-44.
+#   instrumentation-fastapi 0.63b1 does not exist on PyPI; 0.63b0 requires
+#   semantic-conventions==0.63b0 while sdk 1.42.1 requires ==0.63b1 —
+#   ResolutionImpossible. Rolled back to last fully-published coherent chain.
+# TODO (tech debt): re-attempt upgrade to 1.42.x+ once opentelemetry-python-
+#   contrib publishes instrumentation-fastapi>=0.63b1.
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+opentelemetry-exporter-otlp-proto-grpc==1.27.0
 prometheus-fastapi-instrumentator==7.0.0
-# NOTE: protobuf is a transitive dep via opentelemetry-proto which caps it
-# at <5.0. CVE-2026-0994 cannot be pinned to 5.x without breaking the otel
-# stack. Accepted risk documented in .trivyignore. Track as tech debt:
-# upgrade otel to a protobuf-5.x-compatible release when available.
+# NOTE: protobuf is a transitive dep via opentelemetry-proto==1.27.0 which
+# caps it at <5.0. CVE-2026-0994 cannot be pinned to 5.x without breaking
+# the otel stack. Accepted risk documented in .trivyignore. Track as tech
+# debt: upgrade otel to a protobuf-5.x-compatible release when available.
 
 # ── ML / Data ──────────────────────────────────────────────────────────────
 numpy==2.2.6
