@@ -5,6 +5,8 @@
 ![Stack](https://img.shields.io/badge/stack-GitHub%20%2B%20Python%20%2B%20Docker-111827)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 [![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml/badge.svg?branch=main)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml)
+[![codecov](https://codecov.io/gh/zrlopez/ml-incident-response-playbook/branch/main/graph/badge.svg)](https://codecov.io/gh/zrlopez/ml-incident-response-playbook)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/YOUR_CODACY_PROJECT_TOKEN)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook/dashboard)
 
 A production-style operational documentation repo for ML and AI incident response.
 
