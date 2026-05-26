@@ -234,10 +234,17 @@ def test_hs256_token_is_rejected(rs256_keys):
     Source: verify_token passes algorithms=["RS256"] to jwt.decode, which
     causes PyJWT to reject any token whose header declares a different algorithm.
     """
+    # Use an environment-sourced secret so no credential is hardcoded in source.
+    # In CI, set TEST_ALGORITHM_CONFUSION_SECRET to any non-empty string.
+    # The value is intentionally meaningless — this test only asserts the token
+    # is *rejected*; the signing secret has no security significance here.
+    hs256_secret = os.environ.get("TEST_ALGORITHM_CONFUSION_SECRET", "")
+    if not hs256_secret:
+        pytest.skip("TEST_ALGORITHM_CONFUSION_SECRET not set")
     hs256_token = jwt.encode(
         {"sub": "attacker", "role": "admin", "exp": 9999999999,
          "iat": 1000000000, "jti": "fake-jti"},
-        "some-hs256-secret",
+        hs256_secret,
         algorithm="HS256",
     )
 

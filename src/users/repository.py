@@ -95,6 +95,27 @@ class UserRecord(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    @classmethod
+    def from_dict(cls, username: str,  dict) -> "UserRecord":
+        """
+        Construct a UserRecord without triggering SQLAlchemy's ORM __init__.
+
+        Used by InMemoryUserRepository to build in-memory records that satisfy
+        the AbstractUserRepository interface without a database session.
+        Bypassing __init__ is intentional: SQLAlchemy's instrumented __init__
+        expects a session context that does not exist in the in-memory path.
+        """
+        rec = cls.__new__(cls)
+        rec.id = str(uuid.uuid4())
+        rec.username = username
+        rec.hashed_password = data["hashed_password"]
+        rec.role = data["role"]
+        rec.disabled = data.get("disabled", False)
+        rec.hash_algorithm = "argon2id"
+        rec.created_at = datetime.now(timezone.utc)
+        rec.updated_at = datetime.now(timezone.utc)
+        return rec
+
     def to_dict(self) -> dict:
         """Safe representation — hashed_password intentionally excluded."""
         return {
@@ -213,16 +234,7 @@ class InMemoryUserRepository(AbstractUserRepository):
         # Store as UserRecord-like objects for interface compatibility
         self._store: dict[str, UserRecord] = {}
         for username, data in users.items():
-            rec = UserRecord.__new__(UserRecord)
-            rec.id = str(uuid.uuid4())
-            rec.username = username
-            rec.hashed_password = data["hashed_password"]
-            rec.role = data["role"]
-            rec.disabled = data.get("disabled", False)
-            rec.hash_algorithm = "argon2id"
-            rec.created_at = datetime.now(timezone.utc)
-            rec.updated_at = datetime.now(timezone.utc)
-            self._store[username] = rec
+            self._store[username] = UserRecord.from_dict(username, data)
 
     async def get_by_username(self, username: str) -> Optional[UserRecord]:
         return self._store.get(username)
