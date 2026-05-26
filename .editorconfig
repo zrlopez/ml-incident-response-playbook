@@ -1,0 +1,54 @@
+# =============================================================================
+# .editorconfig — Editor normalisation for ml-incident-response-playbook
+# See https://editorconfig.org for IDE/editor support.
+# =============================================================================
+
+root = true
+
+# --- Universal defaults ------------------------------------------------------
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# --- Python ------------------------------------------------------------------
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# --- Terraform ---------------------------------------------------------------
+[*.tf]
+indent_style = space
+indent_size = 2
+
+# --- YAML & JSON -------------------------------------------------------------
+[*.{yml,yaml,json}]
+indent_style = space
+indent_size = 2
+
+# --- TOML --------------------------------------------------------------------
+[*.toml]
+indent_style = space
+indent_size = 4
+
+# --- Markdown ----------------------------------------------------------------
+[*.md]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+
+# --- Shell scripts -----------------------------------------------------------
+[*.{sh,bash,zsh}]
+indent_style = space
+indent_size = 2
+
+# --- Dockerfiles -------------------------------------------------------------
+[Dockerfile*]
+indent_style = space
+indent_size = 4
+
+# --- Makefiles (MUST use real tabs) ------------------------------------------
+[Makefile]
+indent_style = tab

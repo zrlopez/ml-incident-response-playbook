@@ -1,2 +1,279 @@
-# moved from monitoring/alert_rules.yml
-# NOTE: full content — see monitoring/alert_rules.yml SHA 95beb50fd58c508a70b9d0c961709a362ab64ac6
+# =============================================================================
+# observability/alert_rules.yml — Prometheus AlertManager Rules
+# ML Incident Response API
+#
+# Rule groups:
+#   ml-incident-api-latency    — HTTP & API performance
+#   ml-incident-api-errors     — Error rates and fault injection
+#   ml-incident-model-drift    — PSI and feature drift severity
+#   ml-incident-anomaly        — Anomaly detection threshold breaches
+#   ml-incident-model-health   — Prediction volume, model staleness
+#   ml-incident-security       — JWT key rotation, auth failures
+#   ml-incident-infrastructure — DB lag, Redis saturation, pod health
+#
+# All alerts include:
+#   - severity label (critical | warning | info)
+#   - environment label (production | staging) via __env__
+#   - runbook_url annotation pointing to mlops.zrl.dev runbooks
+# =============================================================================
+
+groups:
+
+  # ---------------------------------------------------------------------------
+  # Latency
+  # ---------------------------------------------------------------------------
+  - name: ml-incident-api-latency
+    rules:
+
+      - alert: APIHighP99Latency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{job="ml-incident-api"}[5m]))
+            by (le, route)
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P99 latency > 2s on {{ $labels.route }}"
+          description: |
+            Route {{ $labels.route }} p99 latency is {{ $value | humanizeDuration }},
+            above the 2.0s warning threshold for more than 5 minutes.
+          runbook_url: "https://mlops.zrl.dev/runbooks/latency-runbook"
+
+      - alert: APILatencyCritical
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{job="ml-incident-api"}[5m]))
+            by (le, route)
+          ) > 5.0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "P99 latency > 5s (critical) on {{ $labels.route }}"
+          description: |
+            Route {{ $labels.route }} p99 latency is {{ $value | humanizeDuration }}.
+            SLO violation imminent. Page on-call.
+          runbook_url: "https://mlops.zrl.dev/runbooks/latency-runbook"
+
+  # ---------------------------------------------------------------------------
+  # Error rates
+  # ---------------------------------------------------------------------------
+  - name: ml-incident-api-errors
+    rules:
+
+      - alert: APIHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="ml-incident-api",status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="ml-incident-api"}[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API 5xx error rate > 5%"
+          description: |
+            5xx error rate is {{ $value | humanizePercentage }} over the last 5 minutes.
+            Check application logs and dependency health.
+          runbook_url: "https://mlops.zrl.dev/runbooks/incident-response-runbook"
+
+      - alert: APICriticalErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="ml-incident-api",status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="ml-incident-api"}[5m]))
+          > 0.20
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 5xx error rate > 20% (critical)"
+          description: |
+            Error rate is {{ $value | humanizePercentage }}. Service may be degraded.
+            Page on-call immediately.
+          runbook_url: "https://mlops.zrl.dev/runbooks/incident-response-runbook"
+
+  # ---------------------------------------------------------------------------
+  # Model drift
+  # ---------------------------------------------------------------------------
+  - name: ml-incident-model-drift
+    rules:
+
+      - alert: ModelMinorDrift
+        expr: ml_psi_score > 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Minor model drift detected (PSI={{ $value | printf \"%.4f\" }}) for {{ $labels.model }}"
+          description: |
+            Population Stability Index for model {{ $labels.model }} has been above 0.10
+            for more than 10 minutes. Distribution shift is occurring. Monitor closely.
+            PSI reference: 0.10–0.20 = minor drift (investigation warranted).
+          runbook_url: "https://mlops.zrl.dev/runbooks/drift-runbook"
+
+      - alert: ModelMajorDrift
+        expr: ml_psi_score >= 0.20
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MAJOR model drift (PSI={{ $value | printf \"%.4f\" }}) for {{ $labels.model }}"
+          description: |
+            PSI for {{ $labels.model }} >= 0.20 for > 5 minutes.
+            This indicates significant distribution shift — retraining evaluation required.
+            Open a P1 ML incident immediately.
+          runbook_url: "https://mlops.zrl.dev/runbooks/drift-runbook"
+
+      - alert: ModelDriftEventSpike
+        expr: |
+          increase(ml_drift_events_total{severity="major_drift"}[30m]) > 3
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Repeated major drift events for {{ $labels.model }}"
+          description: |
+            More than 3 major drift events in 30 minutes for {{ $labels.model }}.
+            Model may be unstable. Halt serving if confidence threshold is breached.
+          runbook_url: "https://mlops.zrl.dev/runbooks/drift-runbook"
+
+  # ---------------------------------------------------------------------------
+  # Anomaly detection
+  # ---------------------------------------------------------------------------
+  - name: ml-incident-anomaly
+    rules:
+
+      - alert: AnomalyBreachRateHigh
+        expr: |
+          sum(rate(ml_anomaly_threshold_breaches_total[10m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High anomaly breach rate (>0.5/s averaged over 10m)"
+          description: |
+            Anomaly threshold breaches are occurring at {{ $value }} per second.
+            This may indicate cascading metric instability or a real incident.
+          runbook_url: "https://mlops.zrl.dev/runbooks/incident-response-runbook"
+
+  # ---------------------------------------------------------------------------
+  # Model health
+  # ---------------------------------------------------------------------------
+  - name: ml-incident-model-health
+    rules:
+
+      - alert: PredictionVolumeSilence
+        expr: |
+          sum(rate(ml_prediction_latency_seconds_count{job="ml-incident-api"}[15m])) == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No predictions observed for {{ $labels.model }} in 10 minutes"
+          description: |
+            Zero prediction requests observed in the last 10 minutes for model
+            {{ $labels.model }}. This may indicate: traffic routing failure,
+            model server crash, or upstream data pipeline starvation.
+          runbook_url: "https://mlops.zrl.dev/runbooks/incident-response-runbook"
+
+      - alert: PredictionLatencyDegraded
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(ml_prediction_latency_seconds_bucket[5m])) by (le, model)
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 prediction latency > 1s for {{ $labels.model }}"
+          description: |
+            Model {{ $labels.model }} p95 inference latency is {{ $value | humanizeDuration }}.
+            Check for resource contention or model complexity regression.
+          runbook_url: "https://mlops.zrl.dev/runbooks/latency-runbook"
+
+  # ---------------------------------------------------------------------------
+  # Security
+  # ---------------------------------------------------------------------------
+  - name: ml-incident-security
+    rules:
+
+      - alert: JWTAuthFailureSpike
+        expr: |
+          sum(rate(http_requests_total{job="ml-incident-api",status="401"}[5m])) > 1.0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JWT auth failures > 1/s"
+          description: |
+            More than 1 HTTP 401 response per second over the last 5 minutes.
+            This may indicate a brute-force attempt, key rotation issue, or
+            a client misconfiguration.
+          runbook_url: "https://mlops.zrl.dev/runbooks/security-runbook"
+
+      - alert: JWTAuthFailureCritical
+        expr: |
+          sum(rate(http_requests_total{job="ml-incident-api",status="401"}[5m])) > 10.0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "JWT auth failures > 10/s — possible credential stuffing"
+          description: |
+            Sustained high 401 rate ({{ $value }}/s). Possible credential stuffing
+            or key compromise. Invoke the Security Incident Runbook immediately.
+          runbook_url: "https://mlops.zrl.dev/runbooks/security-runbook"
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------------
+  - name: ml-incident-infrastructure
+    rules:
+
+      - alert: AlembicMigrationLag
+        expr: |
+          alembic_migration_head_lag{job="ml-incident-api"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unapplied Alembic migrations detected"
+          description: |
+            {{ $value }} unapplied migration(s) detected on the current DB head.
+            The running application may be operating against a schema mismatch.
+          runbook_url: "https://mlops.zrl.dev/runbooks/incident-response-runbook"
+
+      - alert: PodRestartLoop
+        expr: |
+          increase(kube_pod_container_status_restarts_total{
+            namespace="ml-platform",
+            container="api"
+          }[15m]) > 3
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API pod restarting ({{ $value }} restarts in 15m)"
+          description: |
+            Pod {{ $labels.pod }} has restarted {{ $value }} times in 15 minutes.
+            Check container logs for OOMKill or application panic.
+          runbook_url: "https://mlops.zrl.dev/runbooks/incident-response-runbook"
+
+      - alert: RedisHighMemoryUsage
+        expr: |
+          redis_memory_used_bytes{job="ml-incident-redis"}
+          /
+          redis_memory_max_bytes{job="ml-incident-redis"}
+          > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage > 85%"
+          description: |
+            Redis is using {{ $value | humanizePercentage }} of its configured maxmemory.
+            JWT denylist or rate-limit counters may be approaching eviction.
+          runbook_url: "https://mlops.zrl.dev/runbooks/incident-response-runbook"
