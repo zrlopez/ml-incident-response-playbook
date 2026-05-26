@@ -136,7 +136,11 @@
 #     -> fc324d3547104276b827a68afc52ff2a11cc49c9
 #   actions/deploy-pages@v5.0.0
 #     -> cd2ce8fcbc39b97be8ca5fce6e763baed58fa128
+#   codecov/codecov-action@v5
+#     -> 75cd11691c0faa626561e295848008c8a7dddffe
 # =============================================================================
+# CI-47 (2026-05-26) fix(ci): SHA-pin codecov/codecov-action@v5 in unit-tests + integration-tests
+#   Floating tag @v5 violated supply-chain policy (CI-17). Pinned to SHA 75cd11691. Closes R-S03.
 name: Secure CI Pipeline
 
 on:
@@ -370,7 +374,7 @@ jobs:
 
       - name: Upload unit coverage reports to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe  # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-unit.xml
@@ -461,7 +465,7 @@ jobs:
 
       - name: Upload integration coverage reports to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe  # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage-integration.xml

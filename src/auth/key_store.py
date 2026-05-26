@@ -1,5 +1,6 @@
 """
 src/auth/key_store.py — RS256 key management with multi-key rotation (OPEN-01)
+  R-A02  key_store.generate() now enforces 2048-bit minimum key size (2026-05-26)
 ===============================================================================
 
 Design
@@ -239,8 +240,9 @@ class RS256KeyStore:
         Parameters
         ----------
         key_size:
-            RSA key size in bits.  2048 is acceptable for tests (faster);
-            production should use 4096.
+            RSA key size in bits.  Minimum 2048 (enforced); 4096 recommended
+            for production.  Values below 2048 are rejected to prevent weak-key
+            generation even in test contexts.
         key_id:
             Optional explicit key ID.  Defaults to a fingerprint-derived UUID.
 
@@ -248,7 +250,21 @@ class RS256KeyStore:
         -------
         RS256KeyStore
             A fully-loaded store ready for signing and verification.
+
+        Raises
+        ------
+        ValueError
+            If ``key_size`` is below the 2048-bit minimum.
         """
+        # R-A02: Enforce minimum key size — sub-2048 keys are cryptographically
+        # weak and must be rejected even in test/dev contexts.
+        _MINIMUM_KEY_SIZE = 2048
+        if key_size < _MINIMUM_KEY_SIZE:
+            raise ValueError(
+                f"RS256KeyStore.generate(): key_size={key_size} is below the minimum "
+                f"of {_MINIMUM_KEY_SIZE} bits. RSA keys smaller than 2048 bits are "
+                "cryptographically weak and are not permitted."
+            )
         private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=key_size,
