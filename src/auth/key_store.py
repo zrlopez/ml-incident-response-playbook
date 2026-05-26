@@ -286,7 +286,7 @@ class RS256KeyStore:
 
     def sign_token(
         self,
-        Dict[str, Any],
+        data: Dict[str, Any],
         expires_delta: timedelta = timedelta(minutes=30),
         token_type: str = "access",
     ) -> Tuple[str, str, int]:
@@ -295,7 +295,7 @@ class RS256KeyStore:
 
         Parameters
         ----------
-        
+        data:
             Payload claims.  ``sub`` is required.
         expires_delta:
             Token lifetime.  Defaults to 30 minutes.
@@ -314,7 +314,7 @@ class RS256KeyStore:
         RuntimeError
             If this store was constructed from a public-key-only PEM.
         """
-        if "sub" not in 
+        if "sub" not in data:
             raise ValueError("Token payload must include 'sub' claim")
         _ = self.private_key  # raises RuntimeError for public-key-only instances
         payload = data.copy()
@@ -522,7 +522,7 @@ class KeyRotationStore:
 
     def sign_token(
         self,
-         Dict[str, Any],
+        data: Dict[str, Any],
         expires_delta: timedelta = timedelta(minutes=30),
         token_type: str = "access",
     ) -> Tuple[str, str, int]:
