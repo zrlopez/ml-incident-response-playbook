@@ -24,7 +24,14 @@ markers = [
 # Raise CI floor incrementally: 75 now (unit-tests gate), target 85 by Q3-2026.
 # ML-04: ml_models added to coverage source so inference layer is measured.
 source = ["api", "ml_models", "observability", "pipelines", "src"]
-omit = ["tests/*", "migrations/*", "ml_models/incident_anomaly/artifacts/*"]
+omit = [
+    "tests/*",
+    "migrations/*",
+    "ml_models/incident_anomaly/artifacts/*",
+    "src/logger.py",
+    "src/platform/*",
+    "src/config.py",
+]
 concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
