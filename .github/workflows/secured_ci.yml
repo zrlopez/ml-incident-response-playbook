@@ -113,6 +113,9 @@
 #                    tests/test_incident_service.py, test_incident_schema.py, test_key_store.py,
 #                    test_incident_tracker.py were moved to tests/unit/ but CI paths were not updated.
 #                    exit code 4 (no tests collected) on every unit-tests run since the move.
+#   2026-05-27 v1.8.2 CI-51 feat(ci): add SLSA provenance attestation for SBOM artifact
+#                    actions/attest-build-provenance@v2.4.0 SHA-pinned to db11408;
+#                    id-token: write + attestations: write added to container-scan job.
 #   2026-05-27 v1.8.1 CI-50 fix(ci): add missing test files + cov scopes to unit-tests job
 #                    test_incident_repository.py, test_api.py, test_validation.py were passing
 #                    locally but absent from CI pytest command (coverage dark spots).
@@ -143,6 +146,8 @@
 #     -> ed142fd0673e97e23eac54620cfb913e5ce36c25
 #   anchore/sbom-action@v0.24.0
 #     -> e22c389904149dbc22b58101806040fa8d37a610
+#   actions/attest-build-provenance@v2.4.0
+#     -> db11408653b53560e7b4f2a28e5d6c2779a5de3
 #   trufflesecurity/trufflehog@v3.95.3
 #     -> 37b77001d0174ebec2fcca2bd83ff83a6d45a3ab
 #   github/codeql-action/*@v4.36.0
@@ -506,6 +511,8 @@ jobs:
       contents: read
       security-events: write
       packages: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
@@ -573,6 +580,11 @@ jobs:
           name: sbom-${{ github.sha }}
           path: sbom-${{ github.sha }}.spdx.json
           retention-days: 365
+
+      - name: Attest SBOM provenance
+        uses: actions/attest-build-provenance@db11408653b53560e7b4f2a28e5d6c2779a5de3  # v2.4.0
+        with:
+          subject-path: sbom-${{ github.sha }}.spdx.json
 
   deploy-gate:
     name: Deployment Readiness Gate
