@@ -62,7 +62,7 @@
 #                    upload-pages-artifact v3.0.1->v5.0.0; deploy-pages v4.0.5->v5.0.0
 #   2026-05-25 v1.6.1 CI-35 fix(ci): replace unresolvable checkout SHA with v4.3.0 tag
 #                    All 7 live uses: pins were ef36d1093e2975a02b4c6a03c8b73990a59a478f
-#                    which GitHub Actions cannot resolve; replaced with actions/checkout@v4.3.0
+#                    which GitHub Actions cannot resolve; replaced with actions/checkout@v6.0.2
 #   2026-05-25 v1.6.2 CI-36 fix(ci): replace hardcoded deploy-gate strings with
 #                    needs.<job>.result expressions; add exit 1 on any gate failure
 #                    (F-01 — deploy-gate previously reported 'passed' regardless of outcome)
@@ -124,7 +124,7 @@
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
-#   actions/checkout@v4.3.0
+#   actions/checkout@v6.0.2
 #     -> ef36d1093e2975a02b4c6a03c8b73990a59a478f
 #   actions/setup-python@v5.6.0
 #     -> a26af69be951a213d495a4c3e4e4022e16d87065
@@ -176,7 +176,7 @@ jobs:
     name: secrets-scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.3.0
+      - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
@@ -203,7 +203,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: secrets-scan
     steps:
-      - uses: actions/checkout@v4.3.0
+      - uses: actions/checkout@v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.11'
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: secrets-scan
     steps:
-      - uses: actions/checkout@v4.3.0
+      - uses: actions/checkout@v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.11'
@@ -299,7 +299,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4.3.0
+      - uses: actions/checkout@v6.0.2
       - name: Dependency Review
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294  # v5.0.0
         with:
@@ -330,7 +330,7 @@ jobs:
       JWT_SECRET_KEY: ci-unit-test-placeholder-32chars!!
 
     steps:
-      - uses: actions/checkout@v4.3.0
+      - uses: actions/checkout@v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.11'
@@ -437,7 +437,7 @@ jobs:
       DEV_OPERATOR_PASSWORD: ${{ secrets.DEV_OPERATOR_PASSWORD }}
 
     steps:
-      - uses: actions/checkout@v4.3.0
+      - uses: actions/checkout@v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.11'
@@ -497,7 +497,7 @@ jobs:
       security-events: write
       packages: write
     steps:
-      - uses: actions/checkout@v4.3.0
+      - uses: actions/checkout@v6.0.2
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
 
       - name: Build image
