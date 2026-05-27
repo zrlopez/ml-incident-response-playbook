@@ -93,6 +93,10 @@ prometheus-client==0.21.1
 numpy==2.2.6
 pandas==2.3.3
 scikit-learn==1.6.1
+# REQ-01: joblib is a direct runtime dependency of the inference layer
+# (ml_models/incident_anomaly/registry.py). Pinned explicitly for supply-chain
+# hygiene; previously only present as a transitive dep of scikit-learn.
+joblib==1.5.3
 
 # ── AWS SDK ───────────────────────────────────────────────────────────────────
 boto3==1.38.28

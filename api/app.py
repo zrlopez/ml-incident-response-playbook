@@ -47,10 +47,11 @@ from src.incident_tracker import InvalidTransitionError
 
 app = FastAPI(
     title="ML Incident Response API",
-    version="2.3.0",
+    version="2.4.0",
     description=(
         "Production-hardened ML incident management API with JWT auth, "
-        "RBAC, cursor pagination, and structured audit logging."
+        "RBAC, cursor pagination, structured audit logging, and "
+        "IsolationForest anomaly detection inference layer."
     ),
     lifespan=lifespan,
     docs_url="/docs" if ENVIRONMENT != "production" else None,

@@ -5,9 +5,11 @@ Kubernetes liveness and readiness probes.
 
 R-GOD Step 7: Extracted from api/app.py.
 R-C03 COMPLETE: _deps._denylist replaced with request.app.state.denylist.
+ML-02 COMPLETE: /ready now includes anomaly model registry health gate.
 
   GET /health  — liveness probe (process alive)
-  GET /ready   — readiness probe (JWT subsystem + Redis denylist + env vars)
+  GET /ready   — readiness probe (JWT subsystem + Redis denylist + env vars
+                 + ML model registry)
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from fastapi.responses import JSONResponse
 from api.config import JWT_SECRET, JWT_ALGORITHM
 from src.auth import jwt_rs256
 from src.auth.tokens import create_access_token
+from ml_models.incident_anomaly.registry import model_registry
 
 router = APIRouter(tags=["ops"])
 
@@ -68,6 +71,19 @@ async def readiness(request: Request) -> JSONResponse:
         checks[f"env_{var}"] = "ok" if os.getenv(var) else "missing"
         if not os.getenv(var):
             all_ok = False
+
+    # ML-02: Model registry gate — artifact must exist for the inference
+    # endpoint to serve requests. Missing artifact degrades readiness.
+    try:
+        ml_health = model_registry.health()
+        if ml_health["artifact_exists"]:
+            checks["ml_anomaly_model"] = f"ok (v{ml_health['model_version']})"
+        else:
+            checks["ml_anomaly_model"] = "error: artifact not found"
+            all_ok = False
+    except Exception as exc:
+        checks["ml_anomaly_model"] = f"error: {exc}"
+        all_ok = False
 
     return JSONResponse(
         status_code=200 if all_ok else 503,
