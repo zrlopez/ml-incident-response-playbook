@@ -15,6 +15,50 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [2.3.6] — 2026-05-26
+
+### Fixed
+- `fix(lint)`: suppress Codacy false positives and replace gitleaks-triggering JWT token (`d275d95`).
+  - `tests/unit/test_logging_config.py`: replaced jwt.io demo token with a synthetic token to
+    prevent gitleaks pattern-match false positive in CI (`noqa: S105`).
+  - `tests/unit/test_key_store.py`: suppressed hardcoded-secret warning on intentional
+    algorithm confusion attack test key (`noqa: S106`).
+  - `src/users/repository.py`: suppressed no-value-for-argument false positive on
+    `cls.__new__(cls)` inside classmethod — `cls` is passed implicitly by Python (`noqa`).
+
+---
+
+## [2.3.5] — 2026-05-26
+
+### CI
+- `ci(codecov)`: add `codecov.yml` to merge unit and integration coverage flags for accurate
+  diff coverage reporting (`a2fb856`). Prevents split-flag under-reporting on PR checks.
+
+---
+
+## [2.3.4] — 2026-05-26
+
+### Fixed
+- `fix(api)`: re-raise `InvalidTransitionError` before `ValueError` catch in `PATCH /status`
+  (`c38d3fb`). Ensures specific transition errors surface correctly rather than being swallowed
+  by the broader `ValueError` handler.
+- `fix(test)`: import `get_current_user` from `api.dependencies` not `api.app` (`bad2154`).
+  Corrects stale import path following god-file decomposition.
+
+---
+
+## [2.3.3] — 2026-05-26
+
+### Added
+- `feat(test)` `CI-49`: observability coverage tests for `logging_config` and `otel_setup`
+  (`8367290`). Closes coverage gap on OTel bootstrap and structured log scrubbing paths.
+
+### Fixed
+- `fix(test)` `CI-49`: replace brittle `opentelemetry.trace` patch with `sys.modules` injection
+  (`9eef228`). Previous approach was order-dependent and flaky under parallel test execution.
+
+---
+
 ## [2.3.0] — 2026-05-26
 
 ### Refactored
