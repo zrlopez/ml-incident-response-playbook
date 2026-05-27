@@ -28,6 +28,12 @@ from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
+
+
+@pytest.fixture(scope="session")
+def anyio_backend():
+    """Restrict anyio to asyncio only — eliminates [trio] duplicate test variants."""
+    return "asyncio"
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,

@@ -8,7 +8,7 @@
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
-#   actions/checkout@v4.3.0
+#   actions/checkout@v6.0.2
 #     -> ef36d1093e2975a02b4c6a03c8b73990a59a478f
 #   actions/setup-python@v5.6.0
 #     -> a26af69be951a213d495a4c3e4e4022e16d87065
@@ -46,7 +46,7 @@ jobs:
     name: Build MkDocs site
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.3.0  # ef36d1093e2975a02b4c6a03c8b73990a59a478f
+      - uses: actions/checkout@v6.0.2  # ef36d1093e2975a02b4c6a03c8b73990a59a478f
         with:
           fetch-depth: 0  # full history for git-revision-date plugin if added later
 

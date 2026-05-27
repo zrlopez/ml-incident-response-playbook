@@ -48,11 +48,13 @@ class SeverityLevel(str, Enum):
 
 
 # -- State machine definition --------------------------------------------------
+# Policy: OPEN cannot jump directly to CLOSED or RESOLVED.
+# An incident must be acknowledged (INVESTIGATING) before it can be resolved
+# or closed — this enforces a minimum audit trail.
 #
 # Mermaid:
 #   OPEN --> INVESTIGATING
 #   OPEN --> MITIGATING
-#   OPEN --> CLOSED
 #   INVESTIGATING --> MITIGATING
 #   INVESTIGATING --> RESOLVED
 #   INVESTIGATING --> CLOSED
@@ -65,7 +67,7 @@ ALLOWED_STATUS_TRANSITIONS: dict[IncidentStatus, frozenset[IncidentStatus]] = {
     IncidentStatus.OPEN: frozenset({
         IncidentStatus.INVESTIGATING,
         IncidentStatus.MITIGATING,
-        IncidentStatus.CLOSED,
+        # CLOSED intentionally absent: incidents must be investigated before closing.
     }),
     IncidentStatus.INVESTIGATING: frozenset({
         IncidentStatus.MITIGATING,

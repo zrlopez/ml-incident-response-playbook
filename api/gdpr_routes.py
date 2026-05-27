@@ -55,15 +55,9 @@ router = APIRouter(tags=["GDPR / Data Subject Rights"])
 # update these to use AbstractUserRepository.
 
 def _get_current_user_dep() -> Callable[..., Any]:
-    """Lazy import to avoid circular dependency with api.app."""
-    try:
-        from api.app import get_current_user  # noqa: PLC0415
-        return get_current_user
-    except ImportError as exc:
-        raise RuntimeError(
-            "Cannot import get_current_user from api.app. "
-            "Ensure gdpr_routes is mounted after app is initialized."
-        ) from exc
+    """Import get_current_user from api.dependencies (R-C03: no longer in api.app)."""
+    from api.dependencies import get_current_user  # noqa: PLC0415
+    return get_current_user
 
 
 # ── Article 15 — Data Export ─────────────────────────────────────────────────────────────────────
@@ -203,7 +197,8 @@ async def delete_my_account(
     )
 
     # Resolve user repository from app state (set during lifespan startup).
-    from api.app import get_user_repo  # noqa: PLC0415
+    # R-C03: Import from api.dependencies, not api.app.
+    from api.dependencies import get_user_repo  # noqa: PLC0415
     user_repo = get_user_repo(request)
 
     # Soft-delete: set disabled=True, preserving row for audit trail.
@@ -222,8 +217,11 @@ async def delete_my_account(
     exp: int | None = current_user.get("exp")
     if jti and exp:
         try:
-            from api.app import get_denylist  # noqa: PLC0415
+            # R-C03: Import from api.dependencies, not api.app.
+            from api.dependencies import get_denylist  # noqa: PLC0415
             denylist = get_denylist(request)
+            if denylist is None:
+                raise RuntimeError("denylist unavailable")
             now_ts = int(datetime.now(timezone.utc).timestamp())
             ttl = max(exp - now_ts, 1)
             await denylist.revoke(jti, ttl_seconds=ttl)

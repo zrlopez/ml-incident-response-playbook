@@ -114,6 +114,10 @@ sbom*.json
 sbom*.spdx
 *.sarif
 
+# ── Session tracking docs (internal only, never for public consumption) ────────
+# MAT_*.md files live at the local GitHub root folder, not inside any repo.
+MAT_*.md
+
 # NOTE: .dockerignore is intentionally tracked — it protects image build context
 # and should be reviewed alongside Dockerfile changes.
 node_modules/

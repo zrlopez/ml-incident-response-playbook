@@ -143,6 +143,7 @@ class Incident(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-safe dict for API responses.

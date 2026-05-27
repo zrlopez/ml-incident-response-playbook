@@ -1,0 +1,42 @@
+# codecov.yml
+# Codecov configuration for ml-incident-response-playbook.
+#
+# Two coverage jobs upload independently (unit + integration flags).
+# This file merges them so diff coverage is scored against the combined
+# report rather than unit-only, preventing false patch gate failures.
+
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 2%
+    patch:
+      default:
+        # Score new lines against the merged unit+integration report.
+        # Without this, only the unit flag is used and routes tested
+        # exclusively by integration tests fail the diff gate.
+        target: 50%
+        threshold: 5%
+
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: unit
+      paths:
+        - observability/
+        - pipelines/
+        - src/
+      carryforward: true
+    - name: integration
+      paths:
+        - api/
+        - src/
+      carryforward: true
+
+ignore:
+  - "tests/**"
+  - "docs/**"
+  - "**/__pycache__/**"
+  - "*.pyc"

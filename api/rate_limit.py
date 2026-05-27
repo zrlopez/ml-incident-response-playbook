@@ -182,12 +182,6 @@ def check_user_rate_limit(endpoint_group: str) -> Callable[..., Any]:
 
 
 def _get_current_user_lazy() -> Any:
-    """Lazy import to avoid circular dependency with api.app."""
-    try:
-        from api.app import get_current_user  # noqa: PLC0415
-        return get_current_user
-    except ImportError:
-        # Return a no-op placeholder during testing / import order issues
-        async def _noop() -> Dict[str, Any]:
-            return {"sub": "unknown", "role": "default"}
-        return _noop
+    """Import get_current_user from api.dependencies (R-C03: no longer in api.app)."""
+    from api.dependencies import get_current_user  # noqa: PLC0415
+    return get_current_user

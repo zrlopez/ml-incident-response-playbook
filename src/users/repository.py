@@ -55,7 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.incident_tracker import Base  # shared DeclarativeBase — Alembic sees both
-from src.auth.password import hash_password, verify_password
+from src.auth.password import hash_password, verify_password, maybe_rehash
 from src.config import get_settings
 
 log = structlog.get_logger(__name__)
@@ -96,7 +96,7 @@ class UserRecord(Base):
     )
 
     @classmethod
-    def from_dict(cls, username: str,  dict) -> "UserRecord":
+    def from_dict(cls, username: str, data: dict) -> "UserRecord":
         """
         Construct a UserRecord without triggering SQLAlchemy's ORM __init__.
 
@@ -105,7 +105,7 @@ class UserRecord(Base):
         Bypassing __init__ is intentional: SQLAlchemy's instrumented __init__
         expects a session context that does not exist in the in-memory path.
         """
-        rec = cls.__new__(cls)
+        rec = cls.__new__(cls)  # noqa: PLC0414 — cls is implicitly passed by Python in classmethods
         rec.id = str(uuid.uuid4())
         rec.username = username
         rec.hashed_password = data["hashed_password"]

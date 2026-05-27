@@ -26,6 +26,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import sqlalchemy as sa
 import structlog
 
 log = structlog.get_logger(__name__)
@@ -116,7 +117,6 @@ def _extract_from_db() -> list[dict[str, Any]]:
     Read unprocessed incident events from PostgreSQL.
     Selects rows where etl_processed IS NULL (or column absent in older schemas).
     """
-    import sqlalchemy as sa  # noqa: PLC0415
 
     engine = sa.create_engine(_DATABASE_URL, pool_pre_ping=True)
     query = sa.text(
@@ -341,7 +341,6 @@ def _check_run_id_exists(conn: Any, run_id: str) -> bool:
     Check whether this batch has already been loaded (idempotency guard).
     Uses the etl_runs table if it exists; silently skips the check if not.
     """
-    import sqlalchemy as sa  # noqa: PLC0415
 
     try:
         result = conn.execute(
@@ -356,7 +355,6 @@ def _check_run_id_exists(conn: Any, run_id: str) -> bool:
 
 def _record_run_id(conn: Any, run_id: str, row_count: int) -> None:
     """Record a completed batch run in etl_runs for future idempotency checks."""
-    import sqlalchemy as sa  # noqa: PLC0415
 
     try:
         conn.execute(
@@ -406,7 +404,6 @@ def load(rows: list[dict[str, Any]]) -> int:
         log.info("etl.load.skipped", reason="empty_rows")
         return 0
 
-    import sqlalchemy as sa  # noqa: PLC0415
 
     run_id = _compute_run_id(rows)
     log.info("etl.load.started", run_id=run_id, row_count=len(rows))

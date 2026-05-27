@@ -36,7 +36,10 @@ Usage::
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from prometheus_client import Counter, Gauge
 
 import structlog
 
@@ -54,10 +57,10 @@ _stdlib_log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _METRICS_REGISTERED: bool = False
-_drift_events_counter: Optional[object] = None
-_anomaly_breach_counter: Optional[object] = None
+_drift_events_counter: Optional["Counter"] = None
+_anomaly_breach_counter: Optional["Counter"] = None
 _prediction_latency_hist: Optional[object] = None
-_psi_gauge: Optional[object] = None
+_psi_gauge: Optional["Gauge"] = None
 
 
 def register_metrics() -> bool:  # noqa: C901  (complexity is inherent to conditional imports)

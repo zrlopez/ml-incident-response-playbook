@@ -61,6 +61,26 @@ _MAJOR_PROD = [20.0, 50.0, 100.0, 300.0, 350.0, 180.0]
 
 class TestRegisterMetrics:
 
+    def setup_method(self):
+        """Reset module-level Prometheus state before each test to avoid
+        'Duplicated timeseries' errors from the shared default registry."""
+        me._METRICS_REGISTERED = False
+        me._drift_events_counter = None
+        me._anomaly_breach_counter = None
+        me._prediction_latency_hist = None
+        me._psi_gauge = None
+        # Unregister any previously registered collectors from the default registry
+        try:
+            from prometheus_client import REGISTRY
+            collectors = list(REGISTRY._names_to_collectors.values())
+            for c in set(collectors):
+                try:
+                    REGISTRY.unregister(c)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def test_register_returns_true_when_prometheus_available(self):
         # prometheus_client is in requirements-dev.txt — should be importable in CI
         result = me.register_metrics()
@@ -68,8 +88,7 @@ class TestRegisterMetrics:
 
     def test_register_idempotent(self):
         me.register_metrics()
-        me._METRICS_REGISTERED = True  # simulate already-registered
-        result = me.register_metrics()
+        result = me.register_metrics()  # second call must short-circuit via _METRICS_REGISTERED
         # Second call must return True without re-registering
         assert result is True
 

@@ -38,7 +38,8 @@ async def app_client(sqlite_engine):
     import os
     os.environ.setdefault("JWT_SECRET_KEY", "test-secret-minimum-32-chars-xxxxxxxxxxxx")
 
-    from api.app import app, get_current_user
+    from api.app import app
+    from api.dependencies import get_current_user
     from src.incident_tracker import get_session
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
