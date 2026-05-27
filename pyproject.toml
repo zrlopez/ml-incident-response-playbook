@@ -20,14 +20,14 @@ markers = [
 
 [tool.coverage.run]
 # src included so domain policy, ORM, and config modules are measured.
-# Raise CI floor incrementally: 68 now (unit-tests gate), target 85 by Q3-2026.
+# Raise CI floor incrementally: 75 now (unit-tests gate), target 85 by Q3-2026.
 source = ["api", "observability", "pipelines", "src"]
 omit = ["tests/*", "migrations/*"]
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
-# R-24: was 85 — caused false-fail on `make test` while CI gate is 68.
-# Aligned to CI unit-tests --cov-fail-under=68. Raise incrementally with CI gate.
-fail_under = 68
+# Aligned to CI unit-tests --cov-fail-under=75.
+fail_under = 75
 show_missing = true
 
 [tool.ruff]
