@@ -381,12 +381,7 @@ jobs:
             tests/unit/test_etl_coverage_gaps.py \
             tests/unit/test_logging_config.py \
             tests/unit/test_otel_setup.py \
-            --cov=src/services \
-            --cov=src/domain \
-            --cov=src/schemas \
-            --cov=src/auth \
-            --cov=src/users \
-            --cov=src/incident_tracker \
+            --cov=src \
             --cov=src/validation \
             --cov=api \
             --cov=observability \
