@@ -65,12 +65,11 @@ jobs:
           for mmd_file in docs/diagrams/*.mmd; do
             base=$(basename "$mmd_file" .mmd)
             echo "Rendering: $mmd_file -> docs/diagrams/rendered/${base}.png"
-            npx --yes @mermaid-js/mermaid-cli@11 mmdc \
+            npx --yes @mermaid-js/mermaid-cli@11 \
               --input "$mmd_file" \
               --output "docs/diagrams/rendered/${base}.png" \
               --backgroundColor white \
-              --width 1200 \
-              --puppeteerConfigFile /dev/null
+              --width 1200
           done
 
       - name: List rendered outputs
