@@ -1,4 +1,8 @@
-.PHONY: help install lint typecheck test test-unit test-integration migrate migrate-check migrate-down clean
+.PHONY: help install lint typecheck format security audit pre-commit \
+        test test-unit test-integration test-fast \
+        migrate migrate-check migrate-history migrate-down migrate-generate \
+        docs docs-serve \
+        clean
 
 PYTHON   ?= python3
 PYTEST   ?= $(PYTHON) -m pytest
@@ -7,38 +11,44 @@ ALEMBIC  ?= $(PYTHON) -m alembic
 # -- Default target ------------------------------------------------------------
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # -- Dependencies --------------------------------------------------------------
 install:  ## Install dev dependencies
 	$(PYTHON) -m pip install --upgrade pip
 	$(PYTHON) -m pip install -r requirements-dev.txt
+	pre-commit install
 
 # -- Code quality --------------------------------------------------------------
-# R-25: was `flake8` — flake8 is not in requirements-dev.txt or CI; replaced with ruff check.
-lint:  ## Run ruff linter
+lint:  ## Run ruff linter (check only)
 	$(PYTHON) -m ruff check src/ api/ observability/ pipelines/
 
-# R-25: expanded path list to match CI Bandit scope (observability/ pipelines/ were missing).
+format:  ## Run ruff formatter (in-place)
+	$(PYTHON) -m ruff format src/ api/ observability/ pipelines/ tests/
+
 typecheck:  ## Run mypy type checker
 	$(PYTHON) -m mypy src/ api/ observability/ pipelines/
 
+# -- Security & Dependency Audit -----------------------------------------------
+security:  ## Run Bandit SAST against application code
+	$(PYTHON) -m bandit -r src/ api/ observability/ \
+	  --severity-level medium --confidence-level medium
+
+audit:  ## Run pip-audit against production dependencies
+	$(PYTHON) -m pip_audit --requirement requirements.txt
+
+pre-commit:  ## Run all pre-commit hooks against every file
+	pre-commit run --all-files
+
 # -- Tests ---------------------------------------------------------------------
-test:  ## Run full test suite with coverage
+test:  ## Run full test suite with coverage (aligned to CI gate: fail_under=68)
 	$(PYTEST) tests/ -v --tb=short \
 	  --cov=src --cov=api --cov=observability --cov=pipelines \
 	  --cov-report=term-missing \
 	  --cov-fail-under=68
 
-# R-25: dropped -m unit marker — most unit tests are not decorated @pytest.mark.unit;
-#       the marker caused silent skips. Run by path instead.
 test-unit:  ## Run unit tests only (no DB required)
-	$(PYTEST) tests/unit/ \
-	  tests/test_incident_service.py \
-	  tests/test_incident_schema.py \
-	  tests/test_key_store.py \
-	  tests/test_incident_tracker.py \
-	  -v --tb=short
+	$(PYTEST) tests/unit/ -v --tb=short
 
 test-integration:  ## Run integration tests (requires DATABASE_URL)
 	$(PYTEST) tests/integration/ -v --tb=short -m integration
@@ -59,13 +69,20 @@ migrate-history:  ## Show migration history
 migrate-down:  ## Roll back one migration step
 	$(ALEMBIC) downgrade -1
 
-migrate-generate:  ## Autogenerate new migration (MSG required: make migrate-generate MSG="add team_id")
+migrate-generate:  ## Autogenerate a new migration (MSG= required)
 	$(ALEMBIC) revision --autogenerate -m "$(MSG)"
 
+# -- Documentation -------------------------------------------------------------
+docs:  ## Build MkDocs Material documentation site
+	$(PYTHON) -m mkdocs build --strict
+
+docs-serve:  ## Serve documentation locally at http://127.0.0.1:8001
+	$(PYTHON) -m mkdocs serve --dev-addr 127.0.0.1:8001
+
 # -- Cleanup -------------------------------------------------------------------
-clean:  ## Remove .pyc files and __pycache__ dirs
+clean:  ## Remove .pyc files, __pycache__, test/coverage artefacts
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name '.pytest_cache' -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name '.mypy_cache' -exec rm -rf {} + 2>/dev/null || true
-	rm -f .coverage coverage.xml
+	find . -type d -name '.mypy_cache'   -exec rm -rf {} + 2>/dev/null || true
+	rm -f .coverage coverage.xml coverage-unit.xml coverage-integration.xml
