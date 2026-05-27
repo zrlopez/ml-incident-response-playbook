@@ -146,8 +146,8 @@
 #     -> ed142fd0673e97e23eac54620cfb913e5ce36c25
 #   anchore/sbom-action@v0.24.0
 #     -> e22c389904149dbc22b58101806040fa8d37a610
-#   actions/attest-build-provenance@v2.4.0
-#     -> db11408653b53560e7b4f2a28e5d6c2779a5de3
+#   actions/attest-build-provenance@v4.1.0
+#     -> a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
 #   trufflesecurity/trufflehog@v3.95.3
 #     -> 37b77001d0174ebec2fcca2bd83ff83a6d45a3ab
 #   github/codeql-action/*@v4.36.0
@@ -582,7 +582,7 @@ jobs:
           retention-days: 365
 
       - name: Attest SBOM provenance
-        uses: actions/attest-build-provenance@db11408653b53560e7b4f2a28e5d6c2779a5de3  # v2.4.0
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
         with:
           subject-path: sbom-${{ github.sha }}.spdx.json
 
