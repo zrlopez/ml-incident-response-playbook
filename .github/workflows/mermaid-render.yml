@@ -8,7 +8,7 @@
 # =============================================================================
 #
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
-#   actions/checkout@v4.3.0
+#   actions/checkout@v6.0.2
 #     -> ef36d1093e2975a02b4c6a03c8b73990a59a478f
 #   actions/setup-node@v4.4.0
 #     -> 49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.3.0  # ef36d1093e2975a02b4c6a03c8b73990a59a478f
+        uses: actions/checkout@v6.0.2  # ef36d1093e2975a02b4c6a03c8b73990a59a478f
         with:
           fetch-depth: 0
 
