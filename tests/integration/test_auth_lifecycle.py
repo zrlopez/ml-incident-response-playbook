@@ -192,7 +192,7 @@ def test_sign_and_verify_round_trip(rs256_keys):
 async def test_protected_endpoint_accepts_valid_token(app_client):
     """
     A valid RS256 Bearer token issued by sign_token must allow access to a
-    protected endpoint and return HTTP 200 (or 201 for POST /incidents/).
+    protected endpoint and return HTTP 200 (or 201 for POST /incidents).
 
     This is the full HTTP-layer assertion of the auth happy path:
     client -> ASGI -> get_current_user -> verify_token -> handler.
@@ -200,7 +200,7 @@ async def test_protected_endpoint_accepts_valid_token(app_client):
     token = _make_token()
 
     resp = await app_client.post(
-        "/incidents/",
+        "/incidents",
         json={
             "title": "Auth lifecycle: latency regression",
             "severity": "SEV-3",

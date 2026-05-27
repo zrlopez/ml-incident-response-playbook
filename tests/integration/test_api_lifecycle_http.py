@@ -6,7 +6,7 @@ enforcement. These tests hit the FastAPI application via httpx.AsyncClient
 using the ASGI test transport (no real network sockets).
 
 Coverage targets:
-  - POST /incidents/ -> 201 with OPEN status
+  - POST /incidents -> 201 with OPEN status
   - PATCH /incidents/{id}/status -> 200 for valid transitions
   - PATCH /incidents/{id}/status -> 409 Conflict for blocked transitions
   - PATCH /incidents/{id}/status -> 404 for unknown incident ID
@@ -75,7 +75,7 @@ async def app_client(sqlite_engine):
 
 async def create_incident(client: AsyncClient) -> str:
     """Create a fresh OPEN incident and return its UUID."""
-    resp = await client.post("/incidents/", json={
+    resp = await client.post("/incidents", json={
         "title": "API test: model latency spike",
         "severity": "SEV-2",
         "category": "latency",
@@ -96,7 +96,7 @@ async def patch_status(client: AsyncClient, incident_id: str, new_status: str):
 
 @pytest.mark.integration
 async def test_create_incident_returns_201(app_client):
-    resp = await app_client.post("/incidents/", json={
+    resp = await app_client.post("/incidents", json={
         "title": "CPU spike on serving cluster",
         "severity": "SEV-1",
         "category": "compute",
