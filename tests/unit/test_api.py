@@ -533,3 +533,58 @@ async def test_security_headers_present(client):
 async def test_server_header_absent(client):
     resp = await client.get("/health")
     assert "server" not in resp.headers
+
+
+@pytest.mark.anyio
+async def test_list_incidents_invalid_cursor_returns_400(client):
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
+    resp = await client.get("/incidents?before_id=not-a-uuid", headers=headers)
+    assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_update_status_unknown_incident_returns_404(client):
+    headers = await _auth_headers(client, "operator", _TEST_OPERATOR_PW)
+    resp = await client.patch(
+        "/incidents/00000000-0000-0000-0000-000000000000/status",
+        json={"status": "investigating"},
+        headers=headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_update_metadata_unknown_incident_returns_404(client):
+    headers = await _auth_headers(client, "admin", _TEST_ADMIN_PW)
+    resp = await client.patch(
+        "/incidents/00000000-0000-0000-0000-000000000000",
+        json={"resolution_notes": "ghost"},
+        headers=headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_refresh_token_rejected_on_protected_route(client):
+    login_resp = await client.post(
+        "/auth/token",
+        data={"username": "analyst", "password": _TEST_ANALYST_PW},
+    )
+    assert login_resp.status_code == 200
+    refresh_token = login_resp.json()["refresh_token"]
+    resp = await client.get(
+        "/incidents",
+        headers={"Authorization": f"Bearer {refresh_token}"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_list_incidents_returns_count_field(client):
+    """Covers incidents.py lines 92-99: successful list response body shape."""
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
+    resp = await client.get("/incidents", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "incidents" in body
+    assert "count" in body
