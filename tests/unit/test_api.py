@@ -19,6 +19,7 @@ Note: Tests use a mock Redis denylist so no live Redis instance is required.
 from __future__ import annotations
 
 import pytest
+import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch  # noqa: F401
 from httpx import AsyncClient, ASGITransport
 
@@ -169,7 +170,7 @@ def disable_rate_limiter(monkeypatch):
     monkeypatch.setattr(limiter, "_check_request_limit", lambda *a, **kw: None)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def client():
     """Async test client backed by an in-memory SQLite DB.
 
@@ -181,11 +182,21 @@ async def client():
       whether the lifespan fully completed those assignments.
     - follow_redirects=False surfaces trailing-slash 307s rather than silently
       following them, keeping auth-guard assertions honest.
+    - A fresh engine is created here (not imported from src.incident_tracker)
+      so it binds to the current session event loop and avoids "attached to a
+      different loop" errors when integration tests run before this file.
     """
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
     from api.app import app
-    from src.incident_tracker import _engine, Base
+    from src.incident_tracker import Base
+    import src.incident_tracker as _tracker_mod
     from api.stub_users import _USERS
-    async with _engine.begin() as conn:
+    _orig_engine = _tracker_mod._engine
+    _orig_factory = _tracker_mod._session_factory
+    _session_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    _tracker_mod._engine = _session_engine
+    _tracker_mod._session_factory = async_sessionmaker(_session_engine, expire_on_commit=False)
+    async with _session_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -197,6 +208,10 @@ async def client():
         app.state.denylist = _MockDenylist()
         app.state.user_repo = _MockUserRepo(users=_USERS)
         yield ac
+    # Restore original engine so subsequent test files use the correct DB
+    _tracker_mod._engine = _orig_engine
+    _tracker_mod._session_factory = _orig_factory
+    await _session_engine.dispose()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

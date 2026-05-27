@@ -94,7 +94,7 @@ class TestIncidentServiceOpenIncident:
         expected = _make_incident()
         service, repo = _service_with_mock_repo(create_return=expected)
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             service.open_incident(
                 title="Latency spike",
                 severity=SeverityLevel.SEV2,
@@ -113,7 +113,7 @@ class TestIncidentServiceOpenIncident:
 
     def test_open_incident_owner_defaults_to_opened_by(self):
         service, repo = _service_with_mock_repo(create_return=_make_incident())
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             service.open_incident(
                 title="Auth outage",
                 severity=SeverityLevel.SEV1,
@@ -126,7 +126,7 @@ class TestIncidentServiceOpenIncident:
 
     def test_open_incident_explicit_owner_overrides_default(self):
         service, repo = _service_with_mock_repo(create_return=_make_incident())
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             service.open_incident(
                 title="Auth outage",
                 severity=SeverityLevel.SEV1,
@@ -147,7 +147,7 @@ class TestIncidentServiceGetIncident:
     def test_returns_record_when_found(self):
         inc = _make_incident(incident_id="abc")
         service, repo = _service_with_mock_repo(get_return=inc)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             service.get_incident("abc")
         )
         repo.get.assert_awaited_once_with("abc")
@@ -155,7 +155,7 @@ class TestIncidentServiceGetIncident:
 
     def test_returns_none_when_not_found(self):
         service, repo = _service_with_mock_repo(get_return=None)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             service.get_incident("missing")
         )
         assert result is None
@@ -169,7 +169,7 @@ class TestIncidentServiceListOpen:
     def test_list_open_passes_limit_and_cursor(self):
         incidents = [_make_incident(incident_id=f"i{n}") for n in range(3)]
         service, repo = _service_with_mock_repo(list_open_return=incidents)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             service.list_open(limit=3, before_id="00000000-0000-0000-0000-000000000001")
         )
         repo.list_open.assert_awaited_once_with(limit=3, before_id="00000000-0000-0000-0000-000000000001")  # noqa: E501
@@ -177,7 +177,7 @@ class TestIncidentServiceListOpen:
 
     def test_list_open_empty_page_is_valid(self):
         service, repo = _service_with_mock_repo(list_open_return=[])
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             service.list_open(limit=50)
         )
         assert result == []
@@ -187,7 +187,7 @@ class TestIncidentServiceListOpen:
             list_open_side_effect=ValueError("Cursor 'bad-id' not found.")
         )
         with pytest.raises(ValueError, match="bad-id"):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 service.list_open(limit=10, before_id="bad-id")
             )
 
@@ -200,7 +200,7 @@ class TestIncidentServiceTransition:
     def test_transition_delegates_to_repo(self):
         inc = _make_incident(status=IncidentStatus.INVESTIGATING)
         service, repo = _service_with_mock_repo(update_status_return=inc)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             service.transition_status(
                 incident_id="abc",
                 new_status=IncidentStatus.INVESTIGATING,
@@ -217,7 +217,7 @@ class TestIncidentServiceTransition:
         err = InvalidTransitionError("CLOSED \u2192 OPEN is not allowed")
         service, _ = _service_with_mock_repo(update_status_side_effect=err)
         with pytest.raises(InvalidTransitionError, match="CLOSED"):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 service.transition_status(
                     incident_id="abc",
                     new_status=IncidentStatus.OPEN,
@@ -234,7 +234,7 @@ class TestTransitionAuditLog:
     """R-T01: transition_status() must emit 'incident.status_transitioned' audit event."""
 
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        return asyncio.run(coro)
 
     def test_audit_log_emitted_on_successful_transition(self):
         inc = _make_incident(status=IncidentStatus.INVESTIGATING)
@@ -287,7 +287,7 @@ class TestUpdateMetadata:
     """R-T02: update_metadata() — severity coercion, notes, no-op, error paths, audit log."""
 
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        return asyncio.run(coro)
 
     def test_severity_coercion_applied_to_record(self):
         inc = _make_incident()
@@ -390,7 +390,7 @@ class TestListOpenUUIDGuard:
     """R-T03: malformed before_id must raise ValueError before repo is called."""
 
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        return asyncio.run(coro)
 
     def test_malformed_uuid_raises_before_repo_called(self):
         service, repo = _service_with_mock_repo(list_open_return=[])

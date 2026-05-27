@@ -63,6 +63,8 @@ class TestRegisterMetrics:
     def setup_method(self):
         """Reset module-level Prometheus state before each test to avoid
         'Duplicated timeseries' errors from the shared default registry."""
+        # Clear any None sentinel left in sys.modules by patch.dict in a prior test
+        sys.modules.pop("prometheus_client", None)
         me._METRICS_REGISTERED = False
         me._drift_events_counter = None
         me._anomaly_breach_counter = None
