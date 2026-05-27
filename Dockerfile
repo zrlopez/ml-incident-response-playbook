@@ -2,7 +2,7 @@
 # ===================================================================
 #
 # REMEDIATION CHANGELOG:
-#   MED-A   Base image pinned to SHA-256 digest (tag mutation prevention)
+#   MED-A   Base image digest-pin deferred (R-06); tag-only reference in use
 #   MED-A   pip pinned to exact version; --require-hashes flag documented
 #   SUPPLY  curl added to runtime for healthcheck; no other extras
 #   SEC-1   COPY scope tightened: only required source dirs copied
@@ -16,19 +16,20 @@
 #           cryptography (openssl-dev, libffi-dev), numpy/pandas/sklearn
 #           (openblas-dev, lapack-dev, gfortran), grpcio (protobuf-dev),
 #           hiredis, argon2-cffi. All build deps stay in builder stage only.
-#   R-27    SHA-pin python:3.12-alpine to verified digest (2026-05-26)
-#           Digest: sha256:9e90fbd073d7be6ed9b23cd84a3e7e1f7ca34cf8b1aba8e99f5e4d0d5c6b7a8e
-#           (re-verify with: docker pull python:3.12-alpine && docker inspect --format '{{index .RepoDigests 0}}')
 #   R-27    pip bumped 24.3.1 -> 25.1.1 (latest stable 2026-05-26)
+#   R-06    TODO: inline-pin FROM directives to sha256 digest once resolved via:
+#             docker pull python:3.12-alpine
+#             docker inspect --format '{{index .RepoDigests 0}}' python:3.12-alpine
+#           Tag-only reference retained until verified digest is available.
+#           A fabricated digest is a supply-chain regression; do not commit unverified values.
 
 # ------------------------------------------------------------------
 # Stage 1: dependency builder
 # Purpose: compile wheels + install into isolated venv
 # This stage is discarded after build; build tools never reach runtime.
 # ------------------------------------------------------------------
-# R-27: SHA-pinned to prevent tag mutation attacks.
-# Tag: python:3.12-alpine  Digest verified 2026-05-26.
-# To re-verify: docker pull python:3.12-alpine && docker inspect --format '{{index .RepoDigests 0}}' python:3.12-alpine
+# R-06 TODO: replace tag with digest once verified (see changelog above).
+# Tag-only: python:3.12-alpine — safe for dev/CI; inline digest pin required before production release.
 FROM python:3.12-alpine AS builder
 
 WORKDIR /build
