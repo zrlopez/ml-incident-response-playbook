@@ -1,6 +1,6 @@
 # Remediation Log — ML Incident Response API
 
-> Auto-maintained by remediation sessions. Last updated: 2026-05-24
+> Auto-maintained by remediation sessions. Last updated: 2026-05-27
 
 ---
 
@@ -90,7 +90,7 @@
 |---|---|---|---|---|
 | OPEN-01 | `updated_at` ORM field not explicitly set on status transitions — silent metric corruption | HIGH | ⚠️ Open | Phase 2 (Code Quality) |
 | OPEN-02 | `api/app.py` monolith (37KB) — routing, auth, JWT helpers, business logic in one file | MED | ⚠️ Open | Phase 2 (Architecture Cleanup) |
-| OPEN-03 | Duplicate files in repo root: `REMEDIATION_LOG 2.md`, `alembic 2.ini` | LOW | ⚠️ Open | Phase 2 (Repo Cleanup) |
+| OPEN-03 | Duplicate files in repo root: `REMEDIATION_LOG 2.md`, `alembic 2.ini` | LOW | ✅ CLOSED | Phase 2 (Repo Cleanup) — files confirmed absent at HEAD `f2f133e`; validated Cycle 1 |
 | OPEN-04 | Runbooks lack quantitative thresholds and operational commands | HIGH | ⚠️ Open | Phase 3 (Runbook Depth) |
 | OPEN-05 | Cosign container image signing not yet implemented | MED | ⚠️ Open | Phase 5 (Supply Chain) |
 | OPEN-06 | No `IncidentAuditLog` table — MTTA/MTTR calculation requires event history | MED | ⚠️ Open | Phase 4 (Observability) |
@@ -114,3 +114,17 @@
 | Vulnerability disclosure | ❌ Dead noreply@ email | ❌ Still broken | ✅ GitHub PVR (encrypted) | ✅ |
 | Branch protection | ❌ None | ❌ CI-10 pending | ✅ Ruleset enforced on main | ✅ |
 | Container scan gate | ❌ Non-blocking (CI-26) | ❌ Non-blocking (CI-26) | ✅ Blocking restored | ✅ |
+
+## Phase 6 — Repo Hygiene + CI Accuracy (2026-05-27)
+
+| ID | Finding | Sev | Status | Files Changed |
+|---|---|---|---|---|
+| R-02 | Orphaned `.github/release-placeholder-v110.txt` removed | LOW | ✅ CLOSED | `.github/release-placeholder-v110.txt` |
+| R-06 | Fabricated Docker digest claim removed; honest TODO added pending network verification | HIGH | ✅ CLOSED (doc accuracy) | `Dockerfile` |
+| R-08 | `secured_ci.yml` SHA reference block stale for `setup-python` | HIGH | ✅ CLOSED | `.github/workflows/secured_ci.yml` |
+| R-09 | `secured_ci.yml` SHA reference block stale for `upload-artifact` | HIGH | ✅ CLOSED | `.github/workflows/secured_ci.yml` |
+| R-10 | Workflow permissions audit completed for `secured_ci.yml`, `mermaid-render.yml`, `stale.yml`, `codeql.yml` | MED | ✅ PARTIAL | `.github/workflows/*.yml` |
+| R-25 | `mermaid-render.yml` SHA reference block stale for `setup-node`; loop safety validated | LOW | ✅ CLOSED | `.github/workflows/mermaid-render.yml` |
+| CI-51 | `stale.yml` floating tag `actions/stale@v9` SHA-pinned to verified commit | MED | ✅ CLOSED | `.github/workflows/stale.yml` |
+| CI-52 | `docs.yml` SHA reference block stale for `setup-python`; synced to live pin | LOW | ✅ CLOSED | `.github/workflows/docs.yml` |
+| OPEN-03 | Duplicate root files no longer present; remediation log updated | LOW | ✅ CLOSED | `docs/REMEDIATION_LOG.md` |
