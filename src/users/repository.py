@@ -105,7 +105,7 @@ class UserRecord(Base):
         Bypassing __init__ is intentional: SQLAlchemy's instrumented __init__
         expects a session context that does not exist in the in-memory path.
         """
-        rec = cls.__new__(cls)
+        rec = cls.__new__(cls)  # noqa: PLC0414 — cls is implicitly passed by Python in classmethods
         rec.id = str(uuid.uuid4())
         rec.username = username
         rec.hashed_password = data["hashed_password"]

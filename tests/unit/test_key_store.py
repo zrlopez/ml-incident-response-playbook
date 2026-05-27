@@ -289,7 +289,7 @@ class TestKeyRotationStoreVerification:
         """Algorithm confusion: HS256 token must be rejected even if the secret matches."""
         hs256_token = jwt.encode(
             {"sub": "attacker", "role": "admin", "exp": 9999999999, "iat": 0, "jti": "x"},
-            "some-secret",
+            "some-secret",  # noqa: S106 — intentional wrong key for algorithm confusion attack test
             algorithm="HS256",
             headers={"kid": store_a.key_id},
         )

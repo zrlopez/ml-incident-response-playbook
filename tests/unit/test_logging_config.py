@@ -60,7 +60,7 @@ class TestScrubValue:
         assert self._scrub("abc123", key="api_key") == "[REDACTED]"
 
     def test_jwt_string_redacted(self) -> None:
-        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        jwt = "eyJhbGciOiJmYWtlIn0.eyJzdWIiOiJ0ZXN0In0.AAAAAAAAAAAAAAAAAAAAAA"  # noqa: S105 — synthetic token for redaction testing, not a real credential
         result = self._scrub(jwt)
         assert "[JWT_REDACTED]" in result
         assert "eyJ" not in result
