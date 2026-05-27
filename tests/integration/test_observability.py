@@ -63,7 +63,7 @@ def test_simple_threshold_within_range():
 
 
 def test_simple_threshold_check_low_false_suppresses_drop():
-    result = simple_threshold(current=70.0, baseline=100.0, pct=0.20, check_low=False, label="coverage")
+    result = simple_threshold(current=70.0, baseline=100.0, pct=0.20, check_low=False, label="coverage")  # noqa: E501
 
     assert result.breached is False
     assert result.direction is None
@@ -105,7 +105,7 @@ def test_configure_otel_disabled_env_noops(monkeypatch):
     monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
 
     with patch("observability.otel_setup.log") as log_mock:
-        otel_setup.configure_otel(service_name="svc", otlp_endpoint="http://collector:4317", environment="test")
+        otel_setup.configure_otel(service_name="svc", otlp_endpoint="http://collector:4317", environment="test")  # noqa: E501
 
     log_mock.info.assert_called_once()
     assert otel_setup._tracer_provider is None
@@ -123,7 +123,7 @@ def test_configure_otel_missing_packages_noops(monkeypatch):
 
     with patch("builtins.__import__", side_effect=fake_import):
         with patch("observability.otel_setup.log") as log_mock:
-            otel_setup.configure_otel(service_name="svc", otlp_endpoint="http://collector:4317", environment="test")
+            otel_setup.configure_otel(service_name="svc", otlp_endpoint="http://collector:4317", environment="test")  # noqa: E501
 
     log_mock.warning.assert_called_once()
     assert otel_setup._tracer_provider is None

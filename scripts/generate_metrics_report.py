@@ -1,4 +1,4 @@
-'"""Generate a comprehensive incident metrics report for leadership review.
+"""Generate a comprehensive incident metrics report for leadership review.
 
 This script aggregates metrics from the PostgreSQL incidents database and
 produces a monthly metrics report in both CSV and Markdown formats. It is
@@ -144,7 +144,7 @@ def calculate_metrics(incidents: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def calculate_trends(current_metrics: Dict[str, Any], prev_metrics: Dict[str, Any]) -> Dict[str, Any]:
+def calculate_trends(current_metrics: Dict[str, Any], prev_metrics: Dict[str, Any]) -> Dict[str, Any]:  # noqa: E501
     """Calculate month-over-month trend percentages.
 
     Args:
@@ -338,7 +338,7 @@ def main() -> None:
     print(f"Wrote CSV: {csv_path}")
 
     md_path = output_dir / f"metrics_{args.month}.md"
-    write_markdown报告(metrics, trends, args.month, md_path)
+    write_markdown_report(metrics, trends, args.month, md_path)
     print(f"Wrote Markdown report: {md_path}")
 
     print("✓ Metrics report generation complete")

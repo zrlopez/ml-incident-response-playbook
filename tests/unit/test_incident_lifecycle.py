@@ -17,7 +17,6 @@ from src.domain.incident_lifecycle import (
     ALLOWED_STATUS_TRANSITIONS,
     IncidentStatus,
     SeverityLevel,
-    TransitionDecision,
     validate_status_transition,
 )
 
@@ -53,7 +52,7 @@ _BLOCKED_PAIRS = [
     (IncidentStatus.RESOLVED,    IncidentStatus.OPEN),
     (IncidentStatus.RESOLVED,    IncidentStatus.INVESTIGATING),
     (IncidentStatus.RESOLVED,    IncidentStatus.MITIGATING),
-    (IncidentStatus.OPEN,        IncidentStatus.RESOLVED),   # Must go through INVESTIGATING/MITIGATING
+    (IncidentStatus.OPEN,        IncidentStatus.RESOLVED),   # Must go through INVESTIGATING/MITIGATING  # noqa: E501
 ]
 
 
@@ -116,7 +115,7 @@ def test_resolved_to_closed_is_allowed():
 
 
 def test_resolved_cannot_reopen():
-    for bad_target in [IncidentStatus.OPEN, IncidentStatus.INVESTIGATING, IncidentStatus.MITIGATING]:
+    for bad_target in [IncidentStatus.OPEN, IncidentStatus.INVESTIGATING, IncidentStatus.MITIGATING]:  # noqa: E501
         decision = validate_status_transition(IncidentStatus.RESOLVED, bad_target)
         assert decision.allowed is False, f"Expected RESOLVED -> {bad_target} to be blocked"
 

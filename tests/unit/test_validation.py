@@ -24,7 +24,6 @@ from src.validation.schema_checks import (  # noqa: E402
     ALLOWED_SEVERITIES,
     ALLOWED_STATUSES,
     FEATURE_BATCH_MAX_NULL_RATE,
-    FEATURE_BATCH_MIN_ROW_COUNT,
     FEATURE_BATCH_PSI_THRESHOLD,
     REQUIRED_FEATURE_BATCH_FIELDS,
     REQUIRED_INCIDENT_FIELDS,
@@ -289,7 +288,7 @@ class TestValidateIncidentRecordErrors:
                 "incident_id": "INC-2026-0001",
                 "title": "",           # empty
                 "severity": "SEV-99",  # invalid
-                "category": "unknown", # invalid
+                "category": "unknown",  # invalid
                 "summary": "ok",
                 "status": "OPEN",
                 "created_at": "2026-05-22T14:00:00Z",
@@ -642,7 +641,7 @@ class TestValidateBatch:
         assert validate_batch([]) == []
 
     def test_all_valid_records_all_pass(self):
-        records = [_minimal_incident(), _full_incident(), _minimal_incident(incident_id="INC-2026-0002")]
+        records = [_minimal_incident(), _full_incident(), _minimal_incident(incident_id="INC-2026-0002")]  # noqa: E501
         results = validate_batch(records)
         assert len(results) == 3
         assert all(r.valid for r in results)

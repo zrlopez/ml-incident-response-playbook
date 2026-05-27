@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from observability import logging_config
 
@@ -65,7 +64,7 @@ def test_configure_logging_uses_json_renderer_in_production(monkeypatch):
          patch("logging.getLogger") as get_logger_mock:
         root_logger = MagicMock()
         noisy_logger = MagicMock()
-        get_logger_mock.side_effect = lambda name=None: root_logger if name in (None, "") else noisy_logger
+        get_logger_mock.side_effect = lambda name=None: root_logger if name in (None, "") else noisy_logger  # noqa: E501
 
         logging_config.configure_logging()
 
@@ -84,7 +83,7 @@ def test_configure_logging_uses_console_renderer_outside_production(monkeypatch)
          patch("logging.getLogger") as get_logger_mock:
         root_logger = MagicMock()
         noisy_logger = MagicMock()
-        get_logger_mock.side_effect = lambda name=None: root_logger if name in (None, "") else noisy_logger
+        get_logger_mock.side_effect = lambda name=None: root_logger if name in (None, "") else noisy_logger  # noqa: E501
 
         logging_config.configure_logging(log_level="DEBUG")
 

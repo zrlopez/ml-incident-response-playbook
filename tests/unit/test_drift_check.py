@@ -16,7 +16,6 @@ All tests are synchronous, zero-dependency on DB, network, or Prometheus.
 """
 from __future__ import annotations
 
-import math
 
 import pytest
 

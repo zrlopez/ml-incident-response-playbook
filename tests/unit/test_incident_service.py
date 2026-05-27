@@ -14,7 +14,7 @@ Cycle 4 additions (2026-05-26):
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -172,7 +172,7 @@ class TestIncidentServiceListOpen:
         result = asyncio.get_event_loop().run_until_complete(
             service.list_open(limit=3, before_id="00000000-0000-0000-0000-000000000001")
         )
-        repo.list_open.assert_awaited_once_with(limit=3, before_id="00000000-0000-0000-0000-000000000001")
+        repo.list_open.assert_awaited_once_with(limit=3, before_id="00000000-0000-0000-0000-000000000001")  # noqa: E501
         assert result == incidents
 
     def test_list_open_empty_page_is_valid(self):

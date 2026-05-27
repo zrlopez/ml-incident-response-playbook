@@ -1,6 +1,7 @@
 """ml_incident_dag.py — Hardened Airflow DAG (remediation initiative)"""
 from __future__ import annotations
-import os, sys
+import os
+import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import numpy as np
@@ -109,7 +110,7 @@ def _load_incident_dataframe(run_id: str) -> pd.DataFrame:
         "title": [f"Synthetic incident {i}" for i in range(n)],
         # R-67 FIX: match alembic enum values
         "severity": rng.choice(["SEV_1", "SEV_2", "SEV_3", "SEV_4"], size=n),
-        "status": rng.choice(["open", "investigating", "mitigating", "resolved", "closed"], size=n),
+        "status": rng.choice(["open", "investigating", "mitigating", "resolved", "closed"], size=n),  # noqa: E501
         "owner": rng.choice(["alice", "bob", "carol", "dave"], size=n),
         "created_at": [now - pd.Timedelta(seconds=int(s)) for s in rng.integers(0, 3600, n)],
     })
@@ -269,7 +270,7 @@ def detect_anomaly(**context: Any) -> dict[str, Any]:
         current_pct = current_counts / total
         # Expand distributions to sample arrays for PSI computation
         n_samples = 1000
-        baseline_samples = np.repeat(_SEVERITY_LEVELS, (n_samples * _BASELINE_SEVERITY).astype(int))
+        baseline_samples = np.repeat(_SEVERITY_LEVELS, (n_samples * _BASELINE_SEVERITY).astype(int))  # noqa: E501
         current_samples = np.repeat(_SEVERITY_LEVELS, (n_samples * current_pct).astype(int))
         # Encode to numeric for PSI
         enc = {s: i for i, s in enumerate(_SEVERITY_LEVELS)}
@@ -307,7 +308,7 @@ def detect_anomaly(**context: Any) -> dict[str, Any]:
         metrics["latency_p95_seconds"] = round(p95_lag, 3)
         if p95_lag > _LATENCY_P95_THRESHOLD_S:
             anomalies.append({"signal": "latency", "severity": "critical", "p95_s": p95_lag})
-            log.error("anomaly.latency_regression", p95_s=p95_lag, threshold=_LATENCY_P95_THRESHOLD_S)
+            log.error("anomaly.latency_regression", p95_s=p95_lag, threshold=_LATENCY_P95_THRESHOLD_S)  # noqa: E501
 
     result: dict[str, Any] = {
         "status": "breach" if anomalies else "passed",
@@ -456,7 +457,7 @@ def alert_on_failure(context: dict[str, Any]) -> None:
         )
 
 
-def _post_slack_alert(*, webhook_url: str, dag_id: str, task_id: str, run_id: str, exception: str) -> None:
+def _post_slack_alert(*, webhook_url: str, dag_id: str, task_id: str, run_id: str, exception: str) -> None:  # noqa: E501
     """POST structured alert to Slack webhook. Non-blocking — failure never cascades."""
     import json
     import urllib.request

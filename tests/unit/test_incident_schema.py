@@ -118,7 +118,7 @@ class TestIncidentResponseValidationError:
 
 class TestIncidentListResponse:
     def test_populated_page(self):
-        items = [IncidentResponse.model_validate(_full_dict(incident_id=f"id-{n}")) for n in range(3)]
+        items = [IncidentResponse.model_validate(_full_dict(incident_id=f"id-{n}")) for n in range(3)]  # noqa: E501
         resp = IncidentListResponse(incidents=items, next_cursor="id-2", count=3)
         assert resp.count == 3
         assert resp.next_cursor == "id-2"

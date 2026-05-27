@@ -106,7 +106,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                     client=request.client.host if request.client else "unknown",
                 )
                 return JSONResponse(
-                    {"detail": f"Request body too large. Maximum allowed size is {self.MAX_BYTES // 1024} KB."},
+                    {"detail": f"Request body too large. Maximum allowed size is {self.MAX_BYTES // 1024} KB."},  # noqa: E501
                     status_code=413,
                     headers={"Content-Type": "application/json"},
                 )
@@ -137,7 +137,7 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         except BodyTooLargeError:
             return JSONResponse(
-                {"detail": f"Request body too large. Maximum allowed size is {self.MAX_BYTES // 1024} KB."},
+                {"detail": f"Request body too large. Maximum allowed size is {self.MAX_BYTES // 1024} KB."},  # noqa: E501
                 status_code=413,
             )
 
@@ -163,7 +163,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"  # noqa: E501
         response.headers["X-XSS-Protection"] = "0"
         if request.url.path in self._DOCS_PATHS:
             response.headers["Content-Security-Policy"] = (
@@ -175,7 +175,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         else:
             response.headers["Content-Security-Policy"] = "default-src 'none'"
         if self._environment == "production":
-            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"  # noqa: E501
         request_id = request.state.__dict__.get("request_id", "")
         if request_id:
             response.headers["X-Request-ID"] = request_id

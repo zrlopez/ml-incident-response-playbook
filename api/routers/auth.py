@@ -35,7 +35,7 @@ from api.dependencies import (
     get_current_user,
     get_denylist,
 )
-from api.redis_denylist import RedisDenylist
+
 from src.auth.tokens import create_access_token, create_refresh_token, decode_token
 
 log = structlog.get_logger(__name__)

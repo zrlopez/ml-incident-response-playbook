@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -276,7 +276,6 @@ class TestListOpenHardCap:
         """effective_limit = min(limit, 1000) — caller cannot exceed the hard cap."""
         repo, session = _repo_with_mock_session(execute_return=[])
         _run(repo.list_open(limit=9999))
-        executed_stmt = session.execute.call_args[0][0]
         # Confirm the query was executed — hard cap enforcement is internal;
         # we verify it doesn't raise and the session was called once.
         session.execute.assert_awaited_once()

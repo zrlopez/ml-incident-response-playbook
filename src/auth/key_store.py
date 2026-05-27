@@ -479,8 +479,8 @@ class KeyRotationStore:
         idx = 1
         while True:
             priv_pem = os.environ.get(f"RSA_OLD_PRIVATE_KEY_PEM_{idx}", "").strip()
-            pub_pem  = os.environ.get(f"RSA_OLD_PUBLIC_KEY_PEM_{idx}", "").strip()
-            kid      = os.environ.get(f"RSA_OLD_KEY_ID_{idx}", "").strip() or None
+            pub_pem = os.environ.get(f"RSA_OLD_PUBLIC_KEY_PEM_{idx}", "").strip()
+            kid = os.environ.get(f"RSA_OLD_KEY_ID_{idx}", "").strip() or None
 
             if not priv_pem and not pub_pem:
                 # No more retired keys defined.

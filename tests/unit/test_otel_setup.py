@@ -45,16 +45,16 @@ def _install_fake_otel_modules(raise_fastapi_import_error: bool = False) -> dict
 
     resource_module = ModuleType("opentelemetry.sdk.resources")
     resource_module.Resource = MagicMock()  # type: ignore[attr-defined]
-    resource_module.Resource.create = MagicMock(return_value=MagicMock(name="resource"))  # type: ignore[attr-defined]
+    resource_module.Resource.create = MagicMock(return_value=MagicMock(name="resource"))  # type: ignore[attr-defined]  # noqa: E501
 
     trace_export_module = ModuleType("opentelemetry.sdk.trace.export")
-    trace_export_module.BatchSpanProcessor = MagicMock(return_value=MagicMock(name="processor"))  # type: ignore[attr-defined]
+    trace_export_module.BatchSpanProcessor = MagicMock(return_value=MagicMock(name="processor"))  # type: ignore[attr-defined]  # noqa: E501
 
     sdk_trace_module = ModuleType("opentelemetry.sdk.trace")
-    sdk_trace_module.TracerProvider = MagicMock(return_value=MagicMock(name="provider"))  # type: ignore[attr-defined]
+    sdk_trace_module.TracerProvider = MagicMock(return_value=MagicMock(name="provider"))  # type: ignore[attr-defined]  # noqa: E501
 
     exporter_module = ModuleType("opentelemetry.exporter.otlp.proto.grpc.trace_exporter")
-    exporter_module.OTLPSpanExporter = MagicMock(return_value=MagicMock(name="exporter"))  # type: ignore[attr-defined]
+    exporter_module.OTLPSpanExporter = MagicMock(return_value=MagicMock(name="exporter"))  # type: ignore[attr-defined]  # noqa: E501
 
     fastapi_module = ModuleType("opentelemetry.instrumentation.fastapi")
     fastapi_instrumentor = MagicMock()
@@ -73,7 +73,7 @@ def _install_fake_otel_modules(raise_fastapi_import_error: bool = False) -> dict
         "opentelemetry.exporter": ModuleType("opentelemetry.exporter"),
         "opentelemetry.exporter.otlp": ModuleType("opentelemetry.exporter.otlp"),
         "opentelemetry.exporter.otlp.proto": ModuleType("opentelemetry.exporter.otlp.proto"),
-        "opentelemetry.exporter.otlp.proto.grpc": ModuleType("opentelemetry.exporter.otlp.proto.grpc"),
+        "opentelemetry.exporter.otlp.proto.grpc": ModuleType("opentelemetry.exporter.otlp.proto.grpc"),  # noqa: E501
         "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": exporter_module,
         "opentelemetry.instrumentation": ModuleType("opentelemetry.instrumentation"),
         "opentelemetry.instrumentation.fastapi": fastapi_module,
@@ -102,7 +102,7 @@ class TestConfigureOtel:
         otel.configure_otel()
         assert otel._tracer_provider is None
 
-    def test_import_error_returns_early_without_raising(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_import_error_returns_early_without_raising(self, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: E501
         monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
         with patch.dict(sys.modules, {"opentelemetry": None}):
             otel = _reload_otel_setup()
@@ -126,7 +126,7 @@ class TestConfigureOtel:
             fake["trace_export_module"].BatchSpanProcessor.assert_called_once()
             fake["exporter_module"].OTLPSpanExporter.assert_called_once()
 
-    def test_resource_attributes_include_service_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resource_attributes_include_service_name(self, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: E501
         monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
         fake = _install_fake_otel_modules()
         captured: dict[str, Any] = {}
@@ -142,7 +142,7 @@ class TestConfigureOtel:
         assert captured["service.name"] == "my-service"
         assert captured["deployment.environment"] == "prod"
 
-    def test_fastapi_instrumentation_when_app_provided(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fastapi_instrumentation_when_app_provided(self, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: E501
         monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
         fake = _install_fake_otel_modules()
         mock_app = MagicMock()
@@ -151,7 +151,7 @@ class TestConfigureOtel:
             otel.configure_otel(app=mock_app)
         fake["fastapi_instrumentor"].instrument_app.assert_called_once_with(mock_app)
 
-    def test_fastapi_instrumentor_import_error_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fastapi_instrumentor_import_error_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: E501
         monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
         fake = _install_fake_otel_modules(raise_fastapi_import_error=True)
         mock_app = MagicMock()

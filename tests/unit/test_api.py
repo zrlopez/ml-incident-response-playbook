@@ -19,7 +19,7 @@ Note: Tests use a mock Redis denylist so no live Redis instance is required.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: F401
 from httpx import AsyncClient, ASGITransport
 
 # Provide required env vars before importing the app
@@ -34,8 +34,8 @@ os.environ.setdefault("DEV_ADMIN_PASSWORD",    "test-admin-pw-32chars-aaaaaaaaaa
 os.environ.setdefault("DEV_ANALYST_PASSWORD",  "test-analyst-pw-32chars-aaaaaaaaa")
 os.environ.setdefault("DEV_OPERATOR_PASSWORD", "test-operator-pw-32chars-aaaaaaaa")
 
-_TEST_ADMIN_PW    = os.environ["DEV_ADMIN_PASSWORD"]
-_TEST_ANALYST_PW  = os.environ["DEV_ANALYST_PASSWORD"]
+_TEST_ADMIN_PW = os.environ["DEV_ADMIN_PASSWORD"]
+_TEST_ANALYST_PW = os.environ["DEV_ANALYST_PASSWORD"]
 _TEST_OPERATOR_PW = os.environ["DEV_OPERATOR_PASSWORD"]
 
 
@@ -91,7 +91,7 @@ async def client():
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-async def _login(client: AsyncClient, username: str = "analyst", password: str = _TEST_ANALYST_PW) -> str:
+async def _login(client: AsyncClient, username: str = "analyst", password: str = _TEST_ANALYST_PW) -> str:  # noqa: E501
     """Return an access token for the given user."""
     resp = await client.post(
         "/auth/token",
@@ -101,7 +101,7 @@ async def _login(client: AsyncClient, username: str = "analyst", password: str =
     return resp.json()["access_token"]
 
 
-async def _auth_headers(client: AsyncClient, username: str = "analyst", password: str = _TEST_ANALYST_PW) -> dict:
+async def _auth_headers(client: AsyncClient, username: str = "analyst", password: str = _TEST_ANALYST_PW) -> dict:  # noqa: E501
     token = await _login(client, username, password)
     return {"Authorization": f"Bearer {token}"}
 
@@ -196,7 +196,7 @@ async def test_analyst_can_create_incident(client):
         "/incidents",
         json={
             "title": "Model accuracy dropped below threshold",
-            "description": "Production model accuracy fell below 0.80 threshold during peak hours.",
+            "description": "Production model accuracy fell below 0.80 threshold during peak hours.",  # noqa: E501
             "severity": "SEV-2",
             "affected_system": "recommendation-model-v3",
         },

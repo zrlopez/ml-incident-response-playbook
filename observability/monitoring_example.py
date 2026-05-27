@@ -36,7 +36,7 @@ Usage::
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from prometheus_client import Counter, Gauge
@@ -167,8 +167,8 @@ def run_drift_check_job(
     # --- 3. Prometheus instrumentation ---
     if _METRICS_REGISTERED:
         if _psi_gauge is not None:
-            _psi_gauge.labels(model=model_name).set(suite.psi_result.psi)  # type: ignore[union-attr]
-        if _drift_events_counter is not None and suite.psi_result.severity != DriftSeverity.NO_DRIFT:
+            _psi_gauge.labels(model=model_name).set(suite.psi_result.psi)  # type: ignore[union-attr]  # noqa: E501
+        if _drift_events_counter is not None and suite.psi_result.severity != DriftSeverity.NO_DRIFT:  # noqa: E501
             _drift_events_counter.labels(  # type: ignore[union-attr]
                 severity=suite.overall_severity.value,
                 model=model_name,

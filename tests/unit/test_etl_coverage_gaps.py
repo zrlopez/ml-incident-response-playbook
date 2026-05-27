@@ -138,7 +138,7 @@ class TestExtractS3Branch:
 class TestExtractErrorPropagation:
     def test_db_failure_raises_runtime_error(self) -> None:
         with patch("pipelines.etl_template._DATABASE_URL", "postgresql://fake"), \
-             patch("pipelines.etl_template._extract_from_db", side_effect=Exception("conn refused")):
+             patch("pipelines.etl_template._extract_from_db", side_effect=Exception("conn refused")):  # noqa: E501
             with pytest.raises(RuntimeError, match="Extract failed"):
                 extract()
 
@@ -152,7 +152,7 @@ class TestExtractErrorPropagation:
     def test_synthetic_failure_raises_runtime_error(self) -> None:
         with patch("pipelines.etl_template._DATABASE_URL", "sqlite:///./test.db"), \
              patch("pipelines.etl_template._S3_BUCKET", ""), \
-             patch("pipelines.etl_template._extract_synthetic", side_effect=Exception("rng broke")):
+             patch("pipelines.etl_template._extract_synthetic", side_effect=Exception("rng broke")):  # noqa: E501
             with pytest.raises(RuntimeError, match="Extract failed"):
                 extract()
 

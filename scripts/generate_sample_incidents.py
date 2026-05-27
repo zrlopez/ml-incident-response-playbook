@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import argparse
 import random
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable, List

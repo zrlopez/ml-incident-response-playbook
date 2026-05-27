@@ -30,7 +30,7 @@ Run with:
 """
 from __future__ import annotations
 
-import asyncio
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -229,7 +229,7 @@ class TestListOpenCursorPagination:
 
     @pytest.mark.asyncio
     async def test_final_page_returns_empty_when_exhausted(self, incident_repo):
-        ids = await _seed(incident_repo, n=4, minutes_apart=1)
+        await _seed(incident_repo, n=4, minutes_apart=1)
         page1 = await incident_repo.list_open(limit=4)
         cursor = page1[-1].id  # oldest row on page 1 = absolute oldest
         page2 = await incident_repo.list_open(limit=4, before_id=cursor)
@@ -561,7 +561,7 @@ class TestCursorEdgeCases:
         without raising — the cursor lookup is a global ID fetch, not scoped to
         the filter. The results are filtered by severity as expected.
         """
-        sev2_ids = await _seed(
+        await _seed(
             incident_repo,
             n=4,
             severity=SeverityLevel.SEV2,

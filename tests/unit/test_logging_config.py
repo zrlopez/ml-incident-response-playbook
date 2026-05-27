@@ -20,7 +20,6 @@ All network calls (httpx) are fully mocked — no outbound traffic.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from typing import Any
@@ -60,7 +59,7 @@ class TestScrubValue:
         assert self._scrub("abc123", key="api_key") == "[REDACTED]"
 
     def test_jwt_string_redacted(self) -> None:
-        jwt = "eyJhbGciOiJmYWtlIn0.eyJzdWIiOiJ0ZXN0In0.AAAAAAAAAAAAAAAAAAAAAA"  # noqa: S105 — synthetic token for redaction testing, not a real credential
+        jwt = "eyJhbGciOiJmYWtlIn0.eyJzdWIiOiJ0ZXN0In0.AAAAAAAAAAAAAAAAAAAAAA"  # noqa: S105, E501 — synthetic token for redaction testing, not a real credential
         result = self._scrub(jwt)
         assert "[JWT_REDACTED]" in result
         assert "eyJ" not in result
@@ -280,7 +279,7 @@ class TestSendAlert:
         from observability.logging_config import send_alert, AlertLevel
         mock_log = MagicMock()
         with patch("observability.logging_config._alert_log", mock_log), \
-             patch("observability.logging_config._alert_executor") as mock_exec:
+             patch("observability.logging_config._alert_executor"):
             send_alert("model drift", level=AlertLevel.WARNING)
         mock_log.warning.assert_called_once()
         call_kwargs = mock_log.warning.call_args[1]
@@ -390,7 +389,6 @@ class TestDispatchSlack:
     async def test_no_webhook_url_returns_early(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
         # Reload module-level constant
-        import importlib
         import observability.logging_config as lc
         monkeypatch.setattr(lc, "_SLACK_WEBHOOK_URL", "")
         from observability.logging_config import _dispatch_slack, AlertLevel
@@ -415,7 +413,7 @@ class TestDispatchSlack:
         mock_client.post.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_slack_dispatch_http_error_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_slack_dispatch_http_error_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: E501
         import observability.logging_config as lc
         monkeypatch.setattr(lc, "_SLACK_WEBHOOK_URL", "https://hooks.slack.com/fake")
         mock_client = AsyncMock()
@@ -429,7 +427,7 @@ class TestDispatchSlack:
         # Should swallow exception and log it
 
     @pytest.mark.asyncio
-    async def test_slack_context_block_included_when_context_provided(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_slack_context_block_included_when_context_provided(self, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: E501
         import observability.logging_config as lc
         monkeypatch.setattr(lc, "_SLACK_WEBHOOK_URL", "https://hooks.slack.com/fake")
         captured_payload: list[Any] = []
@@ -488,7 +486,7 @@ class TestDispatchPagerDuty:
         assert call_kwargs["json"]["dedup_key"] == "sev1-model-v2"
 
     @pytest.mark.asyncio
-    async def test_pagerduty_dispatch_error_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_pagerduty_dispatch_error_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: E501
         import observability.logging_config as lc
         monkeypatch.setattr(lc, "_PAGERDUTY_ROUTING_KEY", "fake-routing-key")
         mock_client = AsyncMock()
@@ -501,7 +499,7 @@ class TestDispatchPagerDuty:
             await _dispatch_pagerduty("test", AlertLevel.ERROR, {})
 
     @pytest.mark.asyncio
-    async def test_pagerduty_payload_severity_matches_level(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_pagerduty_payload_severity_matches_level(self, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: E501
         import observability.logging_config as lc
         monkeypatch.setattr(lc, "_PAGERDUTY_ROUTING_KEY", "fake-routing-key")
         captured_payload: list[Any] = []

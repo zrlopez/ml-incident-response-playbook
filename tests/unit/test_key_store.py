@@ -13,7 +13,7 @@ from unittest.mock import patch
 import jwt
 import pytest
 
-from src.auth.key_store import KeyRotationStore, RS256KeyStore, _derive_key_id
+from src.auth.key_store import KeyRotationStore, RS256KeyStore
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +294,7 @@ class TestKeyRotationStoreVerification:
             headers={"kid": store_a.key_id},
         )
         rotation = KeyRotationStore.from_stores(store_a)
-        with pytest.raises((jwt.InvalidAlgorithmError, jwt.DecodeError, jwt.InvalidSignatureError)):
+        with pytest.raises((jwt.InvalidAlgorithmError, jwt.DecodeError, jwt.InvalidSignatureError)):  # noqa: E501
             rotation.verify_token(hs256_token)
 
     def test_verify_malformed_token_raises(self, store_a):

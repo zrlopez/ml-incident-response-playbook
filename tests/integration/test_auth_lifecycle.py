@@ -47,7 +47,6 @@ from httpx import ASGITransport, AsyncClient
 
 import src.auth.jwt_rs256 as jwt_mod
 from src.auth.jwt_rs256 import (
-    generate_dev_keypair,
     load_keys,
     sign_token,
     verify_token,
@@ -259,7 +258,8 @@ def test_none_algorithm_token_is_rejected(rs256_keys):
     PyJWT rejects 'none' when algorithms=["RS256"] is enforced.
     """
     # Manually construct an unsigned JWT (none algorithm)
-    import base64, json as _json
+    import base64
+    import json as _json
     header = base64.urlsafe_b64encode(
         _json.dumps({"alg": "none", "typ": "JWT"}).encode()
     ).rstrip(b"=").decode()

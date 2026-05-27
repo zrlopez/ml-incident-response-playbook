@@ -25,10 +25,9 @@ get(): returns None for unknown ID
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
-import pytest_asyncio
 
 from src.incident_tracker import (
     Incident,

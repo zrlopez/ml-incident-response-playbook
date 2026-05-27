@@ -316,7 +316,7 @@ def transform(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         validated.append({
             "id": row.get("id") or str(uuid.uuid4()),
-            "title": promoted.get("title") or f"{row['event_type'].replace('_', ' ').title()} Event",
+            "title": promoted.get("title") or f"{row['event_type'].replace('_', ' ').title()} Event",  # noqa: E501
             "severity": severity,
             "status": promoted.get("status", "open"),
             "category": promoted.get("category") or row["event_type"],
@@ -404,7 +404,6 @@ def load(rows: list[dict[str, Any]]) -> int:
         log.info("etl.load.skipped", reason="empty_rows")
         return 0
 
-
     run_id = _compute_run_id(rows)
     log.info("etl.load.started", run_id=run_id, row_count=len(rows))
 
@@ -421,7 +420,7 @@ def load(rows: list[dict[str, Any]]) -> int:
         # ─ Bulk insert in batches ────────────────────────────────────────
         try:
             for batch_start in range(0, len(rows), _BATCH_SIZE):
-                batch = rows[batch_start : batch_start + _BATCH_SIZE]
+                batch = rows[batch_start : batch_start + _BATCH_SIZE]  # noqa: E203
                 conn.execute(
                     sa.text(
                         """

@@ -25,7 +25,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_current_user, require_role
+from api.dependencies import require_role
 from src.incident_tracker import InvalidTransitionError  # noqa: E402
 from api.rate_limit import check_user_rate_limit
 from api.schemas import IncidentCreate, StatusUpdate, IncidentUpdate

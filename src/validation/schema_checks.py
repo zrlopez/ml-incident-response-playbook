@@ -211,7 +211,7 @@ def validate_incident_record(record: Mapping[str, Any]) -> ValidationResult:
         ts_val = record.get(ts_field)
         if ts_val is not None and not _is_iso8601(ts_val):
             warnings.append(
-                f"'{ts_field}' value '{ts_val}' should be ISO 8601 with UTC offset (e.g. 2026-05-22T14:00:00Z)"
+                f"'{ts_field}' value '{ts_val}' should be ISO 8601 with UTC offset (e.g. 2026-05-22T14:00:00Z)"  # noqa: E501
             )
 
     # --- Temporal ordering checks ---

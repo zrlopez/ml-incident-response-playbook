@@ -55,7 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.incident_tracker import Base  # shared DeclarativeBase — Alembic sees both
-from src.auth.password import hash_password, verify_password, maybe_rehash
+from src.auth.password import verify_password, maybe_rehash
 from src.config import get_settings
 
 log = structlog.get_logger(__name__)
@@ -317,7 +317,7 @@ async def get_user_session() -> AsyncIterator[AsyncSession]:
     """
     settings = get_settings()
     engine = create_async_engine(
-        settings.database_url if hasattr(settings, "database_url") else "sqlite+aiosqlite:///./incidents.db",
+        settings.database_url if hasattr(settings, "database_url") else "sqlite+aiosqlite:///./incidents.db",  # noqa: E501
         echo=False,
         pool_pre_ping=True,
     )

@@ -6,8 +6,7 @@ those concerns live in test_anomaly_detection.py and test_incident_schema.py.
 """
 from __future__ import annotations
 
-import hashlib
-import json
+
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -15,7 +14,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from pipelines.etl_template import (
-    ETLLoadError,
     ETLSchemaError,
     REQUIRED_FIELDS,
     VALID_EVENT_TYPES,
@@ -115,7 +113,7 @@ class TestValidateRow:
         assert REQUIRED_FIELDS == frozenset({"id", "timestamp", "event_type", "payload"})
 
     def test_valid_event_types_constant(self) -> None:
-        expected = {"model_degradation", "pipeline_failure", "data_quality", "latency_spike", "cost_spike"}
+        expected = {"model_degradation", "pipeline_failure", "data_quality", "latency_spike", "cost_spike"}  # noqa: E501
         assert VALID_EVENT_TYPES == frozenset(expected)
 
     def test_error_message_contains_field_name(self) -> None:

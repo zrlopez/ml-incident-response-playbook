@@ -37,13 +37,13 @@ from pathlib import Path
 # Add project root to path so imports work without installing the package
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import structlog
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+import structlog  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
-from src.auth.password import hash_password
-from src.users.repository import UserRecord
-from src.incident_tracker import Base
+from src.auth.password import hash_password  # noqa: E402
+from src.users.repository import UserRecord  # noqa: E402
+
 
 log = structlog.get_logger("seed_users")
 

@@ -116,7 +116,7 @@ def load_keys() -> bool:
     public_pem = os.environ.get("RSA_PUBLIC_KEY_PEM", "").strip()
     if public_pem:
         try:
-            _public_key = cast(RSAPublicKey, serialization.load_pem_public_key(public_pem.encode()))
+            _public_key = cast(RSAPublicKey, serialization.load_pem_public_key(public_pem.encode()))  # noqa: E501
             _key_id = _pem_to_key_id(_public_key)
         except Exception as exc:
             log.error("jwt_rs256.public_key_load_failed", error=str(exc))

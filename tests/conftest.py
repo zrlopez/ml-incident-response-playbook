@@ -34,7 +34,9 @@ import pytest_asyncio
 def anyio_backend():
     """Restrict anyio to asyncio only — eliminates [trio] duplicate test variants."""
     return "asyncio"
-from sqlalchemy.ext.asyncio import (
+
+
+from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
