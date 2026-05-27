@@ -445,6 +445,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
 
       - name: Verify required CI secrets are present
+        if: github.actor != 'dependabot[bot]'
         run: |
           if [ -z "${{ secrets.CI_JWT_SECRET_KEY }}" ]; then
             echo "ERROR: CI_JWT_SECRET_KEY secret is not configured."
