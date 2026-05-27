@@ -35,11 +35,11 @@ from src.services.incident_service import IncidentService
 
 log = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/incidents", tags=["incidents"])
+router = APIRouter(prefix="/incidents", tags=["incidents"], redirect_slashes=False)
 
 
 @router.post(
-    "/",
+    "",
     status_code=201,
     response_model=IncidentResponse,
     dependencies=[Depends(check_user_rate_limit("incidents"))],
@@ -69,7 +69,7 @@ async def create_incident(
     return IncidentResponse.model_validate(record.to_dict())
 
 
-@router.get("/", response_model=IncidentListResponse)
+@router.get("", response_model=IncidentListResponse)
 async def list_incidents(
     current_user: Annotated[dict, Depends(require_role("analyst", "admin", "operator"))],
     session: Annotated[AsyncSession, Depends(get_session)],

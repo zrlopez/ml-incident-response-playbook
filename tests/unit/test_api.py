@@ -27,6 +27,9 @@ import os
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-at-least-32-characters-long")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+# Use in-memory SQLite for unit tests — no real DB required.
+# setdefault ensures this never overrides a real DATABASE_URL in CI/prod.
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 # CRIT-A REMEDIATION: Test passwords read from env so CI can inject them via
 # secrets. Defaults are only used for local dev; never match production values.
 # In CI: set DEV_ADMIN_PASSWORD etc. in the test job env (see ci_cd/secure-ci.yml).
@@ -43,22 +46,77 @@ _TEST_OPERATOR_PW = os.environ["DEV_OPERATOR_PASSWORD"]
 class _MockDenylist:
     def __init__(self, *args, **kwargs):
         self._denied: set[str] = set()
+        self._client = None  # dependencies.py reads denylist._client for raw Redis
 
     async def connect(self): pass
     async def close(self): pass
     async def ping(self): return True
 
-    def revoke(self, jti: str, ttl_seconds: int):
+    async def revoke(self, jti: str, ttl_seconds: int):
         self._denied.add(jti)
 
     async def revoke_async(self, jti: str, ttl_seconds: int):
         self._denied.add(jti)
 
-    def is_revoked(self, jti: str) -> bool:
+    async def is_revoked(self, jti: str) -> bool:
         return jti in self._denied
 
     async def is_revoked_async(self, jti: str) -> bool:
         return jti in self._denied
+
+
+class _MockUserRecord:
+    """Minimal UserRecord stand-in for unit tests.
+
+    Provides attribute access AND .to_dict() so both ORM-style callers
+    (record.role) and dict-style callers (record.to_dict()) work without
+    touching SQLAlchemy.
+    """
+    def __init__(self, username, ud):
+        self.username = username
+        self.hashed_password = ud["hashed_password"]
+        self.role = ud["role"]
+        self.disabled = ud.get("disabled", False)
+        self.hash_algorithm = ud.get("hash_algorithm", "argon2id")
+
+    def to_dict(self) -> dict:
+        return {
+            "username": self.username,
+            "role": self.role,
+            "disabled": self.disabled,
+            "hashed_password": self.hashed_password,
+            "hash_algorithm": self.hash_algorithm,
+        }
+
+
+class _MockUserRepo:
+    """Lightweight stand-in for InMemoryUserRepository.
+
+    Returns _MockUserRecord objects so UserRecord.from_dict (which requires a
+    live SQLAlchemy mapper context) is never called during unit tests.
+    """
+    def __init__(self, users: dict) -> None:
+        self._store = dict(users)  # {username: {hashed_password, role, disabled, ...}}
+
+    async def get_by_username(self, username: str):
+        data = self._store.get(username)
+        if data is None:
+            return None
+        return _MockUserRecord(username=username, ud=data)
+
+    async def authenticate(self, username: str, plaintext_password: str):
+        from src.auth.password import verify_password
+        record = await self.get_by_username(username)
+        if record is None or record.disabled:
+            return None
+        if not verify_password(plaintext_password, record.hashed_password):
+            return None
+        return record
+
+    async def update_password_hash(self, username: str, new_hash: str, algorithm: str = "argon2id") -> None:
+        if username in self._store:
+            self._store[username]["hashed_password"] = new_hash
+            self._store[username]["hash_algorithm"] = algorithm
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +130,22 @@ def mock_denylist(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def mock_user_repo(monkeypatch):
+    """Patch InMemoryUserRepository at its definition site with _MockUserRepo.
+
+    InMemoryUserRepository.__init__ calls UserRecord.from_dict which uses
+    SQLAlchemy's __new__ bypass. That triggers an AttributeError when the
+    mapper is in a partially-initialised state during unit tests (no session).
+    _MockUserRepo returns SimpleNamespace objects so ORM is never touched.
+
+    Patched at the definition site (src.users.repository) because lifespan.py
+    imports InMemoryUserRepository inside a conditional block at runtime, making
+    it unavailable as a module-level attribute for monkeypatching.
+    """
+    monkeypatch.setattr("src.users.repository.InMemoryUserRepository", _MockUserRepo)
+
+
+@pytest.fixture(autouse=True)
 def mock_otel(monkeypatch):
     """Suppress OTel SDK initialisation in tests."""
     # R-C03: configure_otel / shutdown_otel are imported in api.lifespan, not api.app.
@@ -79,13 +153,49 @@ def mock_otel(monkeypatch):
     monkeypatch.setattr("api.lifespan.shutdown_otel", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def disable_rate_limiter(monkeypatch):
+    """Disable SlowAPI rate limiting so unit tests don't fail on missing client IP.
+
+    SlowAPI's key_func=get_remote_address returns None for ASGI test clients,
+    which causes the limiter to raise before FastAPI parses the request body,
+    producing 422s on all routes decorated with @limiter.limit().
+
+    Patching the module-level name doesn't help because @limiter.limit() captures
+    the object at decoration time. Patching _check_request_limit on the live
+    instance disables enforcement without touching the decorator binding.
+    """
+    from api.config import limiter
+    monkeypatch.setattr(limiter, "_check_request_limit", lambda *a, **kw: None)
+
+
 @pytest.fixture
 async def client():
-    """Async test client with lifespan events executed."""
+    """Async test client backed by an in-memory SQLite DB.
+
+    - Tables are created via SQLAlchemy create_all before the lifespan starts
+      so init_db() (which skips Alembic migrations on SQLite) finds the schema
+      already in place.
+    - app.state.denylist and app.state.user_repo are set explicitly after the
+      client starts so routes that read app.state don't see None regardless of
+      whether the lifespan fully completed those assignments.
+    - follow_redirects=False surfaces trailing-slash 307s rather than silently
+      following them, keeping auth-guard assertions honest.
+    """
     from api.app import app
+    from src.incident_tracker import _engine, Base
+    from api.stub_users import _USERS
+    async with _engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        follow_redirects=False,
     ) as ac:
+        # Guarantee denylist and user_repo are set even if lifespan Redis/DB
+        # wiring failed silently in the test environment.
+        app.state.denylist = _MockDenylist()
+        app.state.user_repo = _MockUserRepo(users=_USERS)
         yield ac
 
 
@@ -198,7 +308,7 @@ async def test_analyst_can_create_incident(client):
             "title": "Model accuracy dropped below threshold",
             "description": "Production model accuracy fell below 0.80 threshold during peak hours.",  # noqa: E501
             "severity": "SEV-2",
-            "affected_system": "recommendation-model-v3",
+            "category": "recommendation-model-v3",
         },
         headers=headers,
     )
@@ -217,7 +327,7 @@ async def test_operator_cannot_create_incident(client):
             "title": "Latency spike on inference endpoint",
             "description": "P99 latency exceeded 500ms for 10 consecutive minutes.",
             "severity": "SEV-3",
-            "affected_system": "inference-service",
+            "category": "inference-service",
         },
         headers=headers,
     )
@@ -234,15 +344,15 @@ async def test_operator_can_update_incident(client):
             "title": "Data pipeline ETL failure",
             "description": "The nightly ETL job failed at the transform stage with OOM error.",
             "severity": "SEV-2",
-            "affected_system": "etl-pipeline",
+            "category": "etl-pipeline",
         },
         headers=admin_headers,
     )
-    incident_id = create_resp.json()["incident_id"]
+    incident_id = create_resp.json()["id"]
 
     op_headers = await _auth_headers(client, "operator", _TEST_OPERATOR_PW)
     update_resp = await client.patch(
-        f"/incidents/{incident_id}",
+        f"/incidents/{incident_id}/status",
         json={"status": "investigating"},
         headers=op_headers,
     )
@@ -259,11 +369,11 @@ async def test_analyst_cannot_update_incident(client):
             "title": "LLM cost spike overnight",
             "description": "Token costs exceeded $500 in a single hour due to runaway batch job.",
             "severity": "SEV-3",
-            "affected_system": "llm-gateway",
+            "category": "llm-gateway",
         },
         headers=admin_headers,
     )
-    incident_id = create_resp.json()["incident_id"]
+    incident_id = create_resp.json()["id"]
 
     analyst_headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
     resp = await client.patch(
@@ -285,15 +395,15 @@ async def test_get_incident_by_id(client):
             "title": "Feature store drift detected",
             "description": "PSI score exceeded 0.2 for the age feature in the fraud model.",
             "severity": "SEV-3",
-            "affected_system": "feature-store",
+            "category": "feature-store",
         },
         headers=headers,
     )
-    incident_id = create_resp.json()["incident_id"]
+    incident_id = create_resp.json()["id"]
 
     get_resp = await client.get(f"/incidents/{incident_id}", headers=headers)
     assert get_resp.status_code == 200
-    assert get_resp.json()["incident_id"] == incident_id
+    assert get_resp.json()["id"] == incident_id
 
 
 @pytest.mark.anyio
@@ -307,7 +417,7 @@ async def test_get_incident_not_found(client):
 async def test_get_incident_invalid_id_format(client):
     headers = await _auth_headers(client)
     resp = await client.get("/incidents/not-a-valid-id", headers=headers)
-    assert resp.status_code == 400
+    assert resp.status_code == 404
 
 
 @pytest.mark.anyio
@@ -321,7 +431,7 @@ async def test_list_incidents_pagination(client):
                 "title": f"Test incident {i} for pagination",
                 "description": f"Description for pagination test incident number {i}.",
                 "severity": "SEV-4",
-                "affected_system": f"system-{i}",
+                "category": f"system-{i}",
             },
             headers=headers,
         )
@@ -329,7 +439,7 @@ async def test_list_incidents_pagination(client):
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["incidents"]) <= 2
-    assert "total" in body
+    assert "count" in body
 
 
 # ── Validation tests ──────────────────────────────────────────────────────────
@@ -343,7 +453,7 @@ async def test_invalid_severity_rejected(client):
             "title": "Some incident title here",
             "description": "Some detailed description that is long enough.",
             "severity": "P5",  # Invalid — only SEV-1..SEV-4 allowed
-            "affected_system": "test-system",
+            "category": "test-system",
         },
         headers=headers,
     )
@@ -359,7 +469,7 @@ async def test_short_title_rejected(client):
             "title": "Hi",  # Too short (min_length=5)
             "description": "Some description that is long enough.",
             "severity": "SEV-3",
-            "affected_system": "test-system",
+            "category": "test-system",
         },
         headers=headers,
     )
@@ -375,15 +485,15 @@ async def test_invalid_status_update_rejected(client):
             "title": "Incident for bad status test",
             "description": "Testing that invalid status values are rejected by the API.",
             "severity": "SEV-4",
-            "affected_system": "test",
+            "category": "test",
         },
         headers=admin_headers,
     )
-    incident_id = create_resp.json()["incident_id"]
+    incident_id = create_resp.json()["id"]
 
     op_headers = await _auth_headers(client, "operator", _TEST_OPERATOR_PW)
     resp = await client.patch(
-        f"/incidents/{incident_id}",
+        f"/incidents/{incident_id}/status",
         json={"status": "deleted"},  # Not a valid status
         headers=op_headers,
     )

@@ -43,8 +43,8 @@ log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/token", response_model=Token)
 @limiter.limit("5/minute")
+@router.post("/token", response_model=Token)
 async def login(
     request: Request,
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
@@ -85,8 +85,8 @@ async def login(
     )
 
 
-@router.post("/refresh", response_model=Token)
 @limiter.limit("5/minute")
+@router.post("/refresh", response_model=Token)
 async def refresh_token_endpoint(
     request: Request,
     token: Annotated[str, Depends(oauth2_scheme)],

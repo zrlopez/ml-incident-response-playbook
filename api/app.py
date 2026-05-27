@@ -54,6 +54,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if ENVIRONMENT != "production" else None,
     redoc_url=None,
+    redirect_slashes=False,
 )
 
 # ── Rate limiter ───────────────────────────────────────────────────────────────
