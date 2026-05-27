@@ -34,6 +34,15 @@ show_missing = true
 line-length = 100
 # R-24: was py312 — CI runs Python 3.11. Aligned to avoid syntax-version false positives.
 target-version = "py311"
+# VENV-01: explicitly exclude virtualenv and common env dirs so ruff --fix
+# never mutates site-packages files (e.g. scipy _codata.py corruption).
+exclude = [
+    ".venv",
+    "venv",
+    "env",
+    ".env",
+    "__pypackages__",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "S", "B"]
@@ -42,6 +51,8 @@ ignore = ["S101"]  # assert is fine in tests
 [tool.mypy]
 # R-24: was 3.12 — CI runs Python 3.11. Aligned so local mypy matches CI behaviour.
 python_version = "3.11"
+# VENV-01: exclude venv dirs so mypy never type-checks site-packages.
+exclude = "(\.venv|venv|env|\.env)"
 # CI-18: strict=true removed — required 80 annotation fixes on pre-existing
 # code unrelated to this remediation.
 # CI-20: disallow_untyped_calls removed — fired on third-party untyped
