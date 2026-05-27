@@ -113,6 +113,11 @@
 #                    tests/test_incident_service.py, test_incident_schema.py, test_key_store.py,
 #                    test_incident_tracker.py were moved to tests/unit/ but CI paths were not updated.
 #                    exit code 4 (no tests collected) on every unit-tests run since the move.
+#   2026-05-27 v1.8.1 CI-50 fix(ci): add missing test files + cov scopes to unit-tests job
+#                    test_incident_repository.py, test_api.py, test_validation.py were passing
+#                    locally but absent from CI pytest command (coverage dark spots).
+#                    Broadened --cov to src/auth, src/users, src/validation, api.
+#                    Raised --cov-fail-under 68 -> 75 to reflect newly measured paths.
 #   2026-05-26 v1.8.0 CI-49 feat(test): add observability coverage tests; wire ETL coverage gaps
 #                    Added tests/unit/test_logging_config.py (logging_config.py: PII scrubbing,
 #                    configure_logging, audit(), AlertLevel, send_alert() sync/async dispatch).
@@ -356,12 +361,19 @@ jobs:
           EOF
 
       - name: pytest unit tests
+        # CI-50: add test_incident_repository.py, test_api.py, test_validation.py
+        #        (were collecting locally but missing from CI command — coverage gap).
+        #        Broaden --cov to src/auth, src/users, api so those modules are measured.
+        #        Raise --cov-fail-under 68 -> 75 to reflect newly covered paths.
         run: |
           pytest \
             tests/unit/test_incident_service.py \
             tests/unit/test_incident_schema.py \
             tests/unit/test_key_store.py \
             tests/unit/test_incident_tracker.py \
+            tests/unit/test_incident_repository.py \
+            tests/unit/test_api.py \
+            tests/unit/test_validation.py \
             tests/unit/test_drift_check.py \
             tests/unit/test_monitoring_example.py \
             tests/unit/test_anomaly_detection.py \
@@ -372,13 +384,16 @@ jobs:
             --cov=src/services \
             --cov=src/domain \
             --cov=src/schemas \
-            --cov=src/auth/key_store \
+            --cov=src/auth \
+            --cov=src/users \
             --cov=src/incident_tracker \
+            --cov=src/validation \
+            --cov=api \
             --cov=observability \
             --cov=pipelines \
             --cov-report=xml:coverage-unit.xml \
             --cov-report=term-missing \
-            --cov-fail-under=68 \
+            --cov-fail-under=75 \
             -v
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
