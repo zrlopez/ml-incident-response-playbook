@@ -588,3 +588,61 @@ async def test_list_incidents_returns_count_field(client):
     body = resp.json()
     assert "incidents" in body
     assert "count" in body
+
+
+@pytest.mark.anyio
+async def test_create_incident_success_returns_201_and_id(client):
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
+    resp = await client.post(
+        "/incidents",
+        json={
+            "title": "Latency spike on inference path",
+            "severity": "SEV-2",
+            "category": "inference-service",
+            "owner": "ml-platform",
+            "description": "P95 latency increased above SLO.",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["id"]
+    assert body["status"] == "open"
+
+
+@pytest.mark.anyio
+async def test_get_unknown_incident_returns_404(client):
+    headers = await _auth_headers(client, "analyst", _TEST_ANALYST_PW)
+    resp = await client.get(
+        "/incidents/00000000-0000-0000-0000-000000000000",
+        headers=headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_update_metadata_unknown_incident_error_detail(client):
+    headers = await _auth_headers(client, "admin", _TEST_ADMIN_PW)
+    resp = await client.patch(
+        "/incidents/00000000-0000-0000-0000-000000000000",
+        json={"resolution_notes": "not here"},
+        headers=headers,
+    )
+    assert resp.status_code == 404
+    assert "00000000-0000-0000-0000-000000000000" in resp.text
+
+
+@pytest.mark.anyio
+async def test_access_with_no_denylist_still_succeeds_fail_open(client):
+    from api.app import app as _app
+    token = await _login(client)
+    original = getattr(_app.state, "denylist", None)
+    _app.state.denylist = None
+    try:
+        resp = await client.get(
+            "/incidents",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+    finally:
+        _app.state.denylist = original
