@@ -131,10 +131,10 @@
 # ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
 #   actions/checkout@v6.0.2
 #     -> ef36d1093e2975a02b4c6a03c8b73990a59a478f
-#   actions/setup-python@v5.6.0
-#     -> a26af69be951a213d495a4c3e4e4022e16d87065
-#   actions/upload-artifact@v4.6.2
-#     -> ea165f8d65b6e75b540449e92b4886f43607fa02
+#   actions/setup-python@v6.2.0
+#     -> a309ff8b426b58ec0e2a45f0f869d46889d02405
+#   actions/upload-artifact@v7.0.1
+#     -> 043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
 #   docker/setup-buildx-action@v4.1.0
 #     -> d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
 #   docker/build-push-action@v7.2.0
