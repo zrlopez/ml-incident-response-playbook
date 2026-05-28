@@ -122,3 +122,4 @@ MAT_*.md
 # and should be reviewed alongside Dockerfile changes.
 node_modules/
 package-lock.json
+cosign.key
