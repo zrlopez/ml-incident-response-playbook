@@ -227,6 +227,9 @@ jobs:
             tests/unit/test_etl_coverage_gaps.py \
             tests/unit/test_logging_config.py \
             tests/unit/test_otel_setup.py \
+            tests/unit/test_inference.py \
+            tests/unit/test_auth_config_security.py \
+            tests/unit/test_anomaly_schema_properties.py \
             --cov=src \
             --cov=src/validation \
             --cov=api \

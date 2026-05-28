@@ -12,7 +12,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 testpaths = ["tests"]
-norecursedirs = [".mypy_cache", ".venv", ".git", "__pycache__", ".ruff_cache", ".pytest_cache", "dist", "build"]
+norecursedirs = [".mypy_cache", ".venv", ".git", "__pycache__", ".ruff_cache", ".pytest_cache", ".hypothesis", "dist", "build"]
 markers = [
     "unit: fast, zero-dependency unit tests",
     "integration: tests requiring a live DB or Redis (use fixtures/conftest)",

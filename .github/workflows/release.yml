@@ -1,0 +1,200 @@
+# =============================================================================
+# release.yml — Semver tag-triggered release workflow  (CI-02)
+# =============================================================================
+# Triggers on push of tags matching v[0-9]+.[0-9]+.[0-9]+ (e.g. v2.5.0).
+#
+# Pipeline:
+#   1. Build the production Docker image.
+#   2. Run Trivy CRITICAL/HIGH gate on the release image.
+#   3. Push the image to GitHub Container Registry (ghcr.io) with:
+#        :v<semver>   — immutable release tag
+#        :latest      — mutable convenience alias
+#   4. Generate and attest an SPDX SBOM for the release image.
+#   5. Create a GitHub Release with auto-generated release notes.
+#
+# Required repository secrets:
+#   GHCR_TOKEN   — PAT or GITHUB_TOKEN with packages:write
+#   (GITHUB_TOKEN is used directly for release creation)
+#
+# Required repository variables (optional):
+#   IMAGE_NAME   — override image name (default: ghcr.io/<owner>/<repo>)
+# =============================================================================
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write       # create GitHub Release
+  packages: write       # push to GHCR
+  id-token: write       # OIDC for SBOM attestation
+  attestations: write   # attest SBOM provenance
+  security-events: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false  # never cancel a running release
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # 1. Build, scan, and push release image
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build + Trivy + Push
+    runs-on: ubuntu-latest
+
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.push.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@902fa8ec7d6ecbea8a90f25a17ebf4e08a46f2b0  # v5.7.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build release image (no push yet)
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_VERSION=${{ github.ref_name }}
+            BUILD_SHA=${{ github.sha }}
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install -y trivy
+
+      - name: Trivy hard gate — CRITICAL/HIGH (release must be clean)
+        run: |
+          trivy image \
+            --format table \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --ignorefile .trivyignore \
+            --db-repository ghcr.io/aquasecurity/trivy-db \
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+      - name: Push release image to GHCR
+        id: push
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_VERSION=${{ github.ref_name }}
+            BUILD_SHA=${{ github.sha }}
+
+  # ---------------------------------------------------------------------------
+  # 2. Generate and attest SBOM for the release image
+  # ---------------------------------------------------------------------------
+  sbom:
+    name: SBOM + Attestation
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOM (SPDX-JSON)
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
+        with:
+          image: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          format: spdx-json
+          output-file: sbom-${{ github.ref_name }}.spdx.json
+
+      - name: Attest SBOM provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+        with:
+          subject-path: sbom-${{ github.ref_name }}.spdx.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sbom-${{ github.ref_name }}
+          path: sbom-${{ github.ref_name }}.spdx.json
+          retention-days: 365
+
+  # ---------------------------------------------------------------------------
+  # 3. Create GitHub Release with auto-generated notes
+  # ---------------------------------------------------------------------------
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-and-push, sbom]
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444306b1a442d4b6be0a2e88  # v4.1.8
+        with:
+          name: sbom-${{ github.ref_name }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@da05d552573ad5aba039bcd9a4ededc69978a372  # v2.2.2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            sbom-${{ github.ref_name }}.spdx.json
+          body: |
+            ## Docker Image
+            ```
+            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ```
+
+            ## Supply Chain
+            - SBOM (SPDX-JSON) attached as release asset.
+            - Build provenance attested via GitHub Actions OIDC.
+            - Trivy CRITICAL/HIGH gate passed before push.
+
+            ## Changelog
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for full release notes.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
