@@ -43,6 +43,7 @@ from api.routers.health import router as health_router
 from api.routers.auth import router as auth_router
 from api.routers.incidents import router as incidents_router
 from api.routers.inference import router as inference_router
+from api.routers.models import router as models_router
 from src.incident_tracker import InvalidTransitionError
 from api.metrics import router as metrics_router
 
@@ -106,5 +107,6 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(incidents_router)
 app.include_router(inference_router)
+app.include_router(models_router)
 app.include_router(metrics_router)
 

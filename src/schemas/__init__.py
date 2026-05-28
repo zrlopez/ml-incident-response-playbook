@@ -4,10 +4,18 @@ from src.schemas.incident import (
     IncidentResponse,
     IncidentStatusUpdate,
 )
+from src.schemas.model import (
+    ModelActivateResponse,
+    ModelListResponse,
+    ModelVersionResponse,
+)
 
 __all__ = [
     "IncidentCreate",
     "IncidentStatusUpdate",
     "IncidentResponse",
     "IncidentListResponse",
+    "ModelVersionResponse",
+    "ModelListResponse",
+    "ModelActivateResponse",
 ]
