@@ -71,7 +71,7 @@ except ImportError as exc:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 _IMAGE = os.environ.get("SMOKE_IMAGE", "ml-incident-api:smoke-test")
-_PORT = 8000
+_PORT = 8080
 _STARTUP_TIMEOUT = 30  # seconds
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 > Remaining open items: R-C03, R-C04, R-CI02 (now unblocked), plus upstream tech debt TD-01–TD-03.
 > No unresolved regressions. No correctness gaps.
 
+
+### Fixed
+- `fix(ci/CI-03)`: repair container smoke-test wiring so the production image is probed on
+  the actual application port and against a reachable Redis endpoint.
+  - `tests/integration/test_container_smoke.py`: `_PORT` corrected from `8000` to `8080`
+    to match the Docker image's `EXPOSE 8080`, healthcheck, and uvicorn startup command.
+  - `tests/integration/test_container_smoke.py`: `_container_redis_url()` now falls back to
+    `redis://172.17.0.1:6379/0` for CI bridge access instead of constructing an auth-broken URL.
+  - `tests/integration/test_container_smoke.py`: startup failure path now appends the last
+    3000 chars of container logs to the pytest failure for immediate CI diagnosis.
+  - `.github/workflows/secured_ci.yml`: `SMOKE_REDIS_URL` switched to password-free bridge URL
+    `redis://172.17.0.1:6379/0`, avoiding empty-secret auth failures during smoke startup.
+
 ## [2.4.0] — 2026-05-27
 
 ### Security
