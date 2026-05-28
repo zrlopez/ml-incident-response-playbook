@@ -79,35 +79,20 @@ warn_return_any = true
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
-# MYPY GRADUAL TYPING REMEDIATION — started 2026-05-24
+# MYPY GRADUAL TYPING REMEDIATION — completed 2026-05-28
 # ---------------------------------------------------------------------------
-# These modules currently produce mypy errors unrelated to the active
-# security remediation. They are temporarily suppressed so the CI gate stays
-# green while we fix each file one at a time.
+# All modules now pass mypy with zero errors. No [[tool.mypy.overrides]]
+# blocks remain. The gradual typing remediation is complete.
 #
-# Removal order (easiest -> hardest):
+# Completion record:
 #   [x] src/config.py              — step 1 (done 2026-05-24)
 #   [x] src/auth/jwt_rs256.py      — step 2 (done 2026-05-24)
 #   [x] api/middleware.py          — step 3 (done 2026-05-24)
 #   [x] api/gdpr_routes.py         — step 4 (done 2026-05-24)
 #   [x] api/rate_limit.py          — step 5 (done 2026-05-24)
-#   [x] api/redis_denylist.py      — step 6 (clean — no fixes needed, no override required)
+#   [x] api/redis_denylist.py      — step 6 (clean — no fixes needed)
 #   [x] api/app.py                 — step 7 (done 2026-05-24)
-#   [ ] ml_models/incident_anomaly/registry.py  — step 8 (ML-04, queued)
-#   [ ] ml_models/incident_anomaly/schema.py    — step 9 (ML-04, queued)
-#   [ ] api/routers/inference.py               — step 10 (ML-04, queued)
-#
-# When a module is fully typed and clean:
-#   1. Remove its [[tool.mypy.overrides]] block below.
-#   2. Run mypy locally to confirm zero errors.
-#   3. Commit with message: "mypy: reintroduce <module> to full type checking"
-#   4. Update the checklist above (mark [x]).
+#   [x] ml_models/incident_anomaly/registry.py  — step 8 (ML-04, done 2026-05-28)
+#   [x] ml_models/incident_anomaly/schema.py    — step 9 (ML-04, done 2026-05-28)
+#   [x] api/routers/inference.py               — step 10 (ML-04, done 2026-05-28)
 # ---------------------------------------------------------------------------
-
-[[tool.mypy.overrides]]
-module = [
-    "ml_models.incident_anomaly.registry",
-    "ml_models.incident_anomaly.schema",
-    "api.routers.inference",
-]
-ignore_errors = true

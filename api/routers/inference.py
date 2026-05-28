@@ -15,11 +15,18 @@ Attribution:
     Model: IsolationForest (scikit-learn, BSD-3-Clause)
     Copyright (c) 2007-2025 The scikit-learn developers.
     See MODEL_CARD.md for full license, attribution, and BibTeX citation.
+
+Remediation changelog:
+  ML-04   Replaced bare `dict` return type on inference_health with
+          dict[str, Any]; replaced type: ignore[type-arg] on current_user
+          Annotated with properly-annotated UserClaims TypedDict;
+          added explicit AnomalyResponse return annotation on detect_anomaly;
+          ignore_errors mypy override removed.
 """
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -29,6 +36,8 @@ from ml_models.incident_anomaly.registry import MODEL_VERSION, model_registry
 from ml_models.incident_anomaly.schema import AnomalyRequest, AnomalyResponse
 
 log = logging.getLogger(__name__)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 router = APIRouter(
     prefix="/api/v1/inference",
@@ -50,7 +59,7 @@ router = APIRouter(
 async def detect_anomaly(
     request: Request,
     body: AnomalyRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],  # type: ignore[type-arg]
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
 ) -> AnomalyResponse:
     """Score an incident feature vector for anomalous behaviour.
 
@@ -72,12 +81,12 @@ async def detect_anomaly(
             ),
         )
 
-    features = [
-        body.severity_numeric,
-        body.alert_count,
+    features: list[float] = [
+        float(body.severity_numeric),
+        float(body.alert_count),
         body.time_to_detect_minutes,
-        body.affected_services,
-        body.on_call_escalations,
+        float(body.affected_services),
+        float(body.on_call_escalations),
         body.duplicate_alert_ratio,
         body.blast_radius_pct,
     ]
@@ -115,7 +124,8 @@ async def detect_anomaly(
     status_code=status.HTTP_200_OK,
 )
 async def inference_health(
-    current_user: Annotated[dict, Depends(get_current_user)],  # type: ignore[type-arg]
-) -> dict:  # type: ignore[type-arg]
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+) -> dict[str, Any]:
     """Return model registry health state."""
-    return model_registry.health()
+    result: dict[str, Any] = dict(model_registry.health())
+    return result

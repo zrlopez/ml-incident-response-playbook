@@ -9,6 +9,10 @@ Attribution:
     Uses Pydantic v2 (MIT License — https://github.com/pydantic/pydantic).
     Model algorithm: scikit-learn IsolationForest (BSD-3-Clause).
     See MODEL_CARD.md at the repository root for full attribution and license.
+
+Remediation changelog:
+  ML-04   Confirmed fully typed via Pydantic v2 BaseModel.
+          ignore_errors mypy override removed — zero mypy errors on this module.
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ class AnomalyRequest(BaseModel):
         ...,
         ge=1,
         le=5,
-        description="Incident severity: 1=SEV-1 (critical) – 5=informational.",
+        description="Incident severity: 1=SEV-1 (critical) \u2013 5=informational.",
     )
     alert_count: int = Field(
         ...,
