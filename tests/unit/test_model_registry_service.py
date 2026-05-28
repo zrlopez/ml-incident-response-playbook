@@ -3,9 +3,19 @@ tests/unit/test_model_registry_service.py
 ==========================================
 Unit tests for ModelRegistryService (Phase 7).
 
-All tests use a *fresh* ModelRegistryService instance constructed with a
-monkeypatched model_registry singleton so they run entirely in-process
-without touching the real joblib artifact.
+Fixture design
+--------------
+ModelRegistryService._bootstrap() calls model_registry.health() at *instance
+construction time*, not at module import time.  The correct isolation strategy
+is therefore:
+
+  1. Patch `src.services.model_registry_service.model_registry` (the name
+     as it exists in the service module's own namespace).
+  2. Construct the ModelRegistryService() instance *inside* the patch context.
+  3. Do NOT reload() the module — that re-runs module-level code and
+     re-binds imports before the patch has been applied to the target name.
+
+This guarantees that the mock is already in place when _bootstrap() runs.
 """
 from __future__ import annotations
 
@@ -17,7 +27,7 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Helpers / fixtures
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _make_health(
@@ -37,7 +47,12 @@ def _make_health(
 
 @pytest.fixture()
 def service():
-    """Fresh ModelRegistryService with the singleton registry mocked out."""
+    """
+    Fresh ModelRegistryService with model_registry mocked out.
+
+    The instance is constructed *inside* the patch context so that
+    _bootstrap() sees the mock, not the real singleton.
+    """
     mock_registry = MagicMock()
     mock_registry.health.return_value = _make_health()
 
@@ -45,12 +60,21 @@ def service():
         "src.services.model_registry_service.model_registry",
         mock_registry,
     ):
-        # Re-import after patch so __init__ picks up the mock
-        from importlib import import_module, reload
-        import src.services.model_registry_service as svc_mod
-        reload(svc_mod)  # re-runs module-level singleton construction
+        from src.services.model_registry_service import ModelRegistryService
+        svc = ModelRegistryService()   # _bootstrap() runs HERE, inside patch
+        yield svc
 
-        yield svc_mod.ModelRegistryService()
+
+def _make_unloaded_service():
+    """Helper: service bootstrapped with model_loaded=False."""
+    mock_registry = MagicMock()
+    mock_registry.health.return_value = _make_health(model_loaded=False, loaded_at=None)
+    with patch(
+        "src.services.model_registry_service.model_registry",
+        mock_registry,
+    ):
+        from src.services.model_registry_service import ModelRegistryService
+        return ModelRegistryService()
 
 
 # ---------------------------------------------------------------------------
@@ -62,13 +86,7 @@ class TestBootstrap:
         assert service.active_version == "1.0.0"
 
     def test_active_version_is_none_when_not_loaded(self):
-        mock_registry = MagicMock()
-        mock_registry.health.return_value = _make_health(model_loaded=False, loaded_at=None)
-
-        with patch("src.services.model_registry_service.model_registry", mock_registry):
-            from src.services.model_registry_service import ModelRegistryService
-            svc = ModelRegistryService()
-
+        svc = _make_unloaded_service()
         assert svc.active_version is None
 
     def test_bootstrap_registers_exactly_one_version(self, service):
@@ -101,13 +119,7 @@ class TestReadOperations:
         assert active["status"] == "active"
 
     def test_get_active_none_when_no_active(self):
-        mock_registry = MagicMock()
-        mock_registry.health.return_value = _make_health(model_loaded=False, loaded_at=None)
-
-        with patch("src.services.model_registry_service.model_registry", mock_registry):
-            from src.services.model_registry_service import ModelRegistryService
-            svc = ModelRegistryService()
-
+        svc = _make_unloaded_service()
         assert svc.get_active() is None
 
 
@@ -144,17 +156,13 @@ class TestRegisterVersion:
 # ---------------------------------------------------------------------------
 
 class TestActivateVersion:
-    def test_activate_existing_version(self, service, tmp_path, monkeypatch):
-        # Patch artifact_exists so the check passes without a real file
+    def test_activate_existing_version(self, service, monkeypatch):
         import src.services.model_registry_service as svc_mod
         monkeypatch.setattr(
-            svc_mod.ModelVersionRecord,
-            "artifact_exists",
-            lambda self: True,
+            svc_mod.ModelVersionRecord, "artifact_exists", lambda self: True
         )
         record, previous = service.activate_version("1.0.0")
         assert record["status"] == "active"
-        # 1.0.0 was already active, so previous may be "1.0.0" itself or None
         assert service.active_version == "1.0.0"
 
     def test_activate_demotes_previous(self, service, monkeypatch):
@@ -162,7 +170,6 @@ class TestActivateVersion:
         monkeypatch.setattr(
             svc_mod.ModelVersionRecord, "artifact_exists", lambda self: True
         )
-        # Register a second version and activate it
         service.register_version(version="2.0.0", artifact_file="v2.joblib")
         service.activate_version("2.0.0")
 
@@ -205,6 +212,5 @@ class TestQuarantineVersion:
         )
         service.register_version(version="2.0.0", artifact_file="v2.joblib")
         service.activate_version("2.0.0")  # 1.0.0 demoted to inactive
-        service.quarantine_version("1.0.0")  # quarantine inactive version
-        # 2.0.0 should still be active
+        service.quarantine_version("1.0.0")  # quarantine the now-inactive version
         assert service.active_version == "2.0.0"
