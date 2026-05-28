@@ -74,6 +74,39 @@ _IMAGE = os.environ.get("SMOKE_IMAGE", "ml-incident-api:smoke-test")
 _PORT = 8000
 _STARTUP_TIMEOUT = 30  # seconds
 
+# ---------------------------------------------------------------------------
+# Resolve DATABASE_URL / REDIS_URL for the container.
+#
+# The container runs in its own network namespace, so "localhost" inside the
+# container refers to the container itself — not the CI runner host.  When
+# CI services (postgres, redis) are bound to the runner's localhost we must
+# substitute the Docker bridge gateway (172.17.0.1) so the container can
+# reach them.  The CI job sets SMOKE_DATABASE_URL / SMOKE_REDIS_URL with
+# the gateway-rewritten URLs; local runs fall back to the job-level env vars
+# or safe defaults.
+# ---------------------------------------------------------------------------
+
+def _container_database_url() -> str:
+    # Prefer an explicitly gateway-rewritten URL supplied by CI
+    if url := os.environ.get("SMOKE_DATABASE_URL", ""):
+        return url
+    # Fall back to job-level DATABASE_URL, rewriting localhost → bridge gateway
+    url = os.environ.get("DATABASE_URL", "")
+    if url:
+        return url.replace("localhost", "172.17.0.1").replace("127.0.0.1", "172.17.0.1")
+    # Last resort: sqlite (only works if stub_users.py is present in the image)
+    return "sqlite+aiosqlite:////tmp/smoke_test.db"
+
+
+def _container_redis_url() -> str:
+    if url := os.environ.get("SMOKE_REDIS_URL", ""):
+        return url
+    url = os.environ.get("REDIS_URL", "")
+    if url:
+        return url.replace("localhost", "172.17.0.1").replace("127.0.0.1", "172.17.0.1")
+    return ""
+
+
 # Minimal required env vars — use safe non-secret values for smoke testing
 _CONTAINER_ENV = {
     "ENVIRONMENT": "test",
@@ -81,10 +114,8 @@ _CONTAINER_ENV = {
     "JWT_SECRET_KEY": os.environ.get(
         "JWT_SECRET_KEY", "smoke-test-secret-key-32chars-safe"
     ),
-    "DATABASE_URL": os.environ.get(
-        "DATABASE_URL", "sqlite+aiosqlite:////tmp/smoke_test.db"
-    ),
-    "REDIS_URL": os.environ.get("REDIS_URL", ""),
+    "DATABASE_URL": _container_database_url(),
+    "REDIS_URL": _container_redis_url(),
     "LOG_LEVEL": "WARNING",  # reduce noise during smoke run
 }
 

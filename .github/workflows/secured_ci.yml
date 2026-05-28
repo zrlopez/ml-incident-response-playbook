@@ -336,6 +336,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Rewrite localhost → 172.17.0.1 (Docker bridge gateway) so the
+      # smoke-test container can reach CI services bound to the runner host.
+      - name: Export smoke env vars (bridge-gateway URLs)
+        run: |
+          GW="172.17.0.1"
+          echo "SMOKE_DATABASE_URL=postgresql+asyncpg://incidents:ci_test_password@${GW}:5432/incidents_test" >> $GITHUB_ENV
+          echo "SMOKE_REDIS_URL=redis://:${{ secrets.CI_REDIS_PASSWORD }}@${GW}:6379/0" >> $GITHUB_ENV
+
       - name: pytest integration tests
         run: |
           pytest tests/integration/ \
