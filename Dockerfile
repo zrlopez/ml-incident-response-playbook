@@ -123,4 +123,5 @@ CMD ["uvicorn", "api.app:app", \
      "--port", "8080", \
      "--workers", "2", \
      "--no-access-log", \
-     "--timeout-graceful-shutdown", "30"]
+     "--timeout-graceful-shutdown", "30", \
+     "--header", "server:"]
