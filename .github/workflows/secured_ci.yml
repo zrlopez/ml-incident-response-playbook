@@ -230,6 +230,7 @@ jobs:
             tests/unit/test_inference.py \
             tests/unit/test_auth_config_security.py \
             tests/unit/test_anomaly_schema_properties.py \
+            tests/unit/test_tokens_hs256.py \
             --cov=src \
             --cov=src/validation \
             --cov=api \

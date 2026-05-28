@@ -14,6 +14,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 > No unresolved regressions. No correctness gaps.
 
 
+### Added
+- `test(tokens/hs256)`: add `tests/unit/test_tokens_hs256.py` — 8 tests covering the
+  HS256 fallback branch in `src/auth/tokens.py` (lines 46, 49, 63, 66, 79, 86–94).
+  These paths only execute when `rs256_available()` returns `False`; previously zero
+  coverage. Recovers ~0.8 pp unit coverage to restore the 75% gate.
+
 ### Fixed
 - `fix(ci/CI-03)`: repair container smoke-test wiring so the production image is probed on
   the actual application port and against a reachable Redis endpoint.
