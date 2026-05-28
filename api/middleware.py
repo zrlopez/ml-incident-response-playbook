@@ -85,7 +85,8 @@ async def trace_and_security_headers(
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     response.headers["Cache-Control"] = "no-store"
-    response.headers["server"] = "api"  # overwrite uvicorn default to prevent version leak
+    if "server" in response.headers:
+        del response.headers["server"]
     if "x-powered-by" in response.headers:
         del response.headers["x-powered-by"]
     return response
