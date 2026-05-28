@@ -57,7 +57,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from src.config import get_settings
 from src.domain.incident_lifecycle import (
@@ -144,6 +144,14 @@ class Incident(Base):
         DateTime(timezone=True), nullable=True
     )
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Phase 8: back-reference to append-only audit log rows (OPEN-06)
+    audit_logs: Mapped[list["IncidentAuditLog"]] = relationship(  # type: ignore[name-defined]
+        "IncidentAuditLog",
+        back_populates="incident",
+        lazy="raise",
+        cascade="all, delete-orphan",
+    )
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-safe dict for API responses.

@@ -28,6 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.metrics import active_incidents, incident_total, inference_latency
 from src.domain.incident_lifecycle import validate_status_transition
 from src.incident_tracker import Incident, IncidentRepository, IncidentStatus, SeverityLevel
+from src.models.audit_log import AuditEventType
+from src.repositories.audit_log_repository import AuditLogRepository
 
 if TYPE_CHECKING:
     pass  # reserved for future forward-reference imports
@@ -46,7 +48,13 @@ class IncidentService:
     """
 
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._repo = IncidentRepository(session)
+        self._audit = AuditLogRepository(session)
+
+    async def _session_flush(self, *_) -> None:
+        """Flush the session; extracted so tests can assert on it."""
+        await self._session.flush()
 
     # ------------------------------------------------------------------
     # Create
@@ -71,12 +79,15 @@ class IncidentService:
             owner:       Optional assignee username.
             description: Optional extended description.
         """
+        # Default owner to opened_by if not explicitly supplied (API-SVC-02)
+        effective_owner = owner if owner is not None else opened_by
+
         start = time.monotonic()
         incident = await self._repo.create(
             title=title,
             severity=severity,
             category=category,
-            owner=owner,
+            owner=effective_owner,
             description=description,
         )
         elapsed = time.monotonic() - start
@@ -87,6 +98,13 @@ class IncidentService:
             category=incident.category,
         ).inc()
         active_incidents.labels(severity=incident.severity.value).inc()
+
+        await self._audit.log_event(
+            incident_id=incident.id,
+            event_type=AuditEventType.CREATED,
+            actor=opened_by,
+            new_value=incident.status.value,
+        )
 
         logger.info(
             "incident.created",
@@ -131,8 +149,17 @@ class IncidentService:
         if new_status.value in _RESOLVED_STATUSES:
             active_incidents.labels(severity=updated.severity.value).dec()
 
+        await self._audit.log_event(
+            incident_id=incident_id,
+            event_type=AuditEventType.STATUS_TRANSITION,
+            actor=transitioned_by,
+            old_value=incident.status.value,
+            new_value=new_status.value,
+        )
+
         logger.info(
             "incident.status_transitioned",
+            log_type="audit",
             incident_id=incident_id,
             old_status=incident.status.value,
             new_status=new_status.value,
@@ -162,9 +189,11 @@ class IncidentService:
         if incident is None:
             raise ValueError(f"Incident '{incident_id}' not found.")
 
+        changes: dict = {}
         if severity is not None:
             try:
                 incident.severity = SeverityLevel(severity)
+                changes["severity"] = severity
             except ValueError:
                 raise ValueError(
                     f"Invalid severity '{severity}'. Must be one of SEV-1..SEV-4."
@@ -172,16 +201,27 @@ class IncidentService:
 
         if resolution_notes is not None:
             incident.resolution_notes = resolution_notes
+            changes["resolution_notes"] = True
 
-        incident.updated_at = datetime.now(timezone.utc)  # OPEN-01
+        if changes:
+            incident.updated_at = datetime.now(timezone.utc)  # OPEN-01
+            await self._session_flush(incident)
 
-        logger.info(
-            "incident.metadata_updated",
-            incident_id=incident_id,
-            severity=severity,
-            has_resolution_notes=resolution_notes is not None,
-            updated_by=updated_by,
-        )
+            await self._audit.log_event(
+                incident_id=incident_id,
+                event_type=AuditEventType.METADATA_UPDATE,
+                actor=updated_by,
+                old_value=None,
+                new_value=str(changes),
+            )
+
+            logger.info(
+                "incident.metadata_updated",
+                log_type="audit",
+                incident_id=incident_id,
+                changes=changes,
+                updated_by=updated_by,
+            )
         return incident
 
     # ------------------------------------------------------------------
@@ -204,4 +244,13 @@ class IncidentService:
             before_id: Keyset cursor — id of the last incident seen on the
                        previous page. Omit for the first page.
         """
+        # R-S05: reject malformed before_id before it reaches SQL layer
+        if before_id is not None:
+            import uuid as _uuid
+            try:
+                _uuid.UUID(before_id, version=4)
+            except ValueError:
+                raise ValueError(
+                    f"before_id '{before_id}' is not a valid RFC 4122 UUID."
+                )
         return await self._repo.list_open(limit=limit, before_id=before_id)
