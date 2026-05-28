@@ -5,7 +5,7 @@
 # Remediation 2026-05-23
 # CRIT-03: Replaced `python -m http.server` CMD with uvicorn
 # =============================================================================
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 ARG APP_VERSION=dev
 
@@ -16,7 +16,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim AS final
+FROM python:3.14-slim AS final
 
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION} \
