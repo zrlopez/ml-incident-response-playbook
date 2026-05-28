@@ -297,6 +297,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6.0.2
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: '3.11'
@@ -324,6 +325,16 @@ jobs:
               await conn.close()
           asyncio.run(check())
           "
+
+      - name: Build image for smoke tests
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          push: false
+          tags: ml-incident-api:smoke-test
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: pytest integration tests
         run: |
