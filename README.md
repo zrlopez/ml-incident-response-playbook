@@ -8,6 +8,19 @@
 [![codecov](https://codecov.io/gh/zrlopez/ml-incident-response-playbook/branch/main/graph/badge.svg)](https://codecov.io/gh/zrlopez/ml-incident-response-playbook)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/decc58f711054c259b9acdae4e3c9639)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
+## Quick Proof of Quality
+
+| Signal | Evidence |
+|---|---|
+| Security toolchain | TruffleHog + Bandit + semgrep + Trivy + CodeQL + pip-audit + SBOM ([`secured_ci.yml`](.github/workflows/secured_ci.yml)) |
+| Supply-chain hardening | All GitHub Actions pinned to SHA digests |
+| Test coverage | ≥75% unit, ≥60% integration (enforced in CI) |
+| Type safety | mypy strict mode, Pydantic models on all API shapes |
+| Architecture decisions | [ADR directory](docs/decisions/) — 5 decisions documented |
+| Runbook maturity | 7 runbooks with Prometheus-bound thresholds + validation log |
+| Live deployment | [ml-incident-api.fly.dev](https://ml-incident-api.fly.dev/health) |
+| Operational docs | [mlops.zrl.dev](https://mlops.zrl.dev) |
+
 A production-style operational documentation repo for ML and AI incident response.
 
 ## Business Overview
