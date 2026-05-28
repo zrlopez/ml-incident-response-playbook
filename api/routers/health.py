@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Dict
+from typing import Any, Dict
 
 import jwt
 from fastapi import APIRouter, Request

@@ -86,7 +86,8 @@ RUN apk add --no-cache \
         curl \
         libpq \
         openblas \
-        libstdc++
+        libstdc++ \
+        libgomp
 
 # Create a non-root service account (Alpine busybox addgroup/adduser).
 RUN addgroup -g 1000 appgroup \
@@ -100,6 +101,7 @@ COPY --from=builder /opt/venv /opt/venv
 # SEC-1: COPY only source directories required at runtime.
 COPY --chown=appuser:appgroup api/         ./api/
 COPY --chown=appuser:appgroup src/         ./src/
+COPY --chown=appuser:appgroup ml_models/   ./ml_models/
 COPY --chown=appuser:appgroup observability/ ./observability/
 COPY --chown=appuser:appgroup configs/     ./configs/
 COPY --chown=appuser:appgroup alembic.ini  ./alembic.ini

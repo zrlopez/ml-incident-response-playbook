@@ -16,6 +16,7 @@
 #   SEC-04  Removed `command:` override from api service; CMD in Dockerfile
 #           is the single source of truth for the start command.
 #           Dev hot-reload lives in docker-compose.override.yml only.
+#   INFRA-4 Added postgres:16-alpine db service; DATABASE_URL overridden to db hostname
 #
 # Prerequisites:
 #   cp .env.example .env
@@ -33,21 +34,42 @@
 services:
 
   # ───────────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mluser
+      POSTGRES_PASSWORD: mlpassword
+      POSTGRES_DB: ml_incidents
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mluser -d ml_incidents"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - internal
+    mem_limit: 256m
+    memswap_limit: 256m
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    # API port may remain on 0.0.0.0 for LAN reachability during local dev.
-    # In production, put this behind a reverse proxy (nginx/ALB) and remove
-    # direct port exposure entirely.
     ports:
       - "127.0.0.1:8080:8080"
     env_file:
       - .env
     environment:
-      # MED-B: Use redis:// with AUTH embedded via env var substitution.
-      # Redis URL format: redis://:${REDIS_PASSWORD}@redis:6379/0
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      DATABASE_URL: "postgresql+asyncpg://mluser:mlpassword@db:5432/ml_incidents"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: ml-incident-api
       OTEL_SDK_DISABLED: "false"
@@ -55,18 +77,15 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    # MED-B REMEDIATION: Granular read-only mounts replace - .:/app
-    # Only source directories the API actually reads are mounted.
-    # Write paths (logs, tmp) use tmpfs to prevent host filesystem pollution.
+      db:
+        condition: service_healthy
     volumes:
       - ./api:/app/api:ro
       - ./src:/app/src:ro
       - ./observability:/app/observability:ro
       - ./configs:/app/configs:ro
-    # INFRA-1: Harden container runtime posture
     security_opt:
       - no-new-privileges:true
-    # INFRA-3: Isolated network — no default bridge
     networks:
       - internal
     # SEC-04: No command: override here. The Dockerfile CMD is authoritative.
@@ -77,23 +96,15 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    # INFRA-2: Prevent memory exhaustion DoS from unbounded container growth
     mem_limit: 512m
     memswap_limit: 512m
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────
   redis:
-    # MED-A: Pin to explicit patch version. Update this tag when Redis releases
-    # security patches. Track via: https://redis.io/docs/latest/operate/rs/release-notes/
     image: redis:7.4.3-alpine
-    # HIGH-A REMEDIATION: Port bound to loopback only. Redis must not be
-    # reachable from the LAN or from other containers except via the internal network.
     ports:
       - "127.0.0.1:6379:6379"
-    # HIGH-A: requirepass enforces AUTH on every connection.
-    # REDIS_PASSWORD must be set in .env (min 32 chars recommended).
-    # appendonly yes: durable AOF persistence — revocations survive restart.
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD}
@@ -107,10 +118,8 @@ services:
     volumes:
       - redis_data:/data
     environment:
-      # Expose password to healthcheck redis-cli call
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     healthcheck:
-      # HIGH-A: Healthcheck also authenticates — confirms AUTH is enforced
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 5s
       timeout: 3s
@@ -126,10 +135,7 @@ services:
 
   # ───────────────────────────────────────────────────────────────────
   otel-collector:
-    # R-37: Bumped from 0.99.0 — GHSA-2025-0003 affected versions < 0.116
     image: otel/opentelemetry-collector-contrib:0.127.0
-    # LOW-B REMEDIATION: Bind to loopback. OTel gRPC/HTTP should only be
-    # reachable from within the compose network and from localhost tooling.
     ports:
       - "127.0.0.1:4317:4317"   # OTLP gRPC
       - "127.0.0.1:4318:4318"   # OTLP HTTP
@@ -147,10 +153,7 @@ services:
 
   # ───────────────────────────────────────────────────────────────────
   jaeger:
-    # R-38: Bumped from 1.57 to current stable
     image: jaegertracing/all-in-one:1.67.0
-    # LOW-B REMEDIATION: Jaeger UI bound to loopback only. The trace UI
-    # contains internal service topology — never expose on LAN in production.
     ports:
       - "127.0.0.1:16686:16686"   # Jaeger UI
       - "127.0.0.1:14250:14250"   # gRPC collector
@@ -167,6 +170,8 @@ services:
 # ───────────────────────────────────────────────────────────────────
 volumes:
   redis_data:
+    driver: local
+  postgres_data:
     driver: local
 
 # INFRA-3: Explicit named network isolates compose services from the
