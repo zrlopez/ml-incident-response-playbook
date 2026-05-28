@@ -8,6 +8,10 @@ Findings addressed:
   HIGH-C  No request timeout — slow-loris / resource exhaustion
   MED-E   No security headers (X-Content-Type-Options, etc.)
   LOW-C   No request ID propagation for cross-service trace correlation
+  HIGH-01 Raw client IP logged in every request — GDPR PII exposure.
+          Fix: pseudonymise IP with SHA-256 before binding to structlog
+          context. Query-string stripped from path in log context to
+          prevent token=/password= leakage via URL params.
 
 Middleware execution order (outermost → innermost):
   1. SecurityHeadersMiddleware   — adds headers to every response
@@ -20,6 +24,7 @@ R-GOD: trace_and_security_headers extracted from api/app.py and added here.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 import uuid
 from collections.abc import MutableMapping
