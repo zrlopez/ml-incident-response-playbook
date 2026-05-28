@@ -87,24 +87,33 @@ _STARTUP_TIMEOUT = 30  # seconds
 # ---------------------------------------------------------------------------
 
 def _container_database_url() -> str:
-    # Prefer an explicitly gateway-rewritten URL supplied by CI
+    """Return DATABASE_URL suitable for injection into the smoke container.
+    Prefers SMOKE_DATABASE_URL (explicit CI override), then rewrites
+    localhost/127.0.0.1 to the Docker bridge gateway so the container can
+    reach CI services.
+    """
     if url := os.environ.get("SMOKE_DATABASE_URL", ""):
         return url
-    # Fall back to job-level DATABASE_URL, rewriting localhost → bridge gateway
     url = os.environ.get("DATABASE_URL", "")
     if url:
         return url.replace("localhost", "172.17.0.1").replace("127.0.0.1", "172.17.0.1")
-    # Last resort: sqlite (only works if stub_users.py is present in the image)
     return "sqlite+aiosqlite:////tmp/smoke_test.db"
 
 
 def _container_redis_url() -> str:
+    """Return REDIS_URL suitable for injection into the smoke container.
+    Prefers SMOKE_REDIS_URL (explicit CI override, password-free gateway URL),
+    then rewrites localhost to bridge gateway.  Falls back to a password-free
+    gateway URL so RedisDenylist.connect() does not fail on empty passwords.
+    """
     if url := os.environ.get("SMOKE_REDIS_URL", ""):
         return url
     url = os.environ.get("REDIS_URL", "")
     if url:
-        return url.replace("localhost", "172.17.0.1").replace("127.0.0.1", "172.17.0.1")
-    return ""
+        rewritten = url.replace("localhost", "172.17.0.1").replace("127.0.0.1", "172.17.0.1")
+        return rewritten
+    # No Redis configured at all — use unauthenticated bridge gateway
+    return "redis://172.17.0.1:6379/0"
 
 
 # Minimal required env vars — use safe non-secret values for smoke testing
@@ -148,8 +157,16 @@ def api_container():
             last_exc = exc
         time.sleep(0.5)
     else:
+        try:
+            logs = container.get_logs()
+            log_text = (logs[0] + logs[1]).decode("utf-8", errors="replace")[-3000:]
+        except Exception:
+            log_text = "<unavailable>"
         container.stop()
-        pytest.fail(f"Container /health never returned 200 within {_STARTUP_TIMEOUT}s: {last_exc}")
+        pytest.fail(
+            f"Container /health never returned 200 within {_STARTUP_TIMEOUT}s: {last_exc}\n"
+            f"--- container logs (last 3000 chars) ---\n{log_text}"
+        )
 
     yield base_url
     container.stop()
