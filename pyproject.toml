@@ -21,7 +21,6 @@ markers = [
 
 [tool.coverage.run]
 # src included so domain policy, ORM, and config modules are measured.
-# Raise CI floor incrementally: 75 now (unit-tests gate), target 85 by Q3-2026.
 # ML-04: ml_models added to coverage source so inference layer is measured.
 # TEST-01: src/config.py removed from omit — security-critical module must
 #          be covered. New tests in tests/unit/test_auth_config_security.py.
@@ -36,19 +35,18 @@ omit = [
 concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
-# Aligned to CI unit-tests --cov-fail-under=75.
-fail_under = 75
+# Phase 4 (2026-05-28): raised from 75 -> 80.
+# 21 unit test files cover all primary modules; breadth audit confirms
+# 80 is achievable without new test files. Q3-2026 target remains 85.
+fail_under = 80
 show_missing = true
 
 [tool.ruff]
 # HYGIENE-04: Aligned to black line-length=88 (was 100).
-# Eliminates formatter drift where ruff --fix silently allowed lines
-# that black immediately re-wrapped, causing CI churn.
 line-length = 88
 # R-24: was py312 — CI runs Python 3.11. Aligned to avoid syntax-version false positives.
 target-version = "py311"
-# VENV-01: explicitly exclude virtualenv and common env dirs so ruff --fix
-# never mutates site-packages files (e.g. scipy _codata.py corruption).
+# VENV-01: explicitly exclude virtualenv and common env dirs.
 exclude = [
     ".venv",
     "venv",
@@ -70,29 +68,24 @@ ignore = [
 python_version = "3.11"
 # VENV-01: exclude venv dirs so mypy never type-checks site-packages.
 exclude = ["(\\.venv|venv|env|\\.env)"]
-# CI-18: strict=true removed — required 80 annotation fixes on pre-existing
-# code unrelated to this remediation.
-# CI-20: disallow_untyped_calls removed — fired on third-party untyped
-# functions (redis, otel, slowapi) with no stubs. Not actionable.
 # warn_return_any retained: catches real Any-leaking return bugs.
 warn_return_any = true
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
-# MYPY GRADUAL TYPING REMEDIATION — completed 2026-05-28
+# MYPY GRADUAL TYPING REMEDIATION — complete as of 2026-05-28
 # ---------------------------------------------------------------------------
-# All modules now pass mypy with zero errors. No [[tool.mypy.overrides]]
-# blocks remain. The gradual typing remediation is complete.
+# All 10 modules pass mypy with zero errors. No [[tool.mypy.overrides]]
+# blocks remain.
 #
-# Completion record:
-#   [x] src/config.py              — step 1 (done 2026-05-24)
-#   [x] src/auth/jwt_rs256.py      — step 2 (done 2026-05-24)
-#   [x] api/middleware.py          — step 3 (done 2026-05-24)
-#   [x] api/gdpr_routes.py         — step 4 (done 2026-05-24)
-#   [x] api/rate_limit.py          — step 5 (done 2026-05-24)
-#   [x] api/redis_denylist.py      — step 6 (clean — no fixes needed)
-#   [x] api/app.py                 — step 7 (done 2026-05-24)
-#   [x] ml_models/incident_anomaly/registry.py  — step 8 (ML-04, done 2026-05-28)
-#   [x] ml_models/incident_anomaly/schema.py    — step 9 (ML-04, done 2026-05-28)
-#   [x] api/routers/inference.py               — step 10 (ML-04, done 2026-05-28)
+#   [x] src/config.py              — step 1  (2026-05-24)
+#   [x] src/auth/jwt_rs256.py      — step 2  (2026-05-24)
+#   [x] api/middleware.py          — step 3  (2026-05-24)
+#   [x] api/gdpr_routes.py         — step 4  (2026-05-24)
+#   [x] api/rate_limit.py          — step 5  (2026-05-24)
+#   [x] api/redis_denylist.py      — step 6  (clean — no fixes needed)
+#   [x] api/app.py                 — step 7  (2026-05-24)
+#   [x] ml_models/incident_anomaly/registry.py  — step 8  (ML-04, 2026-05-28)
+#   [x] ml_models/incident_anomaly/schema.py    — step 9  (ML-04, 2026-05-28)
+#   [x] api/routers/inference.py               — step 10 (ML-04, 2026-05-28)
 # ---------------------------------------------------------------------------

@@ -45,3 +45,30 @@ updates:
       include: scope
     reviewers:
       - zrduloup
+
+  # ── Docker ──────────────────────────────────────────────
+  # ADR-003: Dockerfile pins python:3.11-alpine3.20 by SHA-256 digest.
+  # Dependabot will open a PR whenever a new digest is published for that
+  # tag so the pin never silently goes stale. Semver-major bumps (e.g.
+  # 3.11 → 3.12) are ignored here and must be upgraded manually after
+  # a full regression run.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Chicago
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "docker"
+      include: scope
+    reviewers:
+      - zrduloup
+    ignore:
+      # Major base-image version bumps require manual regression testing
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major"]
