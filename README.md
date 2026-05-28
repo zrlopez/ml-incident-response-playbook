@@ -31,6 +31,16 @@ flowchart LR
     E --> H[Postmortems and Governance]
 ```
 
+## What This Demonstrates
+
+This project showcases a production-grade MLOps incident-response system built with security and observability as first-class concerns. It demonstrates:
+
+- **Hardened FastAPI service** — JWT RS256 auth, per-user rate limiting, async Redis denylist, GDPR pseudonymisation, structured logging via structlog, and OpenTelemetry tracing.
+- **ML layer** — IsolationForest anomaly detector with a thread-safe model registry, reproducible training pipeline, and a JWT-protected inference endpoint.
+- **Supply-chain security** — SHA-pinned GitHub Actions, Trivy container scanning, Bandit SAST, TruffleHog secret scanning, pip-audit dependency auditing, and Dependabot auto-bumps.
+- **Operational runbooks** — Five incident runbooks with Mermaid decision trees, a severity matrix, escalation templates, and postmortem artifacts.
+- **Engineering rigour** — 530+ unit tests, ≥68% coverage gate, mypy type checking, ruff linting, `CODEOWNERS`, and a full MkDocs documentation site.
+
 ## Feature Highlights
 
 - Five incident runbooks with decision-tree flowcharts.

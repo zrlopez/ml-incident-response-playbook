@@ -332,3 +332,66 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Added
 - `CI-01` (feat ci): initial hardened CI/CD pipeline.
   JWT secret, mypy gate, Trivy, SBOM, Bandit.
+
+---
+
+## CI Pipeline History — Full Index (CI-01 — CI-51)
+
+> Extracted from `.github/workflows/secured_ci.yml` header 2026-05-27.
+> All entries follow Conventional Commits: `type(scope): summary`.
+> Detailed entries for CI-03 through CI-15, CI-18 through CI-25, and CI-27 through CI-34
+> are listed here; all others appear inline in the sections above.
+
+| ID | Version | Date | Summary |
+|---|---|---|---|
+| CI-01 | 1.0.0 | 2026-05-23 | feat(ci): add JWT secret, mypy gate, Trivy, SBOM, Bandit |
+| CI-02 | 1.1.0 | 2026-05-23 | feat(ci): split jobs, add Postgres service, coverage, scope |
+| CI-03 | 1.1.1 | 2026-05-24 | fix(ci): correct bandit sarif path; add pip-audit exit-code gate |
+| CI-04 | 1.1.2 | 2026-05-24 | fix(ci): preserve seed SARIF on bandit failure |
+| CI-05 | 1.1.3 | 2026-05-24 | fix(ci): add bandit[sarif] extra; use relative sarif paths |
+| CI-06 | 1.1.4 | 2026-05-24 | chore(deps): bump deps; fix mypy flags; add pip-audit ignore |
+| CI-07 | 1.1.5 | 2026-05-24 | fix(ci): apply gradual typing remediation |
+| CI-08 | 1.1.6 | 2026-05-24 | fix(ci): set Trivy ignore-unfixed to true |
+| CI-09 | 1.1.7 | 2026-05-24 | chore(ci): switch base image to python:3.12-alpine |
+| CI-10 | 1.1.8 | 2026-05-24 | refactor(ci): split Trivy into diagnostic table + gating sarif |
+| CI-11 | 1.1.9 | 2026-05-24 | fix(ci): call trivy binary directly for diagnostic table |
+| CI-12 | 1.1.10 | 2026-05-24 | fix(ci): correct setup-trivy tag v0.2.2 → v0.2.6 |
+| CI-13 | 1.1.11 | 2026-05-24 | fix(ci): set trivy exit-code to 0 to unblock merge |
+| CI-14 | 1.1.12 | 2026-05-24 | fix(ci): remove if condition from deploy-gate job |
+| CI-15 | 1.1.13 | 2026-05-24 | fix(ci): correct TruffleHog on push trigger |
+| CI-16 | 1.1.14 | 2026-05-24 | fix(ci): pin codeql/upload-sarif back to v3 |
+| CI-17 | 1.2.0 | 2026-05-24 | feat(ci): SHA-pin all actions; add Trivy gate, pip-audit, secret guard |
+| CI-18 | 1.2.1 | 2026-05-24 | fix(ci): replace invalid job ID emoji with integration-tests |
+| CI-19 | 1.2.2 | 2026-05-24 | fix(ci): correct codeql-action SHA to verified commit digest |
+| CI-20 | 1.2.3 | 2026-05-24 | fix(ci): verify TruffleHog SHA; roll others to tag refs |
+| CI-21 | 1.2.4 | 2026-05-24 | fix(ci): SHA-pin all 6 remaining actions via API |
+| CI-22 | 1.2.5 | 2026-05-24 | fix(ci): seed Trivy SARIF; decouple container-scan from integration-tests |
+| CI-23 | 1.2.6 | 2026-05-24 | fix(ci): bump trivy-action v0.31.0 → v0.36.0 |
+| CI-24 | 1.2.7 | 2026-05-24 | fix(ci): wire .trivyignore; add diagnostic table run |
+| CI-25 | 1.2.8 | 2026-05-24 | fix(ci): set sarif scan exit-code to 0; table scan is the hard gate |
+| CI-26 | 1.3.0 | 2026-05-25 | refactor(ci): replace SQLite test job with integration-tests as gate |
+| CI-27 | 1.4.0 | 2026-05-25 | feat(test): add unit-tests job (SQLite, no Postgres); --cov-fail-under=60 |
+| CI-28 | 1.5.0 | 2026-05-25 | feat(docs): add MkDocs Material site + GitHub Pages deploy workflow |
+| CI-29 | 1.5.1 | 2026-05-25 | fix(docs): resolve 10 MkDocs strict-mode warnings |
+| CI-30 | 1.5.2 | 2026-05-25 | chore(docs): point site_url and Docs badge to mlops.zrl.dev |
+| CI-31 | 1.5.3 | 2026-05-25 | fix(ci): seed semgrep.sarif before semgrep step |
+| CI-32 | 1.5.4 | 2026-05-25 | fix(sast): cast RSAPrivateKey/RSAPublicKey in key_store.py |
+| CI-33 | 1.5.5 | 2026-05-25 | fix(test): use sentinel _UNSET in _service_with_mock_repo |
+| CI-34 | 1.6.0 | 2026-05-25 | chore(ci): bump all action SHAs to Node 24-compatible versions |
+| CI-35 | 1.6.1 | 2026-05-25 | fix(ci): replace unresolvable checkout SHA with v4.3.0 tag |
+| CI-36 | 1.6.2 | 2026-05-25 | fix(ci): replace hardcoded deploy-gate strings with needs.<job>.result |
+| CI-37 | 1.6.3 | 2026-05-25 | fix(ci): add test_incident_tracker.py to unit-tests pytest command |
+| CI-38 | 1.6.4 | 2026-05-25 | fix(ci): declare all evaluated jobs in deploy-gate needs array |
+| CI-39 | 1.6.5 | 2026-05-25 | chore(deps): bump asyncpg 0.30.0 → 0.31.0; resolves GHSA-7f4w-j353-w3mg |
+| CI-40 | 1.6.6 | 2026-05-25 | chore(deps): bump opentelemetry-sdk + exporter 1.27.0 → 1.42.1 |
+| CI-41 | 1.6.7 | 2026-05-25 | chore(ci): close starlette==0.52.1 Dependabot PR as not-planned |
+| CI-42 | 1.6.8 | 2026-05-26 | fix(deps): align opentelemetry-api/instrumentation-fastapi to sdk 1.42.1 |
+| CI-43 | 1.6.9 | 2026-05-26 | fix(deps): bump opentelemetry-instrumentation-fastapi 0.62b0 → 0.63b0 |
+| CI-44 | 1.7.0 | 2026-05-26 | feat(test): expand unit-tests to cover observability/ package |
+| CI-45 | 1.7.1 | 2026-05-26 | fix(ci): wire test_etl_validation.py into unit-tests job |
+| CI-46 | 1.7.2 | 2026-05-26 | fix(config): align pip-audit 2.7.3 → 2.9.0 (matches requirements-dev.txt) |
+| CI-47 | 1.7.2 | 2026-05-26 | fix(ci): SHA-pin codecov/codecov-action@v5; closes R-S03 |
+| CI-48 | 1.7.3 | 2026-05-26 | fix(ci): update unit test paths from tests/ to tests/unit/ |
+| CI-49 | 1.8.0 | 2026-05-26 | feat(test): add observability coverage tests; wire ETL coverage gaps |
+| CI-50 | 1.8.1 | 2026-05-27 | fix(ci): add missing test files + cov scopes; --cov-fail-under 68 → 75 |
+| CI-51 | 1.8.2 | 2026-05-27 | feat(ci): add SLSA provenance attestation for SBOM artifact |

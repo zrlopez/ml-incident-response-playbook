@@ -58,8 +58,12 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "S", "B"]
-ignore = ["S101"]  # assert is fine in tests
+select = ["E", "F", "W", "I", "S", "B", "ERA", "G"]
+ignore = [
+    "S101",   # assert is fine in tests
+    "G004",   # allow f-string in logging (structlog pattern throughout codebase)
+]
+# LOW-02: ERA (eradicated comments) and G (flake8-logging) added 2026-05-27
 
 [tool.mypy]
 # R-24: was 3.12 — CI runs Python 3.11. Aligned so local mypy matches CI behaviour.
