@@ -5,28 +5,43 @@ Application-layer service wrapping the low-level ModelRegistry.
 
 Responsibilities
 ----------------
-- Maintain a version catalogue (in-memory for Phase 7; swap to DB in Phase 8)
+- Maintain a version catalogue (in-memory cache + optional async DB persistence)
 - Track active / inactive / canary / shadow / quarantined status per version
 - Expose safe activate(), list_versions(), and get_active() operations
 - Bridge the existing singleton ``model_registry`` to the REST layer
   without touching ml_models/ internals
+
+Phase 9 additions
+-----------------
+- ModelVersionRepository (src/repositories/model_version_repository.py)
+  provides async CRUD for the model_versions table.
+- ModelRegistryService.create_db_backed(session) factory returns an instance
+  that persists every mutation to the DB in addition to the in-memory cache.
+- All existing sync public methods and the module-level singleton are unchanged
+  so Phase 7 routers and tests continue to work without modification.
 
 Design notes
 ------------
 - All mutations are protected by a threading.Lock (same pattern as ModelRegistry)
 - ``activated_at`` and ``registered_at`` are always UTC datetimes
 - SHA-256 verification state is read from the registry health check, not re-run
+- DB writes are fire-and-schedule via asyncio — callers that need guaranteed
+  persistence should use the async variants (register_version_async etc.)
 """
 from __future__ import annotations
 
+import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import structlog
 
 from ml_models.incident_anomaly.registry import MODEL_VERSION, model_registry
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -96,6 +111,7 @@ class ModelRegistryService:
         self._lock = threading.Lock()
         self._versions: dict[str, ModelVersionRecord] = {}
         self._active_version: Optional[str] = None
+        self._db_repo: Optional[object] = None  # set by create_db_backed()
         self._bootstrap()
 
     # ------------------------------------------------------------------
@@ -252,6 +268,142 @@ class ModelRegistryService:
 
         log.warning("model_registry_service.version_quarantined", version=version)
         return record.to_dict()
+
+    # ------------------------------------------------------------------
+    # Phase 9 — async DB-backed factory + persistence methods
+    # ------------------------------------------------------------------
+    @classmethod
+    async def create_db_backed(
+        cls,
+        session: "AsyncSession",
+        *,
+        mock_registry: object | None = None,
+    ) -> "ModelRegistryService":
+        """
+        Factory that creates an instance wired to a live AsyncSession.
+
+        All subsequent mutations (register_version_async, activate_version_async,
+        quarantine_version_async) persist to the model_versions table as well as
+        updating the in-memory cache.
+
+        Args:
+            session:        Active AsyncSession (caller owns commit/rollback).
+            mock_registry:  Inject a fake model_registry for tests.
+        """
+        from src.repositories.model_version_repository import ModelVersionRepository
+        from src.models.model_version import ModelVersionStatus
+
+        if mock_registry is not None:
+            import src.services.model_registry_service as _mod
+            _orig = _mod.model_registry
+            _mod.model_registry = mock_registry  # type: ignore[assignment]
+
+        instance = cls()
+
+        if mock_registry is not None:
+            _mod.model_registry = _orig  # restore
+
+        instance._db_repo: ModelVersionRepository | None = ModelVersionRepository(session)
+
+        # Persist the bootstrapped version to DB
+        with instance._lock:
+            for record in instance._versions.values():
+                await instance._db_repo.upsert(
+                    version=record.version,
+                    status=ModelVersionStatus(record.status),
+                    artifact_file=record.artifact_file,
+                    metrics=record.metrics,
+                    registered_at=record.registered_at,
+                    activated_at=record.activated_at,
+                )
+
+        return instance
+
+    async def register_version_async(
+        self,
+        *,
+        version: str,
+        artifact_file: str,
+        metrics: Optional[dict] = None,
+    ) -> dict:
+        """Register a new version — updates both in-memory cache and DB."""
+        from src.models.model_version import ModelVersionStatus
+
+        record_dict = self.register_version(
+            version=version,
+            artifact_file=artifact_file,
+            metrics=metrics,
+        )
+        if self._db_repo is not None:
+            await self._db_repo.upsert(
+                version=version,
+                status=ModelVersionStatus.INACTIVE,
+                artifact_file=artifact_file,
+                metrics=metrics,
+                registered_at=record_dict["registered_at"],
+            )
+        return record_dict
+
+    async def activate_version_async(
+        self, version: str
+    ) -> tuple[dict, Optional[str]]:
+        """Activate a version — updates both in-memory cache and DB."""
+        from src.models.model_version import ModelVersionStatus
+
+        record_dict, previous = self.activate_version(version)
+        if self._db_repo is not None:
+            await self._db_repo.deactivate_all()
+            await self._db_repo.set_status(
+                version,
+                ModelVersionStatus.ACTIVE,
+                activated_at=record_dict["activated_at"],
+            )
+        return record_dict, previous
+
+    async def quarantine_version_async(self, version: str) -> dict:
+        """Quarantine a version — updates both in-memory cache and DB."""
+        from src.models.model_version import ModelVersionStatus
+
+        record_dict = self.quarantine_version(version)
+        if self._db_repo is not None:
+            await self._db_repo.set_status(version, ModelVersionStatus.QUARANTINED)
+        return record_dict
+
+    async def list_versions_async(self) -> list[dict]:
+        """Read all versions from DB when a session is available."""
+        if self._db_repo is not None:
+            rows = await self._db_repo.list_all()
+            return [_row_to_dict(r) for r in rows]
+        return self.list_versions()
+
+    async def get_active_async(self) -> Optional[dict]:
+        """Read active version from DB when a session is available."""
+        if self._db_repo is not None:
+            row = await self._db_repo.get_active()
+            return _row_to_dict(row) if row else None
+        return self.get_active()
+
+
+def _row_to_dict(row: object) -> dict:
+    """Convert a ModelVersion ORM row to the same dict shape as ModelVersionRecord.to_dict()."""
+    import json as _json
+    metrics = None
+    if row.metrics_json is not None:  # type: ignore[union-attr]
+        try:
+            metrics = _json.loads(row.metrics_json)  # type: ignore[union-attr]
+        except (ValueError, TypeError):
+            metrics = None
+    artifact_path = _ARTIFACT_DIR / row.artifact_file  # type: ignore[union-attr]
+    return {
+        "version": row.version,  # type: ignore[union-attr]
+        "status": row.status.value,  # type: ignore[union-attr]
+        "artifact_file": row.artifact_file,  # type: ignore[union-attr]
+        "artifact_exists": artifact_path.exists(),
+        "registered_at": row.registered_at,  # type: ignore[union-attr]
+        "activated_at": row.activated_at,  # type: ignore[union-attr]
+        "sha256_verified": False,
+        "metrics": metrics,
+    }
 
 
 # ---------------------------------------------------------------------------
