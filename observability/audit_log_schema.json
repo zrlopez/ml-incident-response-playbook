@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ML Incident API Audit Event",
+  "description": "Schema for structured audit log events emitted by src/audit.py. Used for SIEM ingestion, compliance audit trails, and security event documentation. CI-52: introduced 2026-05-28.",
+  "type": "object",
+  "required": ["event", "event_type", "outcome", "timestamp"],
+  "additionalProperties": false,
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Dot-notation event name, e.g. authentication.success, token.revoked",
+      "examples": ["authentication.success", "authentication.failure", "token.revoked", "rate_limit.exceeded", "authorization.denied"]
+    },
+    "event_type": {
+      "type": "string",
+      "enum": ["auth", "token", "rate_limit", "authz"],
+      "description": "Coarse event category for SIEM routing and filtering"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "failure", "revoked", "blocked", "denied"],
+      "description": "Event outcome"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp injected by structlog processor"
+    },
+    "user_id": {
+      "type": ["string", "null"],
+      "description": "UUID of the authenticated user. Null if user is not yet identified (e.g. failed login before lookup)."
+    },
+    "ip_address": {
+      "type": "string",
+      "description": "Client IP address as seen by the API (may be X-Forwarded-For if behind a proxy)"
+    },
+    "user_agent": {
+      "type": ["string", "null"],
+      "description": "User-Agent header string, if available"
+    },
+    "mfa_used": {
+      "type": "boolean",
+      "description": "Whether MFA was used for this authentication (auth events only)"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable reason string for failure/revocation events"
+    },
+    "attempted_email_hash": {
+      "type": ["string", "null"],
+      "description": "SHA-256 hex digest of the attempted login email. Never the raw email address."
+    },
+    "token_jti": {
+      "type": "string",
+      "description": "JWT jti (JWT ID) claim. Not the full token string."
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "API endpoint path that triggered the event (rate_limit and authz events)"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Rate limit threshold that was exceeded (rate_limit events)"
+    },
+    "window_seconds": {
+      "type": "integer",
+      "description": "Rate limit window duration in seconds (rate_limit events)"
+    },
+    "required_role": {
+      "type": "string",
+      "description": "Role required to access the endpoint (authz events)"
+    },
+    "actual_role": {
+      "type": "string",
+      "description": "Role the requesting user actually holds (authz events)"
+    }
+  }
+}
