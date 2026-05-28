@@ -1,55 +1,42 @@
-# .github/CODEOWNERS
-# Remediation: R-13
+# =============================================================================
+# .github/CODEOWNERS — Security-sensitive path ownership
+# =============================================================================
+# Enforces explicit review by @zrlopez for all security-sensitive paths.
+# Requires "Require review from Code Owners" enabled in branch protection.
 #
-# Enforces review requirements per directory and file type.
-# All rules are additive — a file matching multiple patterns requires
-# approval from ALL matching owners.
-#
-# Format: pattern   @user-or-team
-# Patterns are evaluated in order; last match wins for the default reviewer,
-# but GitHub shows ALL matching owners as required reviewers.
-#
-# Note: This repo is personal (zrlopez), not org-owned.
-# If moved to a GitHub org, replace @zrlopez with @org/team slugs.
-# ──────────────────────────────────────────────────────────────────────────────
+# Reference: Phase 5 / CI-54 — CODEOWNERS enforcement
+# Branch protection policy: docs/branch-protection-policy.md
+# =============================================================================
 
-# ── Global fallback ───────────────────────────────────────────────────────────
-*                                       @zrlopez
+# Default owner for all files not matched below.
+*                           @zrlopez
 
-# ── Runbooks and decision trees ──────────────────────────────────────────────
-runbooks/                               @zrlopez
-diagrams/                               @zrlopez
-severity_matrix.md                      @zrlopez
-incident_response_template.md           @zrlopez
+# CI/CD pipeline definitions — any change here affects the security perimeter.
+/.github/workflows/         @zrlopez
+/.github/CODEOWNERS         @zrlopez
 
-# ── Governance ────────────────────────────────────────────────────────────────
-governance.md                           @zrlopez
-docs/operational_principles.md          @zrlopez
-SECURITY.md                             @zrlopez
+# Authentication layer — RS256 key management, JWT validation, denylist.
+/src/auth/                  @zrlopez
+/api/redis_denylist.py      @zrlopez
 
-# ── CI/CD and infrastructure ──────────────────────────────────────────────────
-ci_cd/                                  @zrlopez
-.github/                                @zrlopez
-infrastructure/                         @zrlopez
-Dockerfile.dev                          @zrlopez
-.dockerignore                           @zrlopez
-requirements.txt                        @zrlopez
-pyproject.toml                          @zrlopez
+# API surface — route definitions, middleware, rate limiting.
+/api/                       @zrlopez
 
-# ── Application source ────────────────────────────────────────────────────────
-api/                                    @zrlopez
-src/                                    @zrlopez
-pipelines/                              @zrlopez
-orchestration/                          @zrlopez
+# Security disclosure policy.
+SECURITY.md                 @zrlopez
 
-# ── Monitoring and observability ──────────────────────────────────────────────
-monitoring/                             @zrlopez
-observability/                          @zrlopez
-dashboards/                             @zrlopez
+# Dependency manifests — changes here affect the entire supply chain.
+pyproject.toml              @zrlopez
+requirements.txt            @zrlopez
+requirements-dev.txt        @zrlopez
+requirements-airflow.txt    @zrlopez
 
-# ── dbt models ────────────────────────────────────────────────────────────────
-dbt/                                    @zrlopez
-configs/                                @zrlopez
+# Container definition — digest pins, non-root user, multi-stage build.
+Dockerfile                  @zrlopez
+Dockerfile.dev              @zrlopez
+.dockerignore               @zrlopez
 
-# ── ML models ─────────────────────────────────────────────────────────────────
-ml_models/                              @zrlopez
+# Infrastructure / observability config.
+docker-compose.yml          @zrlopez
+docker-compose.prod.yml     @zrlopez
+observability/              @zrlopez
