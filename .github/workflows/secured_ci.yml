@@ -177,7 +177,7 @@ jobs:
       DATABASE_URL: sqlite+aiosqlite:///./incidents_unit_test.db
       ENVIRONMENT: test
       APP_ENV: test
-      JWT_SECRET_KEY: ci-unit-test-placeholder-32chars!!
+      JWT_SECRET_KEY: ci-unit-test-secret-32chars-safe!!
 
     steps:
       - uses: actions/checkout@v6.0.2
