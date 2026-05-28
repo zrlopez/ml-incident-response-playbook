@@ -186,7 +186,7 @@ class TestContainerSmoke:
         """Health body must include status=ok (not degraded)."""
         r = httpx.get(f"{api_container}/health", timeout=5.0)
         body = r.json()
-        assert body.get("status") == "ok"
+        assert body.get("status") == "alive"
 
     def test_ready_endpoint_reachable(self, api_container: str) -> None:
         """/ready readiness probe must respond (200 or 503 are both valid — not 404/500)."""
@@ -211,7 +211,7 @@ class TestContainerSmoke:
     def test_inference_endpoint_requires_auth(self, api_container: str) -> None:
         """ML inference endpoint must reject unauthenticated POST with 401."""
         r = httpx.post(
-            f"{api_container}/inference/predict",
+            f"{api_container}/api/v1/inference/anomaly",
             json={
                 "severity_numeric": 1,
                 "alert_count": 10,
