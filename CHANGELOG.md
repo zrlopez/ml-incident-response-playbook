@@ -13,6 +13,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 > Remaining open items: R-C03, R-C04, R-CI02 (now unblocked), plus upstream tech debt TD-01–TD-03.
 > No unresolved regressions. No correctness gaps.
 
+## [2.4.0] — 2026-05-27
+
+### Security
+- `fix(security/HIGH-01)`: pseudonymise client IP before structlog context bind in
+  `api/middleware.py` (`trace_and_security_headers`).
+  - Added `_pseudo_ip(ip)` helper: returns 8-char SHA-256 hex prefix of raw IP address.
+  - `client_ip=request.client.host` replaced with `client_ip_hash=_pseudo_ip(raw_ip)`.
+  - `request.url.path` (no query string) bound instead of full URL to prevent
+    `token=`/`password=` query-parameter leakage into logs (GDPR PII / HIGH-01).
+  - `hashlib` added to imports; no new runtime dependencies.
+- `fix(security/SEC-07)`: annotate `PYSEC-2026-161` ignore in `secured_ci.yml` with
+  expiry date `2026-11-01` and owner `security-team` so the suppression has a mandatory
+  review trigger rather than persisting indefinitely.
+
+### Fixed
+- `fix(ci/regression)`: rename CI unit-test `JWT_SECRET_KEY` from
+  `ci-unit-test-placeholder-32chars!!` to `ci-unit-test-secret-32chars-safe!!`.
+  The word `placeholder` triggered the `SEC-01` `_reject_placeholder` validator in
+  `src/config.py` at import time, killing 3 test-collection targets and collapsing
+  coverage from 76% to 13% (`2bda42e`).
+
 ---
 
 ## [2.3.6] — 2026-05-26

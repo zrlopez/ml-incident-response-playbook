@@ -39,6 +39,17 @@ from starlette.types import ASGIApp
 log = structlog.get_logger(__name__)
 
 
+# ── IP pseudonymisation helper (HIGH-01) ────────────────────────────────
+def _pseudo_ip(ip: str) -> str:
+    """Return an 8-hex-char SHA-256 prefix of the raw IP address.
+
+    HIGH-01: logging raw client IPs is a GDPR PII violation. The prefix
+    correlates requests within a session for debugging but cannot be
+    reversed to the original address without a rainbow-table attack.
+    """
+    return hashlib.sha256(ip.encode()).hexdigest()[:8]
+
+
 # ── trace_and_security_headers ───────────────────────────────────────────────
 async def trace_and_security_headers(
     request: Request,
@@ -49,14 +60,18 @@ async def trace_and_security_headers(
     and writes security / cache-control headers on every response.
 
     R-GOD: extracted from api/app.py inline definition.
+    HIGH-01: client IP pseudonymised via SHA-256 (8-char hex prefix) before
+    entering structlog context. Only request.url.path (no query string) is
+    bound to prevent token=/password= leakage via URL parameters.
     """
     trace_id = str(uuid.uuid4())
     start_time = time.perf_counter()
+    raw_ip = request.client.host if request.client else "unknown"
     structlog.contextvars.bind_contextvars(
         trace_id=trace_id,
         method=request.method,
-        path=str(request.url.path),
-        client_ip=request.client.host if request.client else "unknown",
+        path=str(request.url.path),          # path only — no query string (HIGH-01)
+        client_ip_hash=_pseudo_ip(raw_ip) if raw_ip != "unknown" else "unknown",
     )
     response = await call_next(request)
     duration_ms = round((time.perf_counter() - start_time) * 1000, 2)

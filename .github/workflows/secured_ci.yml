@@ -77,7 +77,8 @@ jobs:
       - name: pip-audit -- hard gate (no || true)
         run: |
           pip-audit --requirement requirements.txt \
-            --ignore-vuln PYSEC-2026-161
+            --ignore-vuln PYSEC-2026-161  # SEC-07: cryptography advisory, no fix available yet.
+            # Owner: security-team. Review/remove by 2026-11-01.
 
   sast:
     name: SAST - Bandit + mypy + semgrep
