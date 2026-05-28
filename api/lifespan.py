@@ -8,6 +8,13 @@ R-C03 COMPLETE: Writes only to app.state; no longer mutates api.dependencies glo
 R-C04 COMPLETE: _build_engine() lives in src/platform/database.py and is called
                  only inside this context manager via init_db() — never at import time.
 
+Remediation changelog:
+  BLOCKER-01  Wrapped `from api.stub_users import _USERS` in try/except ImportError.
+              api/stub_users.py is excluded from the Docker image (.dockerignore SEC-03)
+              so an unconditional import raises ModuleNotFoundError in production.
+              Fix: fast-fail with RuntimeError if stub is absent and DATABASE_URL
+              is not Postgres — this is always a misconfiguration.
+
 Owns:
   - DB connectivity check + Alembic migration state verification
   - PostgresUserRepository / InMemoryUserRepository wiring to app.state
@@ -56,8 +63,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.user_repo = PostgresUserRepository(session_factory=_pg_session_factory)
         log.info("user_repo.postgres_wired", environment=ENVIRONMENT)
     else:
-        from src.users.repository import InMemoryUserRepository
-        from api.stub_users import _USERS
+        # BLOCKER-01: api/stub_users.py is excluded from the Docker image via
+        # .dockerignore (SEC-03). Guard the import so that:
+        #   - dev/test: import succeeds, InMemoryUserRepository is wired as before.
+        #   - production image (no stub file): fast-fail with a clear RuntimeError
+        #     rather than an opaque ModuleNotFoundError deep in the import stack.
+        try:
+            from api.stub_users import _USERS  # noqa: PLC0415
+        except ImportError:
+            raise RuntimeError(
+                "\n"
+                "  FATAL: api/stub_users.py is not present in this image.\n"
+                "  The in-memory user store is excluded from production images.\n"
+                "\n"
+                "  Fix: Set DATABASE_URL=postgresql+asyncpg://<host>/<db> so\n"
+                "       PostgresUserRepository is wired instead.\n"
+                "\n"
+                "  If this is a local dev environment:\n"
+                "       Ensure you are running with docker-compose.override.yml\n"
+                "       merged (i.e. plain `docker compose up`, not -f docker-compose.yml).\n"
+            )
+        from src.users.repository import InMemoryUserRepository  # noqa: PLC0415
         app.state.user_repo = InMemoryUserRepository(users=_USERS)
         log.warning(
             "user_repo.in_memory_fallback",
