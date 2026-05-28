@@ -8,22 +8,51 @@ guard, CORS origin parse, SlowAPI limiter, and OAuth2 bearer scheme extracted
 from api/app.py.  Nothing in this module imports from FastAPI route layer —
 it is safe to import in tests without spinning up the application.
 
+Remediation changelog:
+  SEC-01  JWT_SECRET wrapped in SecretStr; get_jwt_secret() is the sole
+          authorised access point for the raw bytes.  Direct attribute
+          access (JWT_SECRET.get_secret_value()) is intentionally verbose
+          to make accidental logging obvious in code review.
+
 Invariants:
   - Hard-fails at import time if JWT_SECRET_KEY is absent.
   - Hard-fails at import time if JWT_ALGORITHM is not in _ALLOWED_ALGORITHMS.
   - No side-effectful DB or Redis connections here; those live in api/lifespan.py.
+  - JWT_SECRET is SecretStr — never log, serialize, or embed it in responses.
 """
 from __future__ import annotations
 
 import os
 from typing import List
 
+from pydantic import SecretStr
 from fastapi.security import OAuth2PasswordBearer
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
-JWT_SECRET: str = os.environ["JWT_SECRET_KEY"]  # hard-fail if absent
+# SEC-01: Wrap the raw env value in SecretStr immediately on read so it is
+# masked ('**********') in all repr(), str(), logging, and Sentry captures
+# from this point forward.  Use get_jwt_secret() to obtain the raw bytes
+# in the one place that actually needs them (jwt.encode / jwt.decode).
+_raw_jwt_secret: str = os.environ["JWT_SECRET_KEY"]  # hard-fail if absent
+JWT_SECRET: SecretStr = SecretStr(_raw_jwt_secret)
+del _raw_jwt_secret  # remove the plain-str reference immediately
+
+
+def get_jwt_secret() -> str:
+    """
+    Return the raw JWT signing secret.
+
+    This is the single authorised call-site for unwrapping JWT_SECRET.
+    Centralising the unwrap means:
+      - grep for get_jwt_secret() to audit all places the secret is used
+      - accidental JWT_SECRET usage in logging is masked at the SecretStr layer
+      - future rotation (e.g. moving to a secrets manager) has one change point
+    """
+    return JWT_SECRET.get_secret_value()
+
+
 JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))

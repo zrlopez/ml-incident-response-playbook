@@ -8,11 +8,16 @@ R-GOD Step 4: Extracted from api/app.py.  Contains:
   - create_refresh_token()
   - decode_token()
 
+Remediation changelog:
+  SEC-01  All JWT_SECRET usages replaced with get_jwt_secret() from
+          api.config.  The raw secret string is unwrapped only at the
+          jwt.encode / jwt.decode boundary — never stored in a local
+          variable or passed to logging.
+
 Invariants:
   - Zero FastAPI imports.  Safe to import in unit tests without triggering
     _build_engine() or any other app-level side effect (unblocks R-C04).
-  - Reads JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, and
-    REFRESH_TOKEN_EXPIRE_DAYS from api.config — single source of truth.
+  - Reads JWT config from api.config — single source of truth.
   - RS256 path delegates to src.auth.jwt_rs256 when RSA keys are loaded;
     falls back to HS* otherwise.
 """
@@ -28,7 +33,7 @@ from fastapi import HTTPException, status
 import structlog
 
 from api.config import (
-    JWT_SECRET,
+    get_jwt_secret,
     JWT_ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -52,7 +57,9 @@ def create_access_token(
     now = datetime.now(timezone.utc)
     expire = now + delta
     to_encode.update({"exp": expire, "iat": now, "jti": jti, "token_type": "access"})
-    encoded = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    # SEC-01: get_jwt_secret() is the single unwrap point for the SecretStr.
+    # Never assign the return value to a module-level or long-lived variable.
+    encoded = jwt.encode(to_encode, get_jwt_secret(), algorithm=JWT_ALGORITHM)
     return encoded, jti, int(delta.total_seconds())
 
 
@@ -69,7 +76,7 @@ def create_refresh_token(
     now = datetime.now(timezone.utc)
     expire = now + delta
     to_encode.update({"exp": expire, "iat": now, "jti": jti, "token_type": "refresh"})
-    encoded = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    encoded = jwt.encode(to_encode, get_jwt_secret(), algorithm=JWT_ALGORITHM)
     return encoded, jti, int(delta.total_seconds())
 
 
@@ -79,7 +86,7 @@ def decode_token(token: str) -> Dict[str, Any]:
             return jwt_rs256.verify_token(token)
         payload = jwt.decode(
             token,
-            JWT_SECRET,
+            get_jwt_secret(),
             algorithms=[JWT_ALGORITHM],
             options={"require": ["exp", "iat", "jti", "sub", "role"]},
         )

@@ -16,11 +16,15 @@ Remediation changelog:
            via env so ops can tune without a code deploy
   PHASE-1  JWT_ALGORITHM restricted to HS256/HS384/HS512 via Literal type
            (blocks accidental alg=none or RS256 misconfiguration)
+  SEC-01   jwt_secret_key type changed str → SecretStr so the value is
+           masked as '**********' in all repr(), logging, and Sentry
+           captures.  Access raw bytes with:
+               settings.jwt_secret_key.get_secret_value()
 
 Usage in application code:
     from src.config import get_settings
     settings = get_settings()
-    secret = settings.jwt_secret_key
+    secret = settings.jwt_secret_key.get_secret_value()
 
 Never read os.environ directly in application code — always go through
 get_settings() so the settings cache and test isolation work correctly.
@@ -32,7 +36,7 @@ from functools import lru_cache
 from typing import Literal
 from typing_extensions import Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -80,7 +84,9 @@ class Settings(BaseSettings):
     )
 
     # ── JWT ───────────────────────────────────────────────────────────────────
-    jwt_secret_key: str = Field(
+    # SEC-01: SecretStr masks the value in repr(), logging, and Sentry captures.
+    # Always access via: settings.jwt_secret_key.get_secret_value()
+    jwt_secret_key: SecretStr = Field(
         ...,
         description="HS* signing secret. Min 32 chars. Generate: openssl rand -hex 32",
     )
@@ -90,18 +96,26 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, ge=5, le=1440)
     refresh_token_expire_days: int = Field(default=7, ge=1, le=90)
 
-    @field_validator("jwt_secret_key")
+    @field_validator("jwt_secret_key", mode="before")
     @classmethod
-    def validate_jwt_secret(cls, v: str) -> str:
+    def validate_jwt_secret(cls, v: object) -> object:
+        """
+        Validate secret strength before Pydantic wraps it in SecretStr.
+
+        The validator runs in 'before' mode so `v` arrives as a plain str
+        (from env / .env file). We validate the raw string here and return
+        it unchanged — Pydantic then wraps the returned value in SecretStr.
+
+        In test environments the strength check is skipped entirely; a
+        short placeholder is accepted so CI doesn't need a real 32-char key.
+        """
         import os  # noqa: PLC0415
+        raw = v.get_secret_value() if isinstance(v, SecretStr) else str(v or "")
         if os.getenv("ENVIRONMENT", "").lower() == "test":
-            # In test environment skip strength validation entirely.
-            # alembic/env.py imports incident_tracker at module level which
-            # calls get_settings() before any test fixture can set the key.
-            # The key may be absent, short, or a CI placeholder — all are
-            # acceptable because test JWTs are never used in production.
-            return v or "test-only-placeholder-not-for-production-use-padded"
-        return _reject_placeholder(v, "JWT_SECRET_KEY", min_len=32)
+            # Accept any value in test; return a guaranteed-minimum placeholder
+            # if the env var is absent or empty.
+            return raw or "test-only-placeholder-not-for-production-use-padded"
+        return _reject_placeholder(raw, "JWT_SECRET_KEY", min_len=32)
 
     # ── Redis ───────────────────────────────────────────────────────────────────
     redis_url: str = Field(
@@ -218,6 +232,6 @@ def get_settings() -> Settings:
 
     NEVER call os.environ directly in application code. Always use:
         settings = get_settings()
-        settings.some_field
+        settings.jwt_secret_key.get_secret_value()  # SEC-01: SecretStr access
     """
     return Settings()  # type: ignore[call-arg]
