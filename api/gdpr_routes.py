@@ -7,6 +7,9 @@ Article 17 (erasure) endpoints required before any EU-facing deployment.
 Findings addressed:
   ARCH-05  No GDPR endpoints — EU deployment blocked without
            data subject access + erasure rights implementation.
+  HIGH-03  PII (username) was logged in plaintext structured log fields.
+           Fix: _pseudo_id() hashes username with SHA-256 before logging.
+           The raw username is never written to any log sink.
 
 Endpoints:
   GET  /users/me/export   — Article 15 data portability (JSON)
@@ -20,7 +23,8 @@ Security:
   - Deletion is a soft delete (disabled=True) to preserve audit trails
     required by GDPR Article 5(1)(e) accountability principle.
     Hard delete available via background job after retention period.
-  - All operations are audit-logged with user ID, timestamp, and IP.
+  - All operations are audit-logged with pseudonymous user ID, timestamp,
+    and IP. Raw username never appears in log fields (HIGH-03).
 
 Limitations (to document in privacy policy):
   - Incident records created by the user are NOT deleted (they are
@@ -36,6 +40,7 @@ Router:
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict
 
@@ -48,19 +53,30 @@ log = structlog.get_logger(__name__)
 router = APIRouter(tags=["GDPR / Data Subject Rights"])
 
 
-# ── Dependency stub ──────────────────────────────────────────────────────────────────────────────
-# These are imported from api/app.py at runtime to reuse the existing
-# JWT validation logic. The import is deferred to avoid circular imports.
-# When the user repository moves fully to PostgresUserRepository (ARCH-03),
-# update these to use AbstractUserRepository.
+# ── PII pseudonymisation helper ───────────────────────────────────────────────
+def _pseudo_id(username: str) -> str:
+    """
+    Return a stable, pseudonymous identifier for structured log fields.
 
+    HIGH-03: Raw usernames are PII. Hashing with SHA-256 produces a
+    deterministic token that can correlate log lines for a single user
+    without exposing the username to log aggregators or Sentry.
+
+    NOTE: This is pseudonymisation, not anonymisation. The mapping
+    username -> hash can be reconstructed by a DPO with DB access.
+    Do NOT use this hash in API responses — only in internal logs.
+    """
+    return hashlib.sha256(username.encode()).hexdigest()[:16]
+
+
+# ── Dependency stub ───────────────────────────────────────────────────────────
 def _get_current_user_dep() -> Callable[..., Any]:
     """Import get_current_user from api.dependencies (R-C03: no longer in api.app)."""
     from api.dependencies import get_current_user  # noqa: PLC0415
     return get_current_user
 
 
-# ── Article 15 — Data Export ─────────────────────────────────────────────────────────────────────
+# ── Article 15 — Data Export ──────────────────────────────────────────────────
 @router.get(
     "/users/me/export",
     summary="GDPR Art. 15 — Export your personal data",
@@ -91,17 +107,15 @@ async def export_my_data(
     username: str = current_user.get("sub", "unknown")
     role: str = current_user.get("role", "unknown")
     client_ip = request.client.host if request.client else "unknown"
+    uid = _pseudo_id(username)  # HIGH-03: pseudonymous ID for logs
 
     log.info(
         "gdpr.export_requested",
-        username=username,
+        uid=uid,
         client_ip=client_ip,
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
-    # Build export payload
-    # ARCH-03: When PostgresUserRepository is wired, fetch full UserRecord here.
-    # For now, the JWT payload contains the available profile fields.
     export_payload: dict[str, Any] = {
         "gdpr_request": "Article 15 — Right of Access",
         "export_generated_at": datetime.now(timezone.utc).isoformat(),
@@ -142,20 +156,20 @@ async def export_my_data(
 
     log.info(
         "gdpr.export_served",
-        username=username,
+        uid=uid,
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
     return JSONResponse(
         content=export_payload,
         headers={
-            "Content-Disposition": f'attachment; filename="gdpr-export-{username}.json"',
+            "Content-Disposition": f'attachment; filename="gdpr-export-{uid}.json"',
             "Cache-Control": "no-store",
         },
     )
 
 
-# ── Article 17 — Right to Erasure (Soft Delete) ────────────────────────────────────────
+# ── Article 17 — Right to Erasure (Soft Delete) ───────────────────────────────
 @router.delete(
     "/users/me",
     summary="GDPR Art. 17 — Request erasure of your account",
@@ -187,37 +201,31 @@ async def delete_my_account(
     username: str = current_user.get("sub", "unknown")
     client_ip = request.client.host if request.client else "unknown"
     timestamp = datetime.now(timezone.utc).isoformat()
+    uid = _pseudo_id(username)  # HIGH-03: pseudonymous ID for logs
 
     log.warning(
         "gdpr.erasure_requested",
-        username=username,
+        uid=uid,
         client_ip=client_ip,
         timestamp=timestamp,
         action="soft_delete_initiated",
     )
 
-    # Resolve user repository from app state (set during lifespan startup).
-    # R-C03: Import from api.dependencies, not api.app.
     from api.dependencies import get_user_repo  # noqa: PLC0415
     user_repo = get_user_repo(request)
 
-    # Soft-delete: set disabled=True, preserving row for audit trail.
-    # Hard deletion after 30-day retention is handled by background job.
     disabled = await user_repo.disable_user(username)
     if not disabled:
-        log.error("gdpr.erasure_user_not_found", username=username, timestamp=timestamp)
+        log.error("gdpr.erasure_user_not_found", uid=uid, timestamp=timestamp)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User account not found.",
         )
 
-    # Revoke the current JWT immediately so the token cannot be reused
-    # after the account is disabled. jti and exp are required claims.
     jti: str | None = current_user.get("jti")
     exp: int | None = current_user.get("exp")
     if jti and exp:
         try:
-            # R-C03: Import from api.dependencies, not api.app.
             from api.dependencies import get_denylist  # noqa: PLC0415
             denylist = get_denylist(request)
             if denylist is None:
@@ -225,15 +233,13 @@ async def delete_my_account(
             now_ts = int(datetime.now(timezone.utc).timestamp())
             ttl = max(exp - now_ts, 1)
             await denylist.revoke(jti, ttl_seconds=ttl)
-            log.info("gdpr.token_revoked", username=username, jti=jti, timestamp=timestamp)
+            log.info("gdpr.token_revoked", uid=uid, jti=jti, timestamp=timestamp)
         except Exception:  # noqa: BLE001
-            # Revocation failure must not block erasure confirmation.
-            # The account is already disabled; token expiry is the fallback.
-            log.error("gdpr.token_revoke_failed", username=username, jti=jti)
+            log.error("gdpr.token_revoke_failed", uid=uid, jti=jti)
 
     log.warning(
         "gdpr.erasure_completed",
-        username=username,
+        uid=uid,
         timestamp=datetime.now(timezone.utc).isoformat(),
         action="soft_deleted",
     )

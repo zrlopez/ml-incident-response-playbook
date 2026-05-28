@@ -7,6 +7,14 @@ R-GOD Step 7: Extracted from api/app.py.
 R-C03 COMPLETE: _deps._denylist replaced with request.app.state.denylist.
 ML-02 COMPLETE: /ready now includes anomaly model registry health gate.
 
+Remediation changelog:
+  MYPY-01 / Cycle-4: Replaced direct JWT_SECRET (SecretStr) import with
+           get_jwt_secret() at the jwt.decode call site. JWT_SECRET was
+           promoted to SecretStr in Cycle-1 (SEC-01); this file was the
+           sole remaining consumer that had not migrated, causing:
+             api/routers/health.py:49: error: Argument 2 has incompatible
+             type "SecretStr"; expected "RSAPublicKey | ... | str | bytes"
+
   GET /health  — liveness probe (process alive)
   GET /ready   — readiness probe (JWT subsystem + Redis denylist + env vars
                  + ML model registry)
@@ -21,7 +29,9 @@ import jwt
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from api.config import JWT_SECRET, JWT_ALGORITHM
+# MYPY-01: Import get_jwt_secret() not JWT_SECRET (SecretStr).
+# get_jwt_secret() returns str — the type jwt.decode expects.
+from api.config import get_jwt_secret, JWT_ALGORITHM
 from src.auth import jwt_rs256
 from src.auth.tokens import create_access_token
 from ml_models.incident_anomaly.registry import model_registry
@@ -46,7 +56,8 @@ async def readiness(request: Request) -> JSONResponse:
         if jwt_rs256.rs256_available():
             jwt_rs256.verify_token(test_token)
         else:
-            jwt.decode(test_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            # MYPY-01: get_jwt_secret() returns str — satisfies PyJWT stub.
+            jwt.decode(test_token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
         checks["jwt_subsystem"] = "ok"
         checks["jwt_algorithm"] = "RS256" if jwt_rs256.rs256_available() else "HS256"
     except Exception as exc:
