@@ -1,0 +1,158 @@
+# SLO Configuration
+# ml-incident-response-playbook — Phase 6
+#
+# Defines Service Level Objectives for all monitored ML platform components.
+# These values are the canonical thresholds referenced by:
+#   - Prometheus alert rules (configs/alert_rules.yml)
+#   - Runbooks (runbooks/model_rollback.md, runbooks/feature_store_corruption.md)
+#   - Postmortem severity classification (docs/templates/postmortem_template.md)
+#
+# Update this file when adjusting thresholds. Do not hardcode values in runbooks.
+
+version: "1.0"
+last_updated: "2026-05-28"
+owner: "ML Platform"
+
+---
+
+slos:
+
+  # ---------------------------------------------------------------------------
+  # Inference API
+  # ---------------------------------------------------------------------------
+
+  inference_availability:
+    description: "Inference API must return 2xx responses for >= 99.9% of requests"
+    sli:
+      metric: 'sum(rate(http_requests_total{status=~"2.."}[5m])) / sum(rate(http_requests_total[5m]))'
+      unit: ratio
+    target: 0.999
+    window: 30d
+    burn_rate_alerts:
+      - window: 1h
+        burn_rate: 14.4   # exhausts monthly budget in 2h
+        severity: SEV-1
+        runbook: runbooks/api_outage.md
+      - window: 6h
+        burn_rate: 6.0    # exhausts monthly budget in 5h
+        severity: SEV-2
+        runbook: runbooks/api_outage.md
+
+  inference_latency_p99:
+    description: "P99 inference latency must be <= 2000ms"
+    sli:
+      metric: 'histogram_quantile(0.99, rate(ml_inference_duration_seconds_bucket[5m]))'
+      unit: seconds
+    target: 2.0
+    warning_threshold: 1.0   # fires warning at 1s to allow proactive action
+    window: 30d
+    alert_duration: 5m
+    severity_on_breach: SEV-1
+    runbook: runbooks/model_rollback.md
+
+  inference_latency_p50:
+    description: "P50 inference latency must be <= 500ms"
+    sli:
+      metric: 'histogram_quantile(0.50, rate(ml_inference_duration_seconds_bucket[5m]))'
+      unit: seconds
+    target: 0.5
+    warning_threshold: 0.3
+    window: 30d
+    alert_duration: 10m
+    severity_on_breach: SEV-2
+    runbook: runbooks/model_rollback.md
+
+  # ---------------------------------------------------------------------------
+  # Model Quality
+  # ---------------------------------------------------------------------------
+
+  model_drift_score:
+    description: "No feature PSI score may exceed 0.2 (indicates significant distribution shift)"
+    sli:
+      metric: 'ml_drift_score_latest'
+      unit: psi
+    target: 0.2          # PSI < 0.2: acceptable; 0.2-0.25: warning; > 0.25: critical
+    warning_threshold: 0.15
+    window: 7d
+    alert_duration: 0m   # immediate alert on any sample exceeding threshold
+    severity_on_breach: SEV-2
+    runbook: runbooks/feature_store_corruption.md
+    notes: >
+      PSI (Population Stability Index) thresholds follow industry convention:
+      < 0.1 = stable, 0.1-0.2 = minor shift (monitor), > 0.2 = significant shift (investigate),
+      > 0.25 = major shift (rollback/retrain). This SLO uses 0.2 as the action threshold.
+
+  incident_rate:
+    description: "Incident creation rate must not exceed 10 incidents per hour sustained"
+    sli:
+      metric: 'rate(ml_incident_total[1h])'
+      unit: incidents/hour
+    target: 10
+    window: 7d
+    alert_duration: 15m
+    severity_on_breach: SEV-2
+    runbook: runbooks/model_rollback.md
+    notes: >
+      A spike in incident creation rate is a leading indicator of systemic
+      model degradation or upstream data quality issues. Correlate with
+      ml_drift_score_latest and ml_inference_duration_seconds.
+
+  # ---------------------------------------------------------------------------
+  # Incident Management
+  # ---------------------------------------------------------------------------
+
+  sev1_time_to_acknowledge:
+    description: "SEV-1 incidents must be acknowledged within 5 minutes of creation"
+    sli:
+      metric: 'ml_active_incidents{severity="SEV-1"}'
+      unit: minutes
+    target: 5
+    window: 30d
+    severity_on_breach: SEV-1
+    runbook: runbooks/model_rollback.md
+    notes: "Measured from incident created_at to first status transition away from 'open'"
+
+  sev1_mttr:
+    description: "SEV-1 incidents must be resolved within 30 minutes (median)"
+    sli:
+      unit: minutes
+    target: 30
+    window: 30d
+    severity_on_breach: SEV-1
+    notes: "Measured from incident created_at to resolved_at. Tracked via postmortem log."
+
+  sev2_mttr:
+    description: "SEV-2 incidents must be resolved within 2 hours (median)"
+    sli:
+      unit: minutes
+    target: 120
+    window: 30d
+    severity_on_breach: SEV-2
+    notes: "Measured from incident created_at to resolved_at. Tracked via postmortem log."
+
+  # ---------------------------------------------------------------------------
+  # API Health
+  # ---------------------------------------------------------------------------
+
+  health_endpoint:
+    description: "GET /health must return 200 within 500ms for >= 99.95% of checks"
+    sli:
+      metric: 'rate(http_requests_total{path="/health",status="200"}[5m]) / rate(http_requests_total{path="/health"}[5m])'
+      unit: ratio
+    target: 0.9995
+    window: 30d
+    alert_duration: 2m
+    severity_on_breach: SEV-1
+    runbook: runbooks/api_outage.md
+
+  metrics_endpoint:
+    description: "GET /metrics must return 200 for every Prometheus scrape"
+    sli:
+      metric: 'up{job="ml-incident-api"}'
+      unit: boolean
+    target: 1.0
+    window: 30d
+    alert_duration: 3m     # 3 consecutive scrape failures = alert
+    severity_on_breach: SEV-2
+    runbook: runbooks/api_outage.md
+    notes: "Scrape interval is 10s (configured in configs/prometheus.yml)"
