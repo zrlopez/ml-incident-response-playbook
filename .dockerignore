@@ -8,18 +8,25 @@
 #   .git            — VCS history is irrelevant and may contain secrets
 #   tests/          — test code and fixtures have no runtime role
 #   __pycache__     — bytecode from host Python must not bleed into image
+#
+# SEC-03 REMEDIATION:
+#   api/stub_users.py — dev-only in-memory user store; excluded from image
+#                       so the env guard cannot be the sole protection layer.
 
-# ── Secrets and environment files ────────────────────────────────────
+# ── Secrets and environment files ──────────────────────────────────
 .env
 .env.*
 !.env.example
+
+# ── Dev-only source files (SEC-03) ──────────────────────────────────
+api/stub_users.py
 
 # ── Version control ───────────────────────────────────────────────
 .git
 .gitignore
 .github
 
-# ── Python bytecode and caches ──────────────────────────────────────
+# ── Python bytecode and caches ────────────────────────────────────
 __pycache__
 **/__pycache__
 *.pyc
@@ -31,7 +38,7 @@ __pycache__
 **/.coverage
 coverage.xml
 
-# ── Test artifacts ─────────────────────────────────────────────────
+# ── Test artifacts ───────────────────────────────────────────────
 tests/
 test_*.py
 *_test.py
@@ -47,7 +54,7 @@ requirements-dbt.txt
 requirements*.txt
 !requirements.txt
 
-# ── Documentation ─────────────────────────────────────────────────
+# ── Documentation ───────────────────────────────────────────────
 docs/
 *.md
 !README.md
@@ -64,7 +71,7 @@ setup.cfg
 Makefile
 tox.ini
 
-# ── macOS / IDE artifacts ──────────────────────────────────────────
+# ── macOS / IDE artifacts ─────────────────────────────────────────
 .DS_Store
 **/.DS_Store
 .idea
@@ -77,7 +84,7 @@ tox.ini
 *.sqlite
 *.sqlite3
 
-# ── Build output ──────────────────────────────────────────────────
+# ── Build output ────────────────────────────────────────────────
 dist/
 build/
 *.egg-info

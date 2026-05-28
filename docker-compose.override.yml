@@ -1,0 +1,32 @@
+# docker-compose.override.yml — LOCAL DEVELOPMENT OVERRIDES ONLY
+# ================================================================
+#
+# Docker Compose automatically merges this file with docker-compose.yml
+# when you run `docker compose up` locally. It is NOT merged in CI or
+# production — those pipelines call:
+#   docker compose -f docker-compose.yml up
+# (explicit file list, no override).
+#
+# SEC-04 REMEDIATION:
+#   The `command:` override (uvicorn --reload) previously lived in
+#   docker-compose.yml, which meant it was silently inherited by any
+#   downstream compose invocation that didn't explicitly opt out.
+#   Moving it here ensures --reload NEVER runs outside local dev.
+#
+# Contents:
+#   - api: hot-reload via uvicorn --reload
+#   - api: ENVIRONMENT=development explicit (defense-in-depth vs stub guard)
+#
+# DO NOT commit real secrets here. This file may be committed; it contains
+# only structural overrides, not credentials.
+
+services:
+  api:
+    # SEC-04: Hot-reload for local development. This command overrides
+    # the Dockerfile CMD only when docker-compose.override.yml is merged.
+    # The Dockerfile CMD (uvicorn --workers 2 --no-access-log) applies
+    # in all other environments (CI, staging, production).
+    command: uvicorn api.app:app --host 0.0.0.0 --port 8080 --reload
+    environment:
+      ENVIRONMENT: development
+      OTEL_SDK_DISABLED: "true"   # Disable OTel in local hot-reload to reduce noise

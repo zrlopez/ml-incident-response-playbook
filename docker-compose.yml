@@ -13,11 +13,18 @@
 #   R-36    Fixed broken volume YAML (redis_ → redis_data:)
 #   R-37    Bumped OTEL collector 0.99.0 → 0.127.0 (CVE range <0.116 resolved)
 #   R-38    Bumped Jaeger 1.57 → 1.67.0
+#   SEC-04  Removed `command:` override from api service; CMD in Dockerfile
+#           is the single source of truth for the start command.
+#           Dev hot-reload lives in docker-compose.override.yml only.
 #
 # Prerequisites:
 #   cp .env.example .env
 #   # Set JWT_SECRET_KEY, REDIS_PASSWORD, DEV_*_PASSWORD in .env
 #   docker compose up
+#
+# Dev hot-reload:
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up
+#   (docker compose up automatically merges docker-compose.override.yml)
 #
 # Secrets management note:
 #   In production use Docker Secrets or Vault Agent sidecar.
@@ -62,8 +69,8 @@ services:
     # INFRA-3: Isolated network — no default bridge
     networks:
       - internal
-    # Dev only — remove --reload for staging/prod; CMD in Dockerfile applies
-    command: uvicorn api.app:app --host 0.0.0.0 --port 8080 --reload
+    # SEC-04: No command: override here. The Dockerfile CMD is authoritative.
+    # Hot-reload for local dev is provided by docker-compose.override.yml.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s

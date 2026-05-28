@@ -1,17 +1,19 @@
 .PHONY: help install lint typecheck format security audit pre-commit \
         test test-unit test-integration test-fast \
         migrate migrate-check migrate-history migrate-down migrate-generate \
+        docker/build docker/up docker/up-prod docker/down docker/logs docker/shell docker/clean-volumes \
         docs docs-serve \
         clean
 
 PYTHON   ?= python3
 PYTEST   ?= $(PYTHON) -m pytest
 ALEMBIC  ?= $(PYTHON) -m alembic
+COMPOSE  ?= docker compose
 
 # -- Default target ------------------------------------------------------------
 help:  ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_/-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-26s\033[0m %s\n", $$1, $$2}'
 
 # -- Dependencies --------------------------------------------------------------
 install:  ## Install dev dependencies
@@ -71,6 +73,28 @@ migrate-down:  ## Roll back one migration step
 
 migrate-generate:  ## Autogenerate a new migration (MSG= required)
 	$(ALEMBIC) revision --autogenerate -m "$(MSG)"
+
+# -- Docker --------------------------------------------------------------------
+docker/build:  ## Build the API image (no cache)
+	$(COMPOSE) build --no-cache api
+
+docker/up:  ## Start full dev stack (auto-merges docker-compose.override.yml)
+	$(COMPOSE) up --build
+
+docker/up-prod:  ## Start stack WITHOUT override (no --reload, production CMD)
+	$(COMPOSE) -f docker-compose.yml up --build
+
+docker/down:  ## Stop and remove containers (keeps volumes)
+	$(COMPOSE) down
+
+docker/logs:  ## Follow logs for the api service
+	$(COMPOSE) logs -f api
+
+docker/shell:  ## Open a shell in the running api container
+	$(COMPOSE) exec api /bin/sh
+
+docker/clean-volumes:  ## WARNING: destroy all compose volumes (redis data etc.)
+	$(COMPOSE) down -v
 
 # -- Documentation -------------------------------------------------------------
 docs:  ## Build MkDocs Material documentation site
