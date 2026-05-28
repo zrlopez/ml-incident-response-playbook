@@ -44,6 +44,15 @@ services:
       retries: 3
       start_period: 15s
     restart: unless-stopped
+    # CI-52: container hardening — defence-in-depth at the compose layer.
+    # These controls supplement (not replace) the non-root USER in the Dockerfile.
+    security_opt:
+      - no-new-privileges:true   # block privilege escalation via setuid binaries
+    read_only: true               # filesystem read-only; attacker writes do not persist
+    tmpfs:
+      - /tmp:size=64m,mode=1777  # uvicorn and Python require writable /tmp at startup
+    volumes:
+      - ./logs:/app/logs:rw       # explicit write volume for structured log output
     deploy:
       replicas: 2
       update_config:
