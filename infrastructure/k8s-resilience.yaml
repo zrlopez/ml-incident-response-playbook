@@ -35,7 +35,7 @@
 # ────────────────────────────────────────────────────────────────────────────────
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
-meta
+metadata:
   name: ml-incident-api-hpa
   labels:
     app: ml-incident-api
@@ -95,7 +95,7 @@ spec:
 # ────────────────────────────────────────────────────────────────────────────────
 apiVersion: policy/v1
 kind: PodDisruptionBudget
-meta
+metadata:
   name: ml-incident-api-pdb
   labels:
     app: ml-incident-api
@@ -129,7 +129,7 @@ spec:
 # ────────────────────────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
-meta
+metadata:
   name: ml-incident-api
 spec:
   template:
