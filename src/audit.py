@@ -43,7 +43,6 @@ import structlog
 
 _audit_logger: structlog.BoundLogger = structlog.get_logger("audit")
 
-
 class AuditLog:
     """
     Typed interface to the structured audit log stream.
@@ -157,7 +156,6 @@ class AuditLog:
             event_type="authz",
             outcome="denied",
         )
-
 
 # Module-level singleton — import this, not the class directly.
 # This avoids multiple logger instances and keeps call sites clean.

@@ -1,6 +1,4 @@
 """
-src/auth/key_store.py — RS256 key management with multi-key rotation (OPEN-01)
-  R-A02  key_store.generate() now enforces 2048-bit minimum key size (2026-05-26)
 ===============================================================================
 
 Design
@@ -75,7 +73,6 @@ import jwt
 import structlog
 
 log = structlog.get_logger(__name__)
-
 
 # ---------------------------------------------------------------------------
 # RS256KeyStore — single key pair
@@ -256,7 +253,7 @@ class RS256KeyStore:
         ValueError
             If ``key_size`` is below the 2048-bit minimum.
         """
-        # R-A02: Enforce minimum key size — sub-2048 keys are cryptographically
+        # Enforce minimum key size — sub-2048 keys are cryptographically
         # weak and must be rejected even in test/dev contexts.
         _MINIMUM_KEY_SIZE = 2048
         if key_size < _MINIMUM_KEY_SIZE:
@@ -398,7 +395,6 @@ class RS256KeyStore:
             "n": _b64(pub_numbers.n),
             "e": _b64(pub_numbers.e),
         }
-
 
 # ---------------------------------------------------------------------------
 # KeyRotationStore — multi-key signing + verification
@@ -628,7 +624,6 @@ class KeyRotationStore:
             ``{"keys": [<current_jwk>, <retired_jwk_1>, ...]}``
         """
         return {"keys": [k.as_jwk() for k in self._keys]}
-
 
 # ---------------------------------------------------------------------------
 # Internal helpers

@@ -1,12 +1,9 @@
 """
-src/users/repository.py — PostgresUserRepository (ARCH-03 remediation)
 =======================================================================
-Phase 2 remediation: replaces the `_USERS` in-memory dict in api/app.py
 with a proper async SQLAlchemy repository backed by PostgreSQL (or SQLite
 for local/test use via DATABASE_URL).
 
 Findings addressed:
-  ARCH-03  _USERS dict in api/app.py is ephemeral and process-local:
            - passwords reset on every restart (dev UX problem)
            - cannot support horizontal scaling (multiple uvicorn workers)
            - no audit trail for user mutations
@@ -59,7 +56,6 @@ from src.auth.password import verify_password, maybe_rehash
 from src.config import get_settings
 
 log = structlog.get_logger(__name__)
-
 
 # ── ORM model ──────────────────────────────────────────────────────────────────────────────
 class UserRecord(Base):
@@ -128,7 +124,6 @@ class UserRecord(Base):
             "updated_at": self.updated_at.isoformat(),
         }
 
-
 # ── Repository contract ─────────────────────────────────────────────────────────────────────
 class AbstractUserRepository(ABC):
     """Dependency-injection contract for user persistence."""
@@ -169,7 +164,6 @@ class AbstractUserRepository(ABC):
         separate background job (see docs/dpo_runbook.md).
         """
         ...
-
 
 # ── PostgreSQL implementation ────────────────────────────────────────────────────────────────
 class PostgresUserRepository(AbstractUserRepository):
@@ -225,7 +219,7 @@ class PostgresUserRepository(AbstractUserRepository):
             log.warning("auth.verify_failed", username=username)
             return None
 
-        # ARCH-02: rehash-on-login migration
+        # rehash-on-login migration
         new_hash = maybe_rehash(user.hashed_password, plaintext_password)
         if new_hash:
             await self.update_password_hash(username, new_hash, algorithm="argon2id")
@@ -255,7 +249,6 @@ class PostgresUserRepository(AbstractUserRepository):
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
         return row is not None
-
 
 # ── In-memory test implementation ────────────────────────────────────────────────────────────
 class InMemoryUserRepository(AbstractUserRepository):
@@ -307,7 +300,6 @@ class InMemoryUserRepository(AbstractUserRepository):
             store="in_memory",
         )
         return True
-
 
 # ── Session factory (matches incident_tracker.py pattern) ─────────────────────────────
 async def get_user_session() -> AsyncIterator[AsyncSession]:

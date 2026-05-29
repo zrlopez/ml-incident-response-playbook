@@ -24,7 +24,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
@@ -47,7 +46,6 @@ def _make_incident(
         "resolved_at": resolved_at.isoformat() if resolved_at else None,
         "metadata": {},
     }
-
 
 # ---------------------------------------------------------------------------
 # Contract tests

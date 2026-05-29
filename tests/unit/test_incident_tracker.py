@@ -29,7 +29,6 @@ from src.incident_tracker import (
     InvalidTransitionError,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -49,7 +48,6 @@ def _make_orm_incident(
     inc.updated_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     return inc
 
-
 def _repo_with_mock_session(
     get_return: Incident | None = None,
     execute_return=None,
@@ -64,10 +62,8 @@ def _repo_with_mock_session(
     repo = IncidentRepository(session)
     return repo, session
 
-
 def _run(coro):
     return asyncio.run(coro)
-
 
 # ---------------------------------------------------------------------------
 # update_status — allowed transitions (CR-2)
@@ -133,7 +129,6 @@ class TestUpdateStatusAllowedTransitions:
         )
         assert result.status == IncidentStatus.INVESTIGATING
 
-
 # ---------------------------------------------------------------------------
 # update_status — rejected transitions (CR-2)
 # ---------------------------------------------------------------------------
@@ -182,7 +177,6 @@ class TestUpdateStatusRejectedTransitions:
                     new_status=IncidentStatus.RESOLVED,
                 )
             )
-
 
 # ---------------------------------------------------------------------------
 # update_status — OPEN-01: explicit updated_at write
@@ -250,7 +244,6 @@ class TestUpdateStatusTimestamps:
         )
         assert inc.resolved_at == explicit_ts
 
-
 # ---------------------------------------------------------------------------
 # update_status — missing incident
 # ---------------------------------------------------------------------------
@@ -265,7 +258,6 @@ class TestUpdateStatusNotFound:
                     new_status=IncidentStatus.INVESTIGATING,
                 )
             )
-
 
 # ---------------------------------------------------------------------------
 # list_open — hard cap (OPEN-02)
@@ -285,7 +277,6 @@ class TestListOpenHardCap:
         result = _run(repo.list_open())
         session.execute.assert_awaited_once()
         assert result == []
-
 
 # ---------------------------------------------------------------------------
 # _keyset_cursor_clause — compound predicate (KEYSET-01)

@@ -18,13 +18,11 @@ from src.incident_tracker import Base, Incident, IncidentStatus, SeverityLevel
 from src.models.audit_log import AuditEventType
 from src.repositories.audit_log_repository import AuditLogRepository
 
-
 # ---------------------------------------------------------------------------
 # Shared async SQLite engine + session
 # ---------------------------------------------------------------------------
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-
 
 @pytest.fixture(scope="function")
 async def engine():
@@ -39,14 +37,12 @@ async def engine():
     yield _engine
     await _engine.dispose()
 
-
 @pytest.fixture()
 async def session(engine):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as s:
         yield s
         await s.rollback()  # isolate each test
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,7 +60,6 @@ async def _make_incident(session: AsyncSession) -> Incident:
     session.add(inc)
     await session.flush()
     return inc
-
 
 # ---------------------------------------------------------------------------
 # log_event
@@ -130,7 +125,6 @@ class TestLogEvent:
         events = await repo.get_events_for_incident(inc.id)
         assert len(events) == 3
 
-
 # ---------------------------------------------------------------------------
 # get_events_for_incident
 # ---------------------------------------------------------------------------
@@ -163,7 +157,6 @@ class TestGetEventsForIncident:
 
         events = await repo.get_events_for_incident(inc.id, limit=3)
         assert len(events) == 3
-
 
 # ---------------------------------------------------------------------------
 # get_status_transitions

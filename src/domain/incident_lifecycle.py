@@ -27,7 +27,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-
 # -- Domain enumerations -------------------------------------------------------
 
 class IncidentStatus(str, Enum):
@@ -38,14 +37,12 @@ class IncidentStatus(str, Enum):
     RESOLVED = "resolved"
     CLOSED = "closed"
 
-
 class SeverityLevel(str, Enum):
     """Incident severity tiers aligned with governance.md SEV-1..SEV-4 SLAs."""
     SEV1 = "SEV-1"
     SEV2 = "SEV-2"
     SEV3 = "SEV-3"
     SEV4 = "SEV-4"
-
 
 # -- State machine definition --------------------------------------------------
 # Policy: OPEN cannot jump directly to CLOSED or RESOLVED.
@@ -85,7 +82,6 @@ ALLOWED_STATUS_TRANSITIONS: dict[IncidentStatus, frozenset[IncidentStatus]] = {
     IncidentStatus.CLOSED: frozenset(),  # Terminal - no outbound transitions
 }
 
-
 # -- Result type ---------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -98,7 +94,6 @@ class TransitionDecision:
     current: IncidentStatus
     requested: IncidentStatus
     reason: str
-
 
 # -- Policy enforcement --------------------------------------------------------
 
