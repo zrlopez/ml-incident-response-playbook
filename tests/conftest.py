@@ -101,7 +101,7 @@ async def sqlite_engine():
     In-memory SQLite async engine with schema created from ORM metadata.
     Dropped after each test function for full isolation.
     """
-    from src.models.base import Base
+    from src.platform.database import Base
     import src.models.incident  # noqa: F401 — registers Incident with Base.metadata
     import src.models.audit_log  # noqa: F401 — registers AuditLog with Base.metadata
 

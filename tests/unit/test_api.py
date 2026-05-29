@@ -188,7 +188,9 @@ async def client():
     """
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
     from api.app import app
-    from src.incident_tracker import Base
+    from src.platform.database import Base
+    import src.models.incident  # noqa: F401
+    import src.models.audit_log  # noqa: F401
     import src.incident_tracker as _tracker_mod
     from api.stub_users import _USERS
     _orig_engine = _tracker_mod._engine
