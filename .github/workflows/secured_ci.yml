@@ -209,6 +209,7 @@ jobs:
   # CI-44: observability/ added; --cov-fail-under raised 60 -> 65.
   # CI-45: pipelines/ added; test_etl_validation.py wired; gate raised 65 -> 68.
   # CI-48: test paths corrected to tests/unit/ prefix.
+  # CI-56: test_audit.py wired in (Codex P2 — was missing from hardcoded list).
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -254,6 +255,7 @@ jobs:
         #        (were collecting locally but missing from CI command — coverage gap).
         #        Broaden --cov to src/auth, src/users, api so those modules are measured.
         #        Raise --cov-fail-under 68 -> 75 to reflect newly covered paths.
+        # CI-56: add test_audit.py (was omitted from hardcoded list; Codex P2 finding on PR #49).
         run: |
           pytest \
             tests/unit/test_incident_service.py \
@@ -277,6 +279,7 @@ jobs:
             tests/unit/test_model_version_repository.py \
             tests/unit/test_model_registry_service_db.py \
             tests/unit/test_model_registry_service.py \
+            tests/unit/test_audit.py \
             --cov=src \
             --cov=src/validation \
             --cov=src/repositories \
