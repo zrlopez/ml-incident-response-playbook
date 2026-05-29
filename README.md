@@ -27,7 +27,7 @@ license: mit
 | Supply-chain hardening | All GitHub Actions pinned to SHA digests |
 | Test coverage | ≥75% unit, ≥60% integration (enforced in CI) |
 | Type safety | mypy strict mode, Pydantic models on all API shapes |
-| Architecture decisions | [ADR directory](docs/decisions/) — 5 decisions documented |
+| Architecture decisions | [ADR directory](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/docs/decisions) — 5 decisions documented |
 | Runbook maturity | 7 runbooks with Prometheus-bound thresholds + validation log |
 | Live deployment | [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api) |
 | Operational docs | [mlops.zrl.dev](https://mlops.zrl.dev) |
@@ -90,6 +90,7 @@ ml-incident-response-playbook/
 ├── dbt/                           # dbt models and data transformation layer
 ├── docs/
 │   ├── diagrams/                  # Mermaid flowcharts for each incident type
+│   ├── decisions/                 # Architecture Decision Records (ADRs)
 │   ├── templates/                 # Escalation, postmortem, and update templates
 │   └── policies/                  # Governance and security policy documents
 ├── examples/                      # Sample incident logs and postmortem artifacts
