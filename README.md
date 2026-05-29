@@ -3,8 +3,8 @@ title: ML Incident API
 emoji: 🚨
 colorFrom: red
 colorTo: indigo
-sdk: docker
-app_port: 8080
+sdk: gradio
+app_file: app.py
 pinned: true
 license: mit
 ---
@@ -106,12 +106,14 @@ ml-incident-response-playbook/
 ├── src/                           # Shared library code
 ├── tests/                         # Pytest test suite
 ├── validation/                    # Data validation rules and schema checks
+├── app.py                         # Gradio demo entry point (Hugging Face Space)
 ├── Dockerfile
 ├── Dockerfile.dev
 ├── docker-compose.yml
 ├── Makefile
 ├── pyproject.toml
 ├── requirements.txt
+├── requirements-demo.txt          # Slim deps for HF Space demo (gradio + inference only)
 ├── requirements-dev.txt
 ├── requirements-airflow.txt
 ├── README.md
@@ -172,7 +174,7 @@ Observability is represented through logging helpers, validation rules, sample i
 
 ## Deployment
 
-This service is deployed to [Hugging Face Spaces](https://huggingface.co/spaces/zrlo/ml-incident-api) via a GitHub Actions workflow that syncs `main` to HF on every push. The Docker SDK is used — HF builds and runs the existing `Dockerfile` directly with no additional configuration.
+This service is deployed to [Hugging Face Spaces](https://huggingface.co/spaces/zrlo/ml-incident-api) via a GitHub Actions workflow that syncs `main` to HF on every push. The Gradio SDK is used — HF runs `app.py` directly using `requirements-demo.txt`. The production FastAPI service (`api/app.py`) is deployed separately via Docker.
 
 ## CI/CD Overview
 
