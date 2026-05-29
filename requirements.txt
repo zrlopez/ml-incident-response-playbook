@@ -73,10 +73,10 @@ httpx==0.28.1
 #   ResolutionImpossible. Rolled back to last fully-published coherent chain.
 # opentelemetry packages — keep api/sdk/exporter on same version
 #   contrib publishes instrumentation-fastapi>=0.63b1.
-opentelemetry-api==1.27.0
-opentelemetry-sdk==1.27.0
-opentelemetry-instrumentation-fastapi==0.48b0
-opentelemetry-exporter-otlp-proto-grpc==1.27.0
+opentelemetry-api==1.41.1
+opentelemetry-sdk==1.41.1
+opentelemetry-instrumentation-fastapi==0.62b1
+opentelemetry-exporter-otlp-proto-grpc==1.41.1
 prometheus-fastapi-instrumentator==7.0.0
 # R-17: prometheus-client pinned as direct dependency.
 #   monitoring_example.py imports prometheus_client (Counter, Gauge, Histogram)
