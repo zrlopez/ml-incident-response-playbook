@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime, Enum as SAEnum, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.incident_tracker import Base
+from src.platform.database import Base
 
 class ModelVersionStatus(str, enum.Enum):
     ACTIVE      = "active"
