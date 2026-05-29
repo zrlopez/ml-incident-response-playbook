@@ -274,8 +274,12 @@ jobs:
             tests/unit/test_auth_config_security.py \
             tests/unit/test_anomaly_schema_properties.py \
             tests/unit/test_tokens_hs256.py \
+            tests/unit/test_model_version_repository.py \
+            tests/unit/test_model_registry_service_db.py \
+            tests/unit/test_model_registry_service.py \
             --cov=src \
             --cov=src/validation \
+            --cov=src/repositories \
             --cov=api \
             --cov=observability \
             --cov=pipelines \

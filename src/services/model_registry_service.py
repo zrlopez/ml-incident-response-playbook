@@ -42,6 +42,8 @@ from ml_models.incident_anomaly.registry import MODEL_VERSION, model_registry
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+    from src.repositories.model_version_repository import ModelVersionRepository
+    from src.models.model_version import ModelVersion
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -111,7 +113,7 @@ class ModelRegistryService:
         self._lock = threading.Lock()
         self._versions: dict[str, ModelVersionRecord] = {}
         self._active_version: Optional[str] = None
-        self._db_repo: Optional[object] = None  # set by create_db_backed()
+        self._db_repo: Optional["ModelVersionRepository"] = None  # set by create_db_backed()
         self._bootstrap()
 
     # ------------------------------------------------------------------
@@ -303,19 +305,51 @@ class ModelRegistryService:
         if mock_registry is not None:
             _mod.model_registry = _orig  # restore
 
-        instance._db_repo: ModelVersionRepository | None = ModelVersionRepository(session)
+        instance._db_repo = ModelVersionRepository(session)
 
-        # Persist the bootstrapped version to DB
+        # Phase 1: seed DB from bootstrap only if the row does not yet exist.
+        # DB is authoritative after first boot — do not overwrite mutations.
         with instance._lock:
             for record in instance._versions.values():
-                await instance._db_repo.upsert(
-                    version=record.version,
-                    status=ModelVersionStatus(record.status),
-                    artifact_file=record.artifact_file,
-                    metrics=record.metrics,
-                    registered_at=record.registered_at,
-                    activated_at=record.activated_at,
-                )
+                existing = await instance._db_repo.get(record.version)
+                if existing is None:
+                    await instance._db_repo.upsert(
+                        version=record.version,
+                        status=ModelVersionStatus(record.status),
+                        artifact_file=record.artifact_file,
+                        metrics=record.metrics,
+                        registered_at=record.registered_at,
+                        activated_at=record.activated_at,
+                    )
+
+        # Phase 2: hydrate in-memory cache from DB so that versions registered
+        # in previous requests are visible to activate/get_version calls.
+        all_rows = await instance._db_repo.list_all()
+        with instance._lock:
+            for row in all_rows:
+                if row.version not in instance._versions:
+                    metrics = None
+                    if row.metrics_json:
+                        try:
+                            metrics = json.loads(row.metrics_json)
+                        except (ValueError, TypeError):
+                            pass
+                    instance._versions[row.version] = ModelVersionRecord(
+                        version=row.version,
+                        status=row.status.value,
+                        artifact_file=row.artifact_file,
+                        registered_at=row.registered_at,
+                        activated_at=row.activated_at,
+                        sha256_verified=False,
+                        metrics=metrics,
+                    )
+                else:
+                    # Reconcile status from DB (authoritative)
+                    instance._versions[row.version].status = row.status.value
+                    instance._versions[row.version].activated_at = row.activated_at
+            # Sync active_version pointer from DB
+            active_row = await instance._db_repo.get_active()
+            instance._active_version = active_row.version if active_row else None
 
         return instance
 
@@ -369,6 +403,13 @@ class ModelRegistryService:
             await self._db_repo.set_status(version, ModelVersionStatus.QUARANTINED)
         return record_dict
 
+    async def get_version_async(self, version: str) -> Optional[dict]:
+        """Read a specific version from DB when a session is available."""
+        if self._db_repo is not None:
+            row = await self._db_repo.get(version)
+            return _row_to_dict(row) if row else None
+        return self.get_version(version)
+
     async def list_versions_async(self) -> list[dict]:
         """Read all versions from DB when a session is available."""
         if self._db_repo is not None:
@@ -384,23 +425,22 @@ class ModelRegistryService:
         return self.get_active()
 
 
-def _row_to_dict(row: object) -> dict:
+def _row_to_dict(row: "ModelVersion") -> dict:
     """Convert a ModelVersion ORM row to the same dict shape as ModelVersionRecord.to_dict()."""
-    import json as _json
     metrics = None
-    if row.metrics_json is not None:  # type: ignore[union-attr]
+    if row.metrics_json is not None:
         try:
-            metrics = _json.loads(row.metrics_json)  # type: ignore[union-attr]
+            metrics = json.loads(row.metrics_json)
         except (ValueError, TypeError):
             metrics = None
-    artifact_path = _ARTIFACT_DIR / row.artifact_file  # type: ignore[union-attr]
+    artifact_path = _ARTIFACT_DIR / row.artifact_file
     return {
-        "version": row.version,  # type: ignore[union-attr]
-        "status": row.status.value,  # type: ignore[union-attr]
-        "artifact_file": row.artifact_file,  # type: ignore[union-attr]
+        "version": row.version,
+        "status": row.status.value,
+        "artifact_file": row.artifact_file,
         "artifact_exists": artifact_path.exists(),
-        "registered_at": row.registered_at,  # type: ignore[union-attr]
-        "activated_at": row.activated_at,  # type: ignore[union-attr]
+        "registered_at": row.registered_at,
+        "activated_at": row.activated_at,
         "sha256_verified": False,
         "metrics": metrics,
     }

@@ -1,10 +1,12 @@
 """
 src/schemas/model.py
 ====================
-Pydantic v2 schemas for the model registry API (Phase 7).
+Pydantic v2 schemas for the model registry API.
 
 Models
 ------
+ModelRegisterRequest
+    Request body for POST /api/v1/models (Phase 9).
 ModelVersionResponse
     Single model version record as returned by GET /api/v1/models.
 ModelListResponse
@@ -18,6 +20,27 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelRegisterRequest(BaseModel):
+    """
+    Request body for POST /api/v1/models  — register a new artifact version.
+    """
+
+    version: str = Field(
+        ...,
+        description="Semver version string (e.g. '2.0.0'). Must be unique.",
+        examples=["2.0.0"],
+    )
+    artifact_file: str = Field(
+        ...,
+        description="Artifact filename relative to ml_models/incident_anomaly/artifacts/.",
+        examples=["isolation_forest_v2.joblib"],
+    )
+    metrics: Optional[dict] = Field(
+        default=None,
+        description="Optional evaluation metrics dict (e.g. {\"precision\": 0.91}).",
+    )
 
 
 class ModelVersionResponse(BaseModel):
