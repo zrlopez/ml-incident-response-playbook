@@ -23,7 +23,6 @@ from src.models.audit_log import AuditEventType, IncidentAuditLog
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
-
 class AuditLogRepository:
     """Async repository for the incident_audit_log table."""
 

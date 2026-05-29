@@ -209,7 +209,16 @@ jobs:
       # SARIF upload handled separately below (continue-on-error: true, documented).
       # Owner: @zrlopez | Promoted: 2026-05-28 (CI-52)
       # ---------------------------------------------------------------
+      # R-P4: Semgrep is skipped gracefully on fork PRs and Dependabot branches
+      # where SEMGREP_APP_TOKEN is not available. The hard gate is retained for
+      # all owner-branch runs where the secret IS present. Pattern: the `if:`
+      # condition prevents the step from running when the token is empty, which
+      # avoids the "error: SEMGREP_APP_TOKEN is required" failure that blocks
+      # fork contributors and Dependabot from merging otherwise-clean PRs.
+      # The seeded empty SARIF above ensures the Upload step still has a valid
+      # file regardless of whether Semgrep ran.
       - name: Semgrep SAST (hard gate — ERROR severity)
+        if: env.SEMGREP_APP_TOKEN != ''
         uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d  # v1.1.0
         with:
           config: >
@@ -220,6 +229,7 @@ jobs:
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
         # No continue-on-error. ERROR-level findings block the build. (CI-52)
+        # Fork PRs are guarded by the `if:` above; they never reach this step.
 
       - name: Upload semgrep SARIF
         uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa  # v4.36.0

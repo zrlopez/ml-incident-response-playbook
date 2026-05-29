@@ -22,25 +22,29 @@ Design notes
 - ForeignKey is a string reference ("incidents.id") to avoid circular imports.
 - ix_audit_incident_id index supports efficient per-incident audit queries.
 - ix_audit_occurred_at index supports time-range MTTA/MTTR queries.
+
+R-P23 change: Base imported from src.platform.database (was: src.incident_tracker).
 """
 from __future__ import annotations
 
 import enum
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.incident_tracker import Base
+from src.platform.database import Base
 
+if TYPE_CHECKING:
+    from src.models.incident import Incident
 
 class AuditEventType(str, enum.Enum):
     STATUS_TRANSITION = "status_transition"
     METADATA_UPDATE   = "metadata_update"
     CREATED           = "created"
     QUARANTINED       = "quarantined"
-
 
 class IncidentAuditLog(Base):
     """
@@ -74,7 +78,7 @@ class IncidentAuditLog(Base):
     )
 
     # Relationship back to parent Incident (lazy="raise" prevents N+1 by default)
-    incident: Mapped["src.incident_tracker.Incident"] = relationship(  # type: ignore[name-defined]
+    incident: Mapped[Incident] = relationship(
         "Incident",
         back_populates="audit_logs",
         lazy="raise",

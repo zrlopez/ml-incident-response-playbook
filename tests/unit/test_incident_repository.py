@@ -37,7 +37,6 @@ from src.incident_tracker import (
     SeverityLevel,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -60,7 +59,6 @@ async def _make_incident(
         description=description,
     )
 
-
 async def _sleep_tick() -> None:
     """
     Yield control for one event-loop iteration.
@@ -71,9 +69,8 @@ async def _sleep_tick() -> None:
     """
     await asyncio.sleep(0.001)
 
-
 # ---------------------------------------------------------------------------
-# OPEN-01: updated_at correctness
+# updated_at correctness
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -95,7 +92,6 @@ async def test_updated_at_advances_after_status_transition(incident_repo):
         f"updated_at did not advance: was {original_updated_at}, "
         f"still {updated.updated_at} after OPEN → INVESTIGATING"
     )
-
 
 @pytest.mark.asyncio
 async def test_updated_at_advances_after_metadata_mutation(incident_repo):
@@ -119,7 +115,6 @@ async def test_updated_at_advances_after_metadata_mutation(incident_repo):
     )
     assert inc.description == "revised notes"
 
-
 @pytest.mark.asyncio
 async def test_resolved_at_set_on_resolution(incident_repo):
     """
@@ -135,7 +130,6 @@ async def test_resolved_at_set_on_resolution(incident_repo):
 
     assert resolved.resolved_at is not None
     assert resolved.resolved_at.tzinfo is not None  # timezone-aware
-
 
 @pytest.mark.asyncio
 async def test_resolved_at_not_overwritten_on_duplicate_resolved(incident_repo):
@@ -161,9 +155,8 @@ async def test_resolved_at_not_overwritten_on_duplicate_resolved(incident_repo):
     except InvalidTransitionError:
         pass  # State machine correctly blocks RESOLVED → RESOLVED; guard not needed
 
-
 # ---------------------------------------------------------------------------
-# OPEN-02: Cursor (keyset) pagination
+# Cursor (keyset) pagination
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -177,7 +170,6 @@ async def test_list_open_without_cursor_returns_all(incident_repo):
 
     results = await incident_repo.list_open(limit=10)
     assert len(results) == 5
-
 
 @pytest.mark.asyncio
 async def test_list_open_cursor_excludes_seen_page(incident_repo):
@@ -204,7 +196,6 @@ async def test_list_open_cursor_excludes_seen_page(incident_repo):
     assert page1_ids.isdisjoint(page2_ids), (
         f"Cursor pagination overlapped: page1={page1_ids}, page2={page2_ids}"
     )
-
 
 @pytest.mark.asyncio
 async def test_list_by_severity_cursor_filters_correctly(incident_repo):
@@ -237,7 +228,6 @@ async def test_list_by_severity_cursor_filters_correctly(incident_repo):
     all_ids = {i.id for i in page1} | {i.id for i in page2}
     assert len(all_ids) == 4, "Expected 4 distinct SEV1 incidents across both pages"
 
-
 @pytest.mark.asyncio
 async def test_list_open_raises_on_unknown_cursor(incident_repo):
     """
@@ -248,7 +238,6 @@ async def test_list_open_raises_on_unknown_cursor(incident_repo):
 
     with pytest.raises(ValueError, match="not found"):
         await incident_repo.list_open(limit=10, before_id="00000000-0000-0000-0000-000000000000")
-
 
 @pytest.mark.asyncio
 async def test_list_open_hard_cap(incident_repo):
@@ -262,7 +251,6 @@ async def test_list_open_hard_cap(incident_repo):
     results = await incident_repo.list_open(limit=9999)
     assert len(results) <= 1000
 
-
 # ---------------------------------------------------------------------------
 # State machine
 # ---------------------------------------------------------------------------
@@ -273,20 +261,17 @@ async def test_open_to_investigating_allowed(incident_repo):
     updated = await incident_repo.update_status(inc.id, IncidentStatus.INVESTIGATING)
     assert updated.status == IncidentStatus.INVESTIGATING
 
-
 @pytest.mark.asyncio
 async def test_open_to_closed_rejected(incident_repo):
     inc = await _make_incident(incident_repo)
     with pytest.raises(InvalidTransitionError):
         await incident_repo.update_status(inc.id, IncidentStatus.CLOSED)
 
-
 @pytest.mark.asyncio
 async def test_open_to_resolved_rejected(incident_repo):
     inc = await _make_incident(incident_repo)
     with pytest.raises(InvalidTransitionError):
         await incident_repo.update_status(inc.id, IncidentStatus.RESOLVED)
-
 
 # ---------------------------------------------------------------------------
 # Basic CRUD
@@ -313,7 +298,6 @@ async def test_create_persists_fields(incident_repo):
     assert inc.created_at is not None
     assert inc.updated_at is not None
     assert inc.resolved_at is None
-
 
 @pytest.mark.asyncio
 async def test_get_returns_none_for_unknown_id(incident_repo):

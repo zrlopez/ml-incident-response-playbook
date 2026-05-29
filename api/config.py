@@ -13,6 +13,9 @@ Remediation changelog:
           authorised access point for the raw bytes.  Direct attribute
           access (JWT_SECRET.get_secret_value()) is intentionally verbose
           to make accidental logging obvious in code review.
+  R-P11   SlowAPI rate-limit key replaced — raw IPs no longer stored in
+          Redis limiter state. _rate_limit_key() hashes the best-available
+          client identifier before it enters SlowAPI state.
 
 Invariants:
   - Hard-fails at import time if JWT_SECRET_KEY is absent.
@@ -22,13 +25,14 @@ Invariants:
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import List
 
 from pydantic import SecretStr
+from fastapi import Request
 from fastapi.security import OAuth2PasswordBearer
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 # SEC-01: Wrap the raw env value in SecretStr immediately on read so it is
@@ -79,7 +83,25 @@ _raw_origins: str = os.getenv("CORS_ALLOWED_ORIGINS", "")
 ALLOWED_ORIGINS: List[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 # ── Rate limiter (shared across app and routers) ──────────────────────────────
-limiter: Limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+def _rate_limit_key(request: Request) -> str:
+    """Return a privacy-preserving rate-limit key for SlowAPI.
+
+    R-P11 (Cycle 2): do not store raw client IPs in Redis or in-memory rate
+    limiter state. We hash the best-available client identifier so requests
+    from the same client still bucket deterministically without persisting PII.
+
+    Key precedence:
+      1. request.client.host (most common for direct app traffic)
+      2. X-Forwarded-For first hop (proxy deployments / ingress)
+      3. literal "unknown" fallback
+    """
+    client_host = request.client.host if request.client else None
+    forwarded_for = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    raw_identifier = client_host or forwarded_for or "unknown"
+    return hashlib.sha256(raw_identifier.encode()).hexdigest()[:16]
+
+
+limiter: Limiter = Limiter(key_func=_rate_limit_key, default_limits=["200/minute"])
 
 # ── OAuth2 bearer scheme ──────────────────────────────────────────────────────
 oauth2_scheme: OAuth2PasswordBearer = OAuth2PasswordBearer(tokenUrl="/auth/token")

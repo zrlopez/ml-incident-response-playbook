@@ -49,8 +49,17 @@ repos:
         additional_dependencies:
           - structlog
           - types-PyYAML
-        args: [--ignore-missing-imports]
-        files: ^(api|observability|src)/.*\.py$
+          - pydantic>=2.0
+          - sqlalchemy[asyncio]>=2.0
+          - fastapi
+        # R-P5 (Cycle 1): --ignore-missing-imports REMOVED.
+        # That flag silently skips type-checking entire import call paths,
+        # creating a false-pass local gate that diverges from strict CI mypy.
+        # If mypy reports missing stubs after this change, add the appropriate
+        # types-* package to additional_dependencies above instead of
+        # re-enabling the suppression flag.
+        args: []
+        files: ^(api|observability|pipelines|src)/.*\.py$
 
   # --- Security scanning -----------------------------------------------------
   - repo: https://github.com/PyCQA/bandit

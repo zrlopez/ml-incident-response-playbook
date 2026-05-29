@@ -25,7 +25,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -43,7 +42,6 @@ def _make_health(
         "artifact_exists": True,
         "loaded_at": loaded_at,
     }
-
 
 @pytest.fixture()
 def service():
@@ -64,7 +62,6 @@ def service():
         svc = ModelRegistryService()   # _bootstrap() runs HERE, inside patch
         yield svc
 
-
 def _make_unloaded_service():
     """Helper: service bootstrapped with model_loaded=False."""
     mock_registry = MagicMock()
@@ -75,7 +72,6 @@ def _make_unloaded_service():
     ):
         from src.services.model_registry_service import ModelRegistryService
         return ModelRegistryService()
-
 
 # ---------------------------------------------------------------------------
 # Bootstrap
@@ -93,7 +89,6 @@ class TestBootstrap:
         versions = service.list_versions()
         assert len(versions) == 1
         assert versions[0]["version"] == "1.0.0"
-
 
 # ---------------------------------------------------------------------------
 # list_versions / get_version / get_active
@@ -122,7 +117,6 @@ class TestReadOperations:
         svc = _make_unloaded_service()
         assert svc.get_active() is None
 
-
 # ---------------------------------------------------------------------------
 # register_version
 # ---------------------------------------------------------------------------
@@ -149,7 +143,6 @@ class TestRegisterVersion:
         service.register_version(version="1.1.0", artifact_file="isolation_forest_v1.1.0.joblib")
         versions = [v["version"] for v in service.list_versions()]
         assert "1.1.0" in versions
-
 
 # ---------------------------------------------------------------------------
 # activate_version
@@ -189,7 +182,6 @@ class TestActivateVersion:
         service.register_version(version="3.0.0", artifact_file="ghost.joblib")
         with pytest.raises(ValueError, match="not found on disk"):
             service.activate_version("3.0.0")
-
 
 # ---------------------------------------------------------------------------
 # quarantine_version
