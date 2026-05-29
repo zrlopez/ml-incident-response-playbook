@@ -44,6 +44,15 @@ class SeverityLevel(str, Enum):
     SEV3 = "SEV-3"
     SEV4 = "SEV-4"
 
+# -- Domain exceptions ---------------------------------------------------------
+
+class InvalidTransitionError(ValueError):
+    """
+    Raised when a caller requests a status transition that violates lifecycle policy.
+    The API layer maps this to HTTP 409 Conflict.
+    """
+
+
 # -- State machine definition --------------------------------------------------
 # Policy: OPEN cannot jump directly to CLOSED or RESOLVED.
 # An incident must be acknowledged (INVESTIGATING) before it can be resolved

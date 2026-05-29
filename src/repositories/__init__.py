@@ -1,4 +1,5 @@
-"""src/repositories — async data-access repositories (Phase 8)."""
+"""src/repositories — async data-access repositories."""
 from src.repositories.audit_log_repository import AuditLogRepository
+from src.repositories.incident_repository import IncidentRepository
 
-__all__ = ["AuditLogRepository"]
+__all__ = ["AuditLogRepository", "IncidentRepository"]
