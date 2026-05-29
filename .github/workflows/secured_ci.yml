@@ -1,7 +1,7 @@
 # =============================================================================
 # ML Incident Response API - Hardened CI/CD Pipeline
 # =============================================================================
-# Changelog: see CHANGELOG.md (CI-01 — CI-52)
+# Changelog: see CHANGELOG.md (CI-01 — CI-65)
 # =============================================================================
 # ============================================================
 # PERMISSION AUDIT — CI-52 (2026-05-28)
@@ -210,6 +210,10 @@ jobs:
   # CI-45: pipelines/ added; test_etl_validation.py wired; gate raised 65 -> 68.
   # CI-48: test paths corrected to tests/unit/ prefix.
   # CI-56: test_audit.py wired in (Codex P2 — was missing from hardcoded list).
+  # CI-57: pytest-xdist added; -n auto enables parallel execution.
+  # CI-62: test_model_registry_thread_safety.py wired in (50-worker concurrency suite).
+  # CI-63: test_redis_denylist_concurrency.py wired in (Redis expiry + race conditions).
+  # CI-64: test_incident_service_contract.py wired in (API<->service interface contract).
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -256,6 +260,10 @@ jobs:
         #        Broaden --cov to src/auth, src/users, api so those modules are measured.
         #        Raise --cov-fail-under 68 -> 75 to reflect newly covered paths.
         # CI-56: add test_audit.py (was omitted from hardcoded list; Codex P2 finding on PR #49).
+        # CI-57: -n auto runs tests in parallel across available CPUs via pytest-xdist.
+        # CI-62: add test_model_registry_thread_safety.py.
+        # CI-63: add test_redis_denylist_concurrency.py.
+        # CI-64: add test_incident_service_contract.py.
         run: |
           pytest \
             tests/unit/test_incident_service.py \
@@ -280,6 +288,9 @@ jobs:
             tests/unit/test_model_registry_service_db.py \
             tests/unit/test_model_registry_service.py \
             tests/unit/test_audit.py \
+            tests/unit/test_model_registry_thread_safety.py \
+            tests/unit/test_redis_denylist_concurrency.py \
+            tests/unit/test_incident_service_contract.py \
             --cov=src \
             --cov=src/validation \
             --cov=src/repositories \
@@ -289,6 +300,7 @@ jobs:
             --cov-report=xml:coverage-unit.xml \
             --cov-report=term-missing \
             --cov-fail-under=75 \
+            -n auto \
             -v
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -417,11 +429,13 @@ jobs:
           echo "SMOKE_REDIS_URL=redis://${GW}:6379/0" >> $GITHUB_ENV
 
       - name: pytest integration tests
+        # CI-59: raise gate 40% -> 55% (first pass — existing tests + new contract suite).
+        # CI-60: raise gate 55% -> 65% (second pass — after Redis + thread-safety tests land).
         run: |
           pytest tests/integration/ \
             --cov=api --cov=observability --cov=src \
             --cov-report=xml:coverage-integration.xml \
-            --cov-fail-under=40 \
+            --cov-fail-under=65 \
             -v
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
