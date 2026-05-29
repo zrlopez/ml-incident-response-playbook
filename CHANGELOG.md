@@ -16,6 +16,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `SEC-08` / `R-P11`: Replaced SlowAPI `get_remote_address` with privacy-preserving `_rate_limit_key()` in `api/config.py`. Raw client IPs are no longer stored in Redis rate-limiter state. Key is SHA-256(best-available-identifier)[:16]; precedence: `request.client.host` → `X-Forwarded-For` first hop → `"unknown"`. Closes the final HIGH-01 vector.
 - `R-P21`: All three HIGH-01 vectors now regression-locked by `test_middleware_pii.py`.
 
+### Fixed
+- `R-P16`: Reverted the Kubernetes-style `/healthz` and `/readyz` endpoint rename in `api/routers/health.py`. Primary probe routes are restored to `/health` and `/ready`; all backward-compat redirect routes were removed because the project is not targeting Kubernetes and the rename broke 5 existing unit tests.
+
+### Removed
+- `R-P6`: Removed `MASTER_ACTION_TRACKER.md` from the repository. This tracker is internal-only and is now maintained locally outside the repo.
+
 > Phase 13 scope: Pydantic v2 response model hardening, audit-log API surface, and
 > `src/incident_tracker.py` engine DI migration (deferred from R-C04).
 > All Phase 12 tracker items resolved. No open regressions.
@@ -262,7 +268,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [1.5.5] — 2026-05-25
 
 ### Fixed
-- `CI-33`: use sentinel `_UNSET` in `_service_with_mock_repo`.
+- `CI-33`: use sentinel `_UNSET` in _service_with_mock_repo.
 
 ---
 
