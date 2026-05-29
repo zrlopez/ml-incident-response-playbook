@@ -191,8 +191,11 @@ async def client():
     from src.platform.database import Base
     import src.models.incident  # noqa: F401
     import src.models.audit_log  # noqa: F401
+    import src.models.model_version  # noqa: F401
+    import src.users.repository  # noqa: F401
     import src.incident_tracker as _tracker_mod
     from api.stub_users import _USERS
+    
     _orig_engine = _tracker_mod._engine
     _orig_factory = _tracker_mod._session_factory
     _session_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
