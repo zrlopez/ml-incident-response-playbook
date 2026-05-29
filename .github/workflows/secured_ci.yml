@@ -56,10 +56,55 @@ jobs:
           head: ${{ github.event.after }}
           extra_args: --only-verified
 
+  # ---------------------------------------------------------------------------
+  # lockfile-check — CI-55 (Phase 11: Supply Chain)
+  # Detects drift between pyproject.toml declared deps and requirements.txt.
+  # Uses pip-compile (pip-tools) to regenerate requirements.txt in a temp dir
+  # and compares it to the committed file. Fails if any drift is detected.
+  # This ensures developers run `make deps-compile` before committing dep changes.
+  # Owner: @zrlopez | Added: 2026-05-28
+  # ---------------------------------------------------------------------------
+  lockfile-check:
+    name: Lockfile Drift Check
+    runs-on: ubuntu-latest
+    needs: secrets-scan
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install pip-tools
+        run: pip install pip-tools
+
+      - name: Regenerate requirements.txt from pyproject.toml
+        run: |
+          pip-compile pyproject.toml \
+            --output-file requirements.generated.txt \
+            --no-emit-trusted-host \
+            --no-annotate \
+            --quiet
+
+      - name: Check for lockfile drift
+        run: |
+          # Normalise both files: strip comments, sort, compare package==version lines only.
+          grep -v '^#' requirements.txt | grep -v '^$' | sort > /tmp/req_committed.txt
+          grep -v '^#' requirements.generated.txt | grep -v '^$' | sort > /tmp/req_generated.txt
+          if ! diff -u /tmp/req_committed.txt /tmp/req_generated.txt; then
+            echo ""
+            echo "ERROR: requirements.txt is out of sync with pyproject.toml."
+            echo "Run 'make deps-compile' locally and commit the updated requirements.txt."
+            exit 1
+          fi
+          echo "Lockfile check passed — requirements.txt matches pyproject.toml."
+
   dependency-audit:
     name: dependency-audit
     runs-on: ubuntu-latest
-    needs: secrets-scan
+    needs: [secrets-scan, lockfile-check]
     permissions:
       contents: read
     steps:
@@ -538,7 +583,7 @@ jobs:
   deploy-gate:
     name: Deployment Readiness Gate
     runs-on: ubuntu-latest
-    needs: [secrets-scan, dependency-audit, sast, unit-tests, integration-tests, container-scan]
+    needs: [secrets-scan, lockfile-check, dependency-audit, sast, unit-tests, integration-tests, container-scan]
     permissions:
       contents: read
     steps:
@@ -547,6 +592,7 @@ jobs:
           GIT_REF: ${{ github.ref }}
           GIT_SHA: ${{ github.sha }}
           SECRETS_SCAN_RESULT: ${{ needs.secrets-scan.result }}
+          LOCKFILE_CHECK_RESULT: ${{ needs.lockfile-check.result }}
           DEPENDENCY_AUDIT_RESULT: ${{ needs.dependency-audit.result }}
           SAST_RESULT: ${{ needs.sast.result }}
           UNIT_TESTS_RESULT: ${{ needs.unit-tests.result }}
@@ -557,6 +603,7 @@ jobs:
           echo "  DEPLOYMENT READINESS GATE SUMMARY"
           echo "========================================"
           echo "secrets-scan ................. $SECRETS_SCAN_RESULT"
+          echo "lockfile-check ............... $LOCKFILE_CHECK_RESULT"
           echo "dependency-audit ............. $DEPENDENCY_AUDIT_RESULT"
           echo "SAST - Bandit + mypy + semgrep $SAST_RESULT"
           echo "Unit Tests (SQLite) .......... $UNIT_TESTS_RESULT"
@@ -569,6 +616,7 @@ jobs:
           FAILED=0
           for result in \
             "secrets-scan:$SECRETS_SCAN_RESULT" \
+            "lockfile-check:$LOCKFILE_CHECK_RESULT" \
             "dependency-audit:$DEPENDENCY_AUDIT_RESULT" \
             "sast:$SAST_RESULT" \
             "unit-tests:$UNIT_TESTS_RESULT" \
