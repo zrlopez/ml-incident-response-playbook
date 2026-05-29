@@ -194,13 +194,17 @@ async def client():
     import src.models.model_version  # noqa: F401
     import src.users.repository  # noqa: F401
     import src.incident_tracker as _tracker_mod
+    import src.platform.database as _db_mod
     from api.stub_users import _USERS
-    
-    _orig_engine = _tracker_mod._engine
-    _orig_factory = _tracker_mod._session_factory
+
+    _orig_engine = _db_mod._engine
+    _orig_factory = _db_mod._session_factory
     _session_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    _session_factory = async_sessionmaker(_session_engine, expire_on_commit=False)
+    _db_mod._engine = _session_engine
+    _db_mod._session_factory = _session_factory
     _tracker_mod._engine = _session_engine
-    _tracker_mod._session_factory = async_sessionmaker(_session_engine, expire_on_commit=False)
+    _tracker_mod._session_factory = _session_factory
     async with _session_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with AsyncClient(
@@ -214,6 +218,8 @@ async def client():
         app.state.user_repo = _MockUserRepo(users=_USERS)
         yield ac
     # Restore original engine so subsequent test files use the correct DB
+    _db_mod._engine = _orig_engine
+    _db_mod._session_factory = _orig_factory
     _tracker_mod._engine = _orig_engine
     _tracker_mod._session_factory = _orig_factory
     await _session_engine.dispose()
