@@ -41,16 +41,16 @@
 
 ---
 
-## 🔄 Phase 11 — Supply Chain (CURRENT)
+## ✅ Phase 11 — Supply Chain (COMPLETE)
 
 > **Branch:** `feat/phase-11-supply-chain`
-> **Goal:** Lock down dependency integrity and repo governance before any further code changes.
+> **Completed:** 2026-05-28 (CI-52 through CI-55)
 
-- [ ] Add `lockfile-check` CI job — detect `pip-compile` drift between `requirements.txt` and `pyproject.toml`
-- [ ] Verify `.github/CODEOWNERS` exists and covers security-sensitive paths (`api/`, `src/auth/`, `.github/workflows/`, `Dockerfile`)
-- [ ] Add `docs/branch-protection-policy.md` — document required status checks and merge rules
-- [ ] Verify `pip-audit` step is present in `.pre-commit-config.yaml`
-- [ ] Add `make deps-compile` Makefile target (`pip-compile pyproject.toml → requirements.txt`)
+- [x] Add `lockfile-check` CI job — detect `pip-compile` drift between `requirements.txt` and `pyproject.toml` (CI-55)
+- [x] Verify `.github/CODEOWNERS` exists and covers security-sensitive paths (`api/`, `src/auth/`, `.github/workflows/`, `Dockerfile`) — confirmed present
+- [x] Add `docs/branch-protection-policy.md` — document required status checks and merge rules — confirmed present
+- [x] Add `pip-audit` step to `.pre-commit-config.yaml` (CI-55)
+- [x] Add `make deps-compile` Makefile target (`pip-compile pyproject.toml → requirements.txt`) (CI-55)
 
 ---
 

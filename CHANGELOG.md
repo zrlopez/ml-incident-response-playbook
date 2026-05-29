@@ -13,6 +13,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 > `src/incident_tracker.py` engine DI migration (deferred from R-C04).
 > All Phase 12 tracker items resolved. No open regressions.
 
+### Added
+
+### Security / Supply Chain
+- `CI-55` (feat/phase-11): Supply-chain hardening — three controls landed in one commit.
+  - **lockfile-check CI job** added to `secured_ci.yml`. Runs `pip-compile pyproject.toml`
+    in CI and diffs the output against committed `requirements.txt`. Fails the build if drift
+    is detected. Job sits between `secrets-scan` and `dependency-audit`; also wired into
+    `deploy-gate` `needs` array. Developers must run `make deps-compile` and commit the
+    updated lockfile before any dependency change can merge.
+  - **pip-audit pre-commit hook** added to `.pre-commit-config.yaml`. Runs on `pre-commit`
+    stage when `requirements*.txt` files are staged. Uses `--ignore-vuln PYSEC-2026-161`
+    consistent with CI gate. Requires `pip install pip-audit` locally.
+  - **`make deps-compile` target** added to `Makefile`. Runs `pip-compile pyproject.toml →
+    requirements.txt` with `--strip-extras --quiet`. Companion to `lockfile-check`; ensures
+    developers regenerate the lockfile correctly rather than hand-editing.
+
 ---
 
 ## [2.5.0] — 2026-05-28
@@ -49,9 +65,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 - `test(tokens/hs256)`: add `tests/unit/test_tokens_hs256.py` — 8 tests covering the
-  HS256 fallback branch in `src/auth/tokens.py` (lines 46, 49, 63, 66, 79, 86–94).
-  These paths only execute when `rs256_available()` returns `False`; previously zero
-  coverage. Recovers ~0.8 pp unit coverage to restore the 75% gate.
+  HS256 fallback branch in `src/auth/tokens.py`. Recovers ~0.8 pp unit coverage.
 
 ### Fixed
 - `fix(ci/CI-03)`: repair container smoke-test wiring so the production image is probed on
@@ -77,67 +91,43 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [2.3.6] — 2026-05-27
 
 ### Security
-- `fix(security/HIGH-01)`: pseudonymise client IP before structlog context bind in
-  `api/middleware.py` (`trace_and_security_headers`).
-  - Added `_pseudo_ip(ip)` helper: returns 8-char SHA-256 hex prefix of raw IP address.
-  - `client_ip=request.client.host` replaced with `client_ip_hash=_pseudo_ip(raw_ip)`.
-  - `request.url.path` (no query string) bound instead of full URL to prevent
-    `token=`/`password=` query-parameter leakage into logs (GDPR PII / HIGH-01).
-  - `hashlib` added to imports; no new runtime dependencies.
-- `fix(security/SEC-07)`: annotate `PYSEC-2026-161` ignore in `secured_ci.yml` with
-  expiry date `2026-11-01` and owner `security-team` so the suppression has a mandatory
-  review trigger rather than persisting indefinitely.
+- `fix(security/HIGH-01)`: pseudonymise client IP in `api/middleware.py`.
+- `fix(security/SEC-07)`: annotate `PYSEC-2026-161` ignore with expiry + owner.
 
 ### Fixed
-- `fix(ci/regression)`: rename CI unit-test `JWT_SECRET_KEY` from
-  `ci-unit-test-placeholder-32chars!!` to `ci-unit-test-secret-32chars-safe!!`.
-  The word `placeholder` triggered the `SEC-01` `_reject_placeholder` validator in
-  `src/config.py` at import time, killing 3 test-collection targets and collapsing
-  coverage from 76% to 13% (`2bda42e`).
+- `fix(ci/regression)`: rename CI `JWT_SECRET_KEY` to remove `placeholder` substring.
 
 ---
 
 ## [2.3.5] — 2026-05-26
 
 ### Fixed
-- `fix(lint)`: suppress Codacy false positives and replace gitleaks-triggering JWT token (`d275d95`).
-  - `tests/unit/test_logging_config.py`: replaced jwt.io demo token with a synthetic token to
-    prevent gitleaks pattern-match false positive in CI (`noqa: S105`).
-  - `tests/unit/test_key_store.py`: suppressed hardcoded-secret warning on intentional
-    algorithm confusion attack test key (`noqa: S106`).
-  - `src/users/repository.py`: suppressed no-value-for-argument false positive on
-    `cls.__new__(cls)` inside classmethod — `cls` is passed implicitly by Python (`noqa`).
+- `fix(lint)`: suppress Codacy false positives; replace gitleaks-triggering JWT token.
 
 ---
 
 ## [2.3.4] — 2026-05-26
 
 ### CI
-- `ci(codecov)`: add `codecov.yml` to merge unit and integration coverage flags for accurate
-  diff coverage reporting (`a2fb856`). Prevents split-flag under-reporting on PR checks.
+- `ci(codecov)`: add `codecov.yml` to merge unit and integration coverage flags.
 
 ---
 
 ## [2.3.3] — 2026-05-26
 
 ### Fixed
-- `fix(api)`: re-raise `InvalidTransitionError` before `ValueError` catch in `PATCH /status`
-  (`c38d3fb`). Ensures specific transition errors surface correctly rather than being swallowed
-  by the broader `ValueError` handler.
-- `fix(test)`: import `get_current_user` from `api.dependencies` not `api.app` (`bad2154`).
-  Corrects stale import path following god-file decomposition.
+- `fix(api)`: re-raise `InvalidTransitionError` before `ValueError` catch in `PATCH /status`.
+- `fix(test)`: import `get_current_user` from `api.dependencies` not `api.app`.
 
 ---
 
 ## [2.3.2] — 2026-05-26
 
 ### Added
-- `feat(test)` `CI-49`: observability coverage tests for `logging_config` and `otel_setup`
-  (`8367290`). Closes coverage gap on OTel bootstrap and structured log scrubbing paths.
+- `feat(test)` `CI-49`: observability coverage tests for `logging_config` and `otel_setup`.
 
 ### Fixed
-- `fix(test)` `CI-49`: replace brittle `opentelemetry.trace` patch with `sys.modules` injection
-  (`9eef228`). Previous approach was order-dependent and flaky under parallel test execution.
+- `fix(test)` `CI-49`: replace brittle `opentelemetry.trace` patch with `sys.modules` injection.
 
 ---
 
@@ -145,18 +135,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Refactored
 - `R-GOD` (refactor): god-file decomposition of `api/app.py` (1 005 → 47 lines).
-  Ten-step extraction across S1–S10, each verified by a standalone smoke test.
-  New modules created:
-  - `api/config.py` — env vars, algorithm guard, slowapi limiter, oauth2_scheme (S1)
-  - `api/stub_users.py` — dev/test `_USERS` store + env guard (S2)
-  - `api/schemas.py` — Pydantic models for Token, Incident, Status (S3)
-  - `src/auth/tokens.py` — JWT helpers; jti + ttl returned (S4)
-  - `api/dependencies.py` — auth, rate limiting, user/denylist deps (S5)
-  - `api/lifespan.py` — startup/shutdown wiring (S6)
-  - `api/routers/auth.py` — `/auth/token`, `/auth/refresh`, `/auth/logout` (S8)
-  - `api/routers/incidents.py` — full incidents CRUD (S9)
-  - `api/middleware.py` — security headers + trace binding (S10)
-  - `api/app.py` — slimmed to 47-line factory shell (S10)
+  Ten-step extraction into `api/config.py`, `api/stub_users.py`, `api/schemas.py`,
+  `src/auth/tokens.py`, `api/dependencies.py`, `api/lifespan.py`, `api/routers/auth.py`,
+  `api/routers/incidents.py`, `api/middleware.py`. Unlocked R-C03, R-C04, R-CI02.
 
 ---
 
@@ -164,7 +145,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 - `CI-45` `R-20`: wire `tests/unit/test_etl_validation.py` into unit-tests CI job.
-- `R-21`: add `--cov=pipelines`; raise `--cov-fail-under` `65` → `68`.
+- `R-21`: add `--cov=pipelines`; raise `--cov-fail-under` 65 → 68.
 
 ---
 
@@ -197,21 +178,21 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [1.7.0] — 2026-05-26
 
 ### Fixed
-- `CI-44`: expand unit-tests CI job; raise `--cov-fail-under` `60` → `65`.
+- `CI-44`: expand unit-tests CI job; raise `--cov-fail-under` 60 → 65.
 
 ---
 
 ## [1.6.9] — 2026-05-26
 
 ### Fixed
-- `CI-43`: bump `opentelemetry-instrumentation-fastapi` `0.62b0` → `0.63b0`.
+- `CI-43`: bump `opentelemetry-instrumentation-fastapi` 0.62b0 → 0.63b0.
 
 ---
 
 ## [1.6.8] — 2026-05-26
 
 ### Fixed
-- `CI-42`: align `opentelemetry-api` / `instrumentation-fastapi` to sdk `1.42.1` / `0.62b0`.
+- `CI-42`: align `opentelemetry-api` / `instrumentation-fastapi` to sdk 1.42.1 / 0.62b0.
 
 ---
 
@@ -225,14 +206,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [1.6.6] — 2026-05-25
 
 ### Changed
-- `CI-40`: bump `opentelemetry-sdk` + exporter `1.27.0` → `1.42.1`.
+- `CI-40`: bump `opentelemetry-sdk` + exporter 1.27.0 → 1.42.1.
 
 ---
 
 ## [1.6.5] — 2026-05-25
 
 ### Fixed
-- `CI-39`: bump `asyncpg` `0.30.0` → `0.31.0`. Resolves `GHSA-7f4w-j353-w3mg`.
+- `CI-39`: bump `asyncpg` 0.30.0 → 0.31.0. Resolves `GHSA-7f4w-j353-w3mg`.
 
 ---
 
@@ -344,7 +325,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [1.2.6] — 2026-05-24
 
 ### Fixed
-- `CI-23`: bump `trivy-action` `v0.31.0` → `v0.36.0`.
+- `CI-23`: bump `trivy-action` v0.31.0 → v0.36.0.
 
 ---
 
