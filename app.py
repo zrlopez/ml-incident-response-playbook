@@ -37,12 +37,25 @@ See Also
 """
 from __future__ import annotations
 
+import logging
 import textwrap
 from pathlib import Path
 
 import gradio as gr
 
-from ml_models.incident_anomaly.registry import MODEL_VERSION, model_registry
+log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Bootstrap: train artifact if missing (HF Spaces cannot store .joblib via git)
+# ---------------------------------------------------------------------------
+_ARTIFACT = Path("ml_models/incident_anomaly/artifacts/isolation_forest_v1.joblib")
+if not _ARTIFACT.exists():
+    log.info("Artifact not found — training IsolationForest on startup ...")
+    from scripts.train_model import train  # noqa: PLC0415
+    train(seed=42, n_samples=2000, verbose=False)
+    log.info("Artifact ready at %s", _ARTIFACT)
+
+from ml_models.incident_anomaly.registry import MODEL_VERSION, model_registry  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
