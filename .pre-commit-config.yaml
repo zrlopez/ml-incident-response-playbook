@@ -61,6 +61,21 @@ repos:
         files: ^(api|observability|src)/.*\.py$
         exclude: ^tests/
 
+  # --- Dependency vulnerability audit (Phase 11 / CI-55) --------------------
+  # Runs pip-audit against requirements.txt before every commit.
+  # Blocks commit if any known vulnerability is found (excluding SEC-07).
+  # If pip-audit is not installed locally: pip install pip-audit
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit (dependency vulnerability check)
+        entry: pip-audit --requirement requirements.txt --ignore-vuln PYSEC-2026-161
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^requirements.*\.txt$
+        always_run: false
+
   # --- Secrets detection -----------------------------------------------------
   - repo: https://github.com/trufflesecurity/trufflehog
     rev: v3.95.3

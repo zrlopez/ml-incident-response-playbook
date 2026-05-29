@@ -18,7 +18,7 @@ pytest-asyncio==0.26.0
 pytest-xdist==3.6.1
 # anyio provides the async test runner for @pytest.mark.anyio in test_api.py.
 # trio backend is used (faster for unit tests than asyncio in most pytest setups).
-anyio[trio]==4.9.0
+anyio[trio]==4.13.0
 
 # ── HTTP test client (used with httpx.AsyncClient in test_api.py) ─────────────
 httpx==0.28.1

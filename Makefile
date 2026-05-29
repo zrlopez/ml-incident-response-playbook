@@ -23,6 +23,19 @@ PIP    ?= pip
 install:
 	$(PIP) install -r requirements-dev.txt
 
+deps-compile:  ## Regenerate requirements.txt from pyproject.toml (run after adding/changing deps)
+	$(PYTHON) -m pip install --quiet pip-tools
+	pip-compile pyproject.toml \
+	  --output-file requirements.txt \
+	  --no-emit-trusted-host \
+	  --no-header \
+	  --no-annotate \
+	  --quiet
+	@echo "requirements.txt updated. Review changes and commit."
+
+# -- Code quality --------------------------------------------------------------
+lint:  ## Run ruff linter (check only)
+	$(PYTHON) -m ruff check src/ api/ observability/ pipelines/
 # ── Lint ──────────────────────────────────────────────────────────────────────
 lint:
 	ruff check api/ observability/ src/ tests/

@@ -1,110 +1,79 @@
-# ──────────────────────────────────────────────────────────────────────────────
-# requirements.txt — API container production dependencies
-#
-# CRIT-C REMEDIATION (Phase 0):
-#   apache-airflow, dbt-core, and dbt-postgres REMOVED from this file.
-#   These orchestration/transform tools have no runtime role in the FastAPI
-#   container and brought ~300 transitive packages (including multiple CVE-
-#   carrying Flask/Werkzeug/Celery/paramiko versions) into the API image.
-#
-#   Migration:
-#     • Airflow DAGs → use requirements-airflow.txt in the Airflow image
-#     • dbt models    → use requirements-dbt.txt in the dbt runner image
-#
-# Dependency management policy:
-#   • All versions are pinned exactly (==) for reproducible builds.
-#   • Run `pip-compile --generate-hashes requirements.in` to regenerate
-#     with hash verification enabled for supply-chain hardening.
-#   • Run `pip-audit -r requirements.txt` weekly (automated in CI).
-#   • Dependabot watches this file for patch/minor upgrades.
-# ──────────────────────────────────────────────────────────────────────────────
-
-# ── Web framework ──────────────────────────────────────────────────────────
-# CI-17: bumped 0.115.12 → 0.121.3 to allow starlette==0.49.1 (CVE fixes).
-# 0.121.3 caps starlette<0.51.0; no breaking API changes vs 0.115.x.
-fastapi==0.121.3
-uvicorn[standard]==0.34.2
-python-multipart==0.0.27
-# CI-17: pinned explicitly; resolves PYSEC-2026-161, GHSA-2c2j, GHSA-7f5h.
-starlette==0.49.1
-
-# ── Authentication ────────────────────────────────────────────────────────
-# python-jose removed (CVE-2024-33663) — replaced by PyJWT[crypto]
-# CI-17: bumped 2.9.0 → 2.12.0 (PYSEC-2026-120, PYSEC-2025-183).
-# redis[jwt] constraint resolved by bumping redis to 5.3.1 (see below).
-PyJWT[crypto]==2.12.0
-# ARCH-02 REMEDIATION (Phase 2): migrated from passlib[bcrypt] to argon2-cffi.
-# argon2id is the OWASP 2024 recommended algorithm (memory-hard, GPU-resistant).
-argon2-cffi==23.1.0
-# CI-17: bumped 46.0.5 → 46.0.7 (PYSEC-2026-35, PYSEC-2026-36).
-cryptography==46.0.7
-
-# ── Rate limiting ──────────────────────────────────────────────────────
-slowapi==0.1.9
-
-# ── Data validation ─────────────────────────────────────────────────────
-pydantic==2.11.5
-pydantic-settings==2.9.1
-
-# ── Structured logging ───────────────────────────────────────────────────
-structlog==25.4.0
-
-# ── Database (async-ready) ───────────────────────────────────────────────
-# Production target: postgresql+asyncpg
-# Local / CI:        sqlite+aiosqlite (via DATABASE_URL env var)
-asyncpg==0.31.0
 aiosqlite==0.21.0
-sqlalchemy[asyncio]==2.0.41
 alembic==1.15.2
-
-# ── Redis (distributed JWT denylist) ────────────────────────────────────────
-# hiredis: C-extension for ~10x read throughput vs pure-Python parser
-# CI-17: bumped 5.3.0 → 5.3.1; patch release that allows PyJWT>=2.9.0
-# (redis-py#3682), unblocking our PyJWT==2.12.0 pin.
-redis[hiredis]==5.3.1
-
-# ── HTTP client (alert dispatching, internal calls) ────────────────────────
-httpx==0.28.1
-
-# ── Observability ───────────────────────────────────────────────────────────
-# CI-42/CI-43: attempted upgrade to 1.42.1 stack — REVERTED in CI-44.
-#   instrumentation-fastapi 0.63b1 does not exist on PyPI; 0.63b0 requires
-#   semantic-conventions==0.63b0 while sdk 1.42.1 requires ==0.63b1 —
-#   ResolutionImpossible. Rolled back to last fully-published coherent chain.
-# opentelemetry packages — keep api/sdk/exporter on same version
-#   contrib publishes instrumentation-fastapi>=0.63b1.
-opentelemetry-api==1.41.1
-opentelemetry-sdk==1.41.1
-opentelemetry-instrumentation-fastapi==0.62b1
-opentelemetry-exporter-otlp-proto-grpc==1.41.1
-prometheus-fastapi-instrumentator==7.0.0
-# R-17: prometheus-client pinned as direct dependency.
-#   monitoring_example.py imports prometheus_client (Counter, Gauge, Histogram)
-#   directly. Previously only present as a transitive dep of
-#   prometheus-fastapi-instrumentator; direct pin required for supply-chain
-#   hygiene and reproducible builds.
-# CI-53: removed duplicate floating prometheus-client>=0.20 from Utilities
-#   section — caused lockfile drift CI failure (normaliser matched 0 pinned
-#   lines when duplicate non-== constraint was present). Only the exact pin
-#   below is authoritative.
-prometheus-client==0.21.1
-# NOTE: protobuf is a transitive dep via opentelemetry-proto==1.27.0 which
-# caps it at <5.0. CVE-2026-0994 cannot be pinned to 5.x without breaking
-# the otel stack. Accepted risk documented in .trivyignore. Track as tech
-# debt: upgrade otel to a protobuf-5.x-compatible release when available.
-
-# ── ML / Data ──────────────────────────────────────────────────────────────
-numpy==2.2.6
-pandas==2.3.3
-scikit-learn==1.8.0
-# REQ-01: joblib is a direct runtime dependency of the inference layer
-# (ml_models/incident_anomaly/registry.py). Pinned explicitly for supply-chain
-# hygiene; previously only present as a transitive dep of scikit-learn.
-joblib==1.5.3
-
-# ── AWS SDK ───────────────────────────────────────────────────────────────────
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.13.0
+argon2-cffi==23.1.0
+argon2-cffi-bindings==25.1.0
+asgiref==3.11.1
+asyncpg==0.31.0
 boto3==1.43.17
-
-# ── Utilities ─────────────────────────────────────────────────────────────────
+botocore==1.43.17
+certifi==2026.5.20
+cffi==2.0.0
+click==8.4.1
+cryptography==46.0.7
+deprecated==1.3.1
+fastapi==0.121.3
+googleapis-common-protos==1.75.0
+greenlet==3.5.1
+grpcio==1.80.0
+h11==0.16.0
+hiredis==3.3.1
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+idna==3.17
+importlib-metadata==8.7.1
+jmespath==1.1.0
+joblib==1.5.3
+limits==5.8.0
+mako==1.3.12
+markupsafe==3.0.3
+numpy==2.2.6
+opentelemetry-api==1.41.1
+opentelemetry-exporter-otlp-proto-common==1.41.1
+opentelemetry-exporter-otlp-proto-grpc==1.41.1
+opentelemetry-instrumentation==0.62b1
+opentelemetry-instrumentation-asgi==0.62b1
+opentelemetry-instrumentation-fastapi==0.62b1
+opentelemetry-proto==1.41.1
+opentelemetry-sdk==1.41.1
+opentelemetry-semantic-conventions==0.62b1
+opentelemetry-util-http==0.62b1
+packaging==26.2
+pandas==2.3.3
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==7.0.0
+protobuf==6.33.6
+pycparser==3.0
+pydantic==2.11.5
+pydantic-core==2.33.2
+pydantic-settings==2.9.1
+pyjwt[crypto]==2.12.0
+python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
+python-multipart==0.0.27
+pytz==2026.2
+pyyaml==6.0.3
+redis[hiredis]==5.3.1
+s3transfer==0.18.0
+scikit-learn==1.8.0
+scipy==1.17.1
+six==1.17.0
+slowapi==0.1.9
+sqlalchemy[asyncio]==2.0.41
+starlette==0.49.1
+structlog==25.4.0
 tenacity==9.1.2
+threadpoolctl==3.6.0
+typing-extensions==4.15.0
+typing-inspection==0.4.2
+tzdata==2026.2
+urllib3==2.7.0
+uvicorn[standard]==0.34.2
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==16.0
+wrapt==2.2.1
+zipp==4.1.0

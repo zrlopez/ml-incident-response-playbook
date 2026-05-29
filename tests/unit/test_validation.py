@@ -455,7 +455,10 @@ class TestValidateStateTransitionInvalid:
         assert result.valid is False
         assert any("ESCALATED" in e for e in result.errors)
 
-    @pytest.mark.parametrize("state", list(ALLOWED_STATUSES))
+    # CI-55: sorted() ensures stable parametrize order across xdist workers.
+    # list(set) is non-deterministic — workers disagreed on collection order,
+    # aborting before running tests and cratering coverage to 23%.
+    @pytest.mark.parametrize("state", sorted(ALLOWED_STATUSES))
     def test_self_transition_blocked(self, state):
         """No state may transition to itself."""
         result = validate_state_transition(state, state)
