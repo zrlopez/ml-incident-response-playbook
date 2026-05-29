@@ -1,4 +1,4 @@
-# ADR-003: Alembic as Authoritative Schema Migration System
+# ADR-005: Alembic as Authoritative Schema Migration System
 
 | Field        | Value                               |
 |---|---|
