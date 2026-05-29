@@ -25,7 +25,7 @@ license: mit
 |---|---|
 | Security toolchain | TruffleHog + Bandit + semgrep + Trivy + CodeQL + pip-audit + SBOM ([`secured_ci.yml`](.github/workflows/secured_ci.yml)) |
 | Supply-chain hardening | All GitHub Actions pinned to SHA digests |
-| Test coverage | ≥75% unit, ≥60% integration (enforced in CI) |
+| Test coverage | ≥75% unit, ≥65% integration (enforced in CI) |
 | Type safety | mypy strict mode, Pydantic models on all API shapes |
 | Architecture decisions | [ADR directory](https://github.com/zrlopez/ml-incident-response-playbook/tree/main/docs/adr) — 9 decisions documented |
 | Runbook maturity | 7 runbooks with Prometheus-bound thresholds + validation log |
@@ -63,7 +63,7 @@ This project showcases a production-grade MLOps incident-response system built w
 - **ML layer** — IsolationForest anomaly detector with a thread-safe model registry, reproducible training pipeline, and a JWT-protected inference endpoint.
 - **Supply-chain security** — SHA-pinned GitHub Actions, Trivy container scanning, Bandit SAST, TruffleHog secret scanning, pip-audit dependency auditing, and Dependabot auto-bumps.
 - **Operational runbooks** — Five incident runbooks with Mermaid decision trees, a severity matrix, escalation templates, and postmortem artifacts.
-- **Engineering rigour** — 530+ unit tests, ≥68% coverage gate, mypy type checking, ruff linting, `CODEOWNERS`, and a full MkDocs documentation site.
+- **Engineering rigour** — 530+ unit tests, ≥75% coverage gate, mypy type checking, ruff linting, `CODEOWNERS`, and a full MkDocs documentation site.
 
 ## Feature Highlights
 
@@ -176,7 +176,7 @@ This service is deployed to [Hugging Face Spaces](https://huggingface.co/spaces/
 
 ## CI/CD Overview
 
-The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥68% on unit tests** (SQLite, fast) and **≥40% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
+The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥75% on unit tests** (SQLite, fast) and **≥65% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
 
 ## Roadmap
 

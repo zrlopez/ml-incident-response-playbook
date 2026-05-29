@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # requirements-dev.txt — development and testing dependencies
 # Install: pip install -r requirements-dev.txt
-# Last reviewed: 2026-05-24
+# Last reviewed: 2026-05-29
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Production deps are a prerequisite
@@ -14,6 +14,8 @@
 pytest==8.3.5
 pytest-cov==6.1.0
 pytest-asyncio==0.26.0
+# CI-57: pytest-xdist enables parallel test execution via -n auto in CI.
+pytest-xdist==3.6.1
 # anyio provides the async test runner for @pytest.mark.anyio in test_api.py.
 # trio backend is used (faster for unit tests than asyncio in most pytest setups).
 anyio[trio]==4.9.0
