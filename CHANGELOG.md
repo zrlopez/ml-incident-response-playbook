@@ -19,7 +19,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 > Phase 12 complete (Cycle 10, 2026-05-28).
 > Architecture tracker closed. R-C03, R-C04, R-CI02 confirmed complete.
-> Tech debt TD-01–TD-03 dispositioned.
+> Tech debt TD-01–TD-03 dispositioned. Lockfile drift resolved (CI-53).
 
 ### Changed
 - `chore(tracker/R-C03)`: confirmed COMPLETE — `_denylist` / `_user_repo` bare module-level
@@ -64,6 +64,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
     3000 chars of container logs to the pytest failure for immediate CI diagnosis.
   - `.github/workflows/secured_ci.yml`: `SMOKE_REDIS_URL` switched to password-free bridge URL
     `redis://172.17.0.1:6379/0`, avoiding empty-secret auth failures during smoke startup.
+- `fix(deps/CI-53)`: remove duplicate `prometheus-client>=0.20` floating pin from the
+  `Utilities` section of `requirements.txt`. The lockfile drift CI check normalises by
+  filtering `package==version` lines only; the loose `>=` constraint produced a mismatched
+  line count that caused a false drift failure. The exact pin `prometheus-client==0.21.1`
+  in the Observability section is the sole authoritative entry.
 
 ---
 
@@ -410,9 +415,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
-## CI Pipeline History — Full Index (CI-01 — CI-51)
+## CI Pipeline History — Full Index (CI-01 — CI-53)
 
-> Extracted from `.github/workflows/secured_ci.yml` header 2026-05-27.
+> Extracted from `.github/workflows/secured_ci.yml` header 2026-05-29.
 > All entries follow Conventional Commits: `type(scope): summary`.
 > Detailed entries for CI-03 through CI-15, CI-18 through CI-25, and CI-27 through CI-34
 > are listed here; all others appear inline in the sections above.
@@ -471,3 +476,4 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 | CI-50 | 1.8.1 | 2026-05-27 | fix(ci): add missing test files + cov scopes; --cov-fail-under 68 → 75 |
 | CI-51 | 1.8.2 | 2026-05-27 | feat(ci): add SLSA provenance attestation for SBOM artifact |
 | CI-52 | 2.5.0 | 2026-05-28 | chore(tracker): close Phase 12 — confirm R-C03/R-C04/R-CI02; dispose TD-01–TD-03 |
+| CI-53 | 2.5.0 | 2026-05-29 | fix(deps): remove duplicate prometheus-client>=0.20; resolves lockfile drift failure |
