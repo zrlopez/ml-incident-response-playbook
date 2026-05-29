@@ -62,7 +62,7 @@ line-length = 88
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-q --tb=short"
+addopts = "-q --tb=short --dist=loadscope"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
