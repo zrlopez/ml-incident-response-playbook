@@ -165,6 +165,8 @@ resource "aws_db_instance" "postgres" {
   performance_insights_enabled = true
   monitoring_interval          = 60
 
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+
   tags = {
     Name = "${var.project}-postgres-${var.environment}"
   }
