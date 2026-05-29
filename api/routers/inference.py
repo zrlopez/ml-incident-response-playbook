@@ -37,6 +37,13 @@ from ml_models.incident_anomaly.schema import AnomalyRequest, AnomalyResponse
 
 log = logging.getLogger(__name__)
 
+
+def _sanitize_for_log(value: Any) -> str:
+    """Return a single-line, log-safe representation of user-influenced values."""
+    text = str(value) if value is not None else "unknown"
+    return text.replace("\r", "").replace("\n", "")
+
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 router = APIRouter(
@@ -105,7 +112,7 @@ async def detect_anomaly(
         result["anomaly_score"],
         result["is_anomalous"],
         result["inference_latency_ms"],
-        current_user.get("sub", "unknown"),
+        _sanitize_for_log(current_user.get("sub", "unknown")),
     )
 
     return AnomalyResponse(
