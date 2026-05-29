@@ -92,7 +92,7 @@ class UserRecord(Base):
     )
 
     @classmethod
-    def from_dict(cls, username: str, data: dict) -> "UserRecord":
+    def from_dict(cls, username: str,  dict[str, object]) -> "UserRecord":
         """
         Construct a UserRecord without triggering SQLAlchemy's ORM __init__.
 
