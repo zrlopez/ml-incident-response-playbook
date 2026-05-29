@@ -68,9 +68,7 @@ async def _seed(
     """
     ids: list[str] = []
     for i in range(n):
-        inc = await repo._session.run_sync(
-            lambda _s, _i=i: None  # placeholder — use async path below
-        ) if False else None
+        inc = None
 
         from src.incident_tracker import Incident
         inc = Incident(
