@@ -19,7 +19,7 @@ apache-airflow-providers-slack>=9.0.0,<10.0.0
 # Shared data layer utilities (no web framework deps)
 numpy==2.2.6
 pandas==2.3.3
-scikit-learn==1.6.1
+scikit-learn==1.8.0
 tenacity==9.1.2
 structlog==25.4.0
 
