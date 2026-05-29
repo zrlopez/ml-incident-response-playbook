@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.incident_tracker import Base, Incident, IncidentStatus, SeverityLevel
-from src.models.audit_log import AuditEventType, IncidentAuditLog
+from src.models.audit_log import AuditEventType
 from src.repositories.audit_log_repository import AuditLogRepository
 
 
