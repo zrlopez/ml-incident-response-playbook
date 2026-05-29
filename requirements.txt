@@ -73,7 +73,7 @@ httpx==0.28.1
 #   ResolutionImpossible. Rolled back to last fully-published coherent chain.
 # TODO (tech debt): re-attempt upgrade to 1.42.x+ once opentelemetry-python-
 #   contrib publishes instrumentation-fastapi>=0.63b1.
-opentelemetry-api==1.27.0
+opentelemetry-api==1.42.1
 opentelemetry-sdk==1.27.0
 opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-exporter-otlp-proto-grpc==1.27.0
