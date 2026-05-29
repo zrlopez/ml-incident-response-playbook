@@ -1,5 +1,5 @@
 # Master Action Tracker
-<!-- Last updated: 2026-05-29 | Post-Reconciliation with MASTER_CHECKLIST.md -->
+<!-- Last updated: 2026-05-29 | Cycle 2 COMPLETE -->
 
 > **Single source of truth** for all remediation and roadmap work on the ML Incident Response Playbook.
 > `MASTER_CHECKLIST.md` has been deleted and fully absorbed here.
@@ -35,8 +35,6 @@
 
 | ID | Phase | Category | Issue | Severity | Status | Blocking Deps | Files Affected | Validation |
 |----|-------|----------|-------|----------|--------|---------------|----------------|------------|
-| R-P11 | Cycle 2 | Security | SlowAPI `get_remote_address` stores raw IP as rate-limiter Redis key — PII in Redis state (3rd HIGH-01 vector) | CRITICAL | BACKLOG | — | `api/config.py` | Custom hashed key fn; `grep get_remote_address api/config.py` → 0 |
-| R-P21 | Cycle 2 | Testing | No regression test for HIGH-01 middleware IP pseudonymisation | HIGH | BACKLOG | R-P9/R-P10 | `tests/unit/test_middleware_pii.py` | 3+ tests pass; `_pseudo_ip()` contract locked |
 | R-P1 | Cycle 2 | CI/CD | Integration coverage gate 53% (CI-66b); recovery to ≥65% deferred as CI-67 | HIGH | BACKLOG | CI-67 fixture work | `secured_ci.yml` | Gate restored ≥65%; CI green |
 | R-P12 | Cycle 2 | Testing | CI-67 open: Redis / lifespan / auth paths unreachable in integration fixtures | HIGH | BACKLOG | CI-67 | `tests/integration/` | Integration coverage ≥65%; CI-67 closed |
 | R-P4 | Cycle 2 | SAST CI | Semgrep step fails for forks/Dependabot with empty `SEMGREP_APP_TOKEN` | MEDIUM | BACKLOG | — | `.github/workflows/secured_ci.yml` | Fork PRs pass; hard gate retained for owned PRs |
@@ -99,6 +97,13 @@
 
 ## Completed Archive
 
+### Cycle 2 (2026-05-29)
+
+| ID | Issue | Commit | Resolution |
+|----|-------|--------|------------|
+| R-P11 | SlowAPI `get_remote_address` stored raw IP as rate-limiter Redis key — HIGH-01 final PII vector | this commit | Replaced with `_rate_limit_key()`: SHA-256(best-available-identifier)[:16]; `get_remote_address` removed from `api/config.py`; raw IPs no longer enter limiter state |
+| R-P21 | No regression test for HIGH-01 privacy protections across middleware + rate limiter | this commit | Added `tests/unit/test_middleware_pii.py` — 5 tests covering `_pseudo_ip()` determinism, non-raw output, `_rate_limit_key()` hashing, X-Forwarded-For fallback, and static source guard |
+
 ### Cycle 1 (2026-05-29)
 
 | ID | Issue | Commit | Resolution |
@@ -130,19 +135,17 @@
 
 ## Reprioritised Cycle Queue
 
-### Cycle 2 — Security Closure + Test Safety Net
-*Close all three HIGH-01 vectors; regression-lock with tests; begin coverage recovery.*
+### Cycle 2 Remaining Items — Security + DX
+*R-P11 and R-P21 closed. Continue with remaining Cycle 2 backlog.*
 
 | Priority | ID | Severity | Action |
 |----------|----|----------|--------|
-| 1 | R-P11 | CRITICAL | Patch SlowAPI key fn — hash IP before Redis key; closes final HIGH-01 vector |
-| 2 | R-P21 | HIGH | Create `tests/unit/test_middleware_pii.py` — regression-locks HIGH-01 fix permanently |
-| 3 | R-P22 | HIGH | Write characterization tests for `src/incident_tracker.py` before any refactor |
-| 4 | R-P4 | MEDIUM | Guard Semgrep step against fork empty-token failures |
-| 5 | R-P7 | MEDIUM | Write `CONTRIBUTING.md` (setup, branching, commits, PR process) |
-| 6 | R-P13 | MEDIUM | Verify/create `docker-compose.yml` (postgres 16, redis 7) |
-| 7 | R-P16 | MEDIUM | Add `/healthz` + `/readyz` router with DB + Redis readiness checks |
-| 8 | R-P20 | LOW | Add CI/coverage/docs badges to README header |
+| 1 | R-P22 | HIGH | Write characterization tests for `src/incident_tracker.py` before any refactor |
+| 2 | R-P4 | MEDIUM | Guard Semgrep step against fork empty-token failures |
+| 3 | R-P7 | MEDIUM | Write `CONTRIBUTING.md` (setup, branching, commits, PR process) |
+| 4 | R-P13 | MEDIUM | Verify/create `docker-compose.yml` (postgres 16, redis 7) |
+| 5 | R-P16 | MEDIUM | Add `/healthz` + `/readyz` router with DB + Redis readiness checks |
+| 6 | R-P20 | LOW | Add CI/coverage/docs badges to README header |
 
 ### Cycle 3 — Architecture + Coverage Recovery
 *Refactor incident_tracker; raise integration coverage back to ≥65%.*

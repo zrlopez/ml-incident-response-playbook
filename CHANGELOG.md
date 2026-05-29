@@ -9,6 +9,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+- `CI-67a` / `R-P21`: Added `tests/unit/test_middleware_pii.py` — 5 regression tests that permanently lock the HIGH-01 privacy contracts for both `api.middleware._pseudo_ip()` and `api.config._rate_limit_key()`.
+
+### Changed
+- `SEC-08` / `R-P11`: Replaced SlowAPI `get_remote_address` with privacy-preserving `_rate_limit_key()` in `api/config.py`. Raw client IPs are no longer stored in Redis rate-limiter state. Key is SHA-256(best-available-identifier)[:16]; precedence: `request.client.host` → `X-Forwarded-For` first hop → `"unknown"`. Closes the final HIGH-01 vector.
+- `R-P21`: All three HIGH-01 vectors now regression-locked by `test_middleware_pii.py`.
+
 > Phase 13 scope: Pydantic v2 response model hardening, audit-log API surface, and
 > `src/incident_tracker.py` engine DI migration (deferred from R-C04).
 > All Phase 12 tracker items resolved. No open regressions.
@@ -134,7 +141,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [2.3.0] — 2026-05-26
 
 ### Refactored
-- `R-GOD` (refactor): god-file decomposition of `api/app.py` (1 005 → 47 lines).
+- `R-GOD` (refactor): god-file decomposition of `api/app.py` (1 005 → 47 lines).
   Ten-step extraction into `api/config.py`, `api/stub_users.py`, `api/schemas.py`,
   `src/auth/tokens.py`, `api/dependencies.py`, `api/lifespan.py`, `api/routers/auth.py`,
   `api/routers/incidents.py`, `api/middleware.py`. Unlocked R-C03, R-C04, R-CI02.
@@ -432,7 +439,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 | CI-43 | 1.6.9 | 2026-05-26 | fix(deps): bump opentelemetry-instrumentation-fastapi 0.62b0 → 0.63b0 |
 | CI-44 | 1.7.0 | 2026-05-26 | feat(test): expand unit-tests to cover observability/ package |
 | CI-45 | 1.7.1 | 2026-05-26 | fix(ci): wire test_etl_validation.py into unit-tests job |
-| CI-46 | 1.7.2 | 2026-05-26 | fix(config): align pip-audit 2.7.3 → 2.9.0 |
+| CI-46 | 1.7.2 | 2026-05-26 | fix(ci): align pip-audit 2.7.3 → 2.9.0 |
 | CI-47 | 1.7.2 | 2026-05-26 | fix(ci): SHA-pin codecov/codecov-action@v5; closes R-S03 |
 | CI-48 | 1.7.3 | 2026-05-26 | fix(ci): update unit test paths from tests/ to tests/unit/ |
 | CI-49 | 1.8.0 | 2026-05-26 | feat(test): add observability coverage tests; wire ETL coverage gaps |
@@ -440,3 +447,4 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 | CI-51 | 1.8.2 | 2026-05-27 | feat(ci): add SLSA provenance attestation for SBOM artifact |
 | CI-52 | 2.5.0 | 2026-05-28 | chore(tracker): close Phase 12 — confirm R-C03/R-C04/R-CI02; dispose TD-01–TD-03 |
 | CI-53 | 2.5.0 | 2026-05-29 | fix(deps): remove duplicate prometheus-client>=0.20; resolves lockfile drift failure |
+| CI-67a | 2.5.1 | 2026-05-29 | fix(security/R-P11): hash SlowAPI rate-limit key; add HIGH-01 regression tests (R-P21) |
