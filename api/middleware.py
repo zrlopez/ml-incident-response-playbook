@@ -12,6 +12,9 @@ Findings addressed:
           Fix: pseudonymise IP with SHA-256 before binding to structlog
           context. Query-string stripped from path in log context to
           prevent token=/password= leakage via URL params.
+          R-P9/R-P10 (Cycle 1): regression fixed — MaxBodySizeMiddleware
+          and RequestTimeoutMiddleware were still logging raw IPs in their
+          warning branches. All three sites now use _pseudo_ip().
 
 Middleware execution order (outermost → innermost):
   1. SecurityHeadersMiddleware   — adds headers to every response
@@ -46,6 +49,9 @@ def _pseudo_ip(ip: str) -> str:
     HIGH-01: logging raw client IPs is a GDPR PII violation. The prefix
     correlates requests within a session for debugging but cannot be
     reversed to the original address without a rainbow-table attack.
+
+    This helper MUST be used at every log call site that would otherwise
+    emit request.client.host. Do not add new log.* calls with raw IPs.
     """
     return hashlib.sha256(ip.encode()).hexdigest()[:8]
 
@@ -123,7 +129,8 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                     path=request.url.path,
                     declared_bytes=declared_length,
                     limit_bytes=self.MAX_BYTES,
-                    client=request.client.host if request.client else "unknown",
+                    # HIGH-01 (R-P10, Cycle 1): pseudonymise — no raw IP in logs
+                    client=_pseudo_ip(request.client.host) if request.client else "unknown",
                 )
                 return JSONResponse(
                     {"detail": f"Request body too large. Maximum allowed size is {self.MAX_BYTES // 1024} KB."},  # noqa: E501
@@ -146,7 +153,8 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                         path=request.url.path,
                         received_bytes=received_bytes,
                         limit_bytes=self.MAX_BYTES,
-                        client=request.client.host if request.client else "unknown",
+                        # HIGH-01 (R-P10, Cycle 1): pseudonymise — no raw IP in logs
+                        client=_pseudo_ip(request.client.host) if request.client else "unknown",
                     )
                     raise BodyTooLargeError(f"Streaming body exceeded {self.MAX_BYTES} bytes.")
             return message
@@ -222,7 +230,8 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
                 path=request.url.path,
                 method=request.method,
                 timeout_seconds=self.TIMEOUT_SECONDS,
-                client=request.client.host if request.client else "unknown",
+                # HIGH-01 (R-P9, Cycle 1): pseudonymise — no raw IP in logs
+                client=_pseudo_ip(request.client.host) if request.client else "unknown",
             )
             return JSONResponse(
                 {"detail": "Request timed out. Please retry."},
