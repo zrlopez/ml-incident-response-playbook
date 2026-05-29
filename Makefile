@@ -28,7 +28,6 @@ deps-compile:  ## Regenerate requirements.txt from pyproject.toml (run after add
 	pip-compile pyproject.toml \
 	  --output-file requirements.txt \
 	  --no-emit-trusted-host \
-	  --strip-extras \
 	  --no-header \
 	  --no-annotate \
 	  --quiet
