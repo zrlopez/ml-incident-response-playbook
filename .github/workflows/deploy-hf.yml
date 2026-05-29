@@ -27,6 +27,13 @@ jobs:
           git checkout --orphan hf-deploy
           git reset
           git add -A
+
+          # HF's Gradio builder installs from requirements.txt by default.
+          # Swap in the slim demo manifest so the production stack
+          # (uvloop, asyncpg, Redis, etc.) never enters the Space container.
+          cp requirements-demo.txt requirements.txt
+          git add requirements.txt
+
           git commit -m "deploy: sync from GitHub main $(git rev-parse --short HEAD~1 2>/dev/null || echo init)"
 
           git push --force https://zrlo:${HF_TOKEN}@huggingface.co/spaces/zrlo/ml-incident-api hf-deploy:main
