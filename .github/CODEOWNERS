@@ -1,42 +1,28 @@
 # =============================================================================
-# .github/CODEOWNERS — Security-sensitive path ownership
-# =============================================================================
-# Enforces explicit review by @zrlopez for all security-sensitive paths.
-# Requires "Require review from Code Owners" enabled in branch protection.
+# CODEOWNERS — Automatic PR review routing
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 #
-# Reference: Phase 5 / CI-54 — CODEOWNERS enforcement
-# Branch protection policy: docs/branch-protection-policy.md
+# R-P8 (Cycle 1): Hardened with explicit security + supply-chain paths.
+#
+# Rules evaluated top-to-bottom; last matching rule wins for a given file.
+# All paths are relative to repo root.
 # =============================================================================
 
-# Default owner for all files not matched below.
-*                           @zrlopez
+# Default: every file and directory requires review from @zrlopez
+*                                @zrlopez
 
-# CI/CD pipeline definitions — any change here affects the security perimeter.
-/.github/workflows/         @zrlopez
-/.github/CODEOWNERS         @zrlopez
+# CI/CD pipeline — explicit ownership for audit trail clarity
+.github/                         @zrlopez
 
-# Authentication layer — RS256 key management, JWT validation, denylist.
-/src/auth/                  @zrlopez
-/api/redis_denylist.py      @zrlopez
+# Security-sensitive paths — listed explicitly to signal review sensitivity.
+# Any change here should be treated with heightened scrutiny.
+api/middleware.py                 @zrlopez
+api/config.py                    @zrlopez
+src/auth/                        @zrlopez
+.trivyignore                     @zrlopez
+.pre-commit-config.yaml          @zrlopez
 
-# API surface — route definitions, middleware, rate limiting.
-/api/                       @zrlopez
-
-# Security disclosure policy.
-SECURITY.md                 @zrlopez
-
-# Dependency manifests — changes here affect the entire supply chain.
-pyproject.toml              @zrlopez
-requirements.txt            @zrlopez
-requirements-dev.txt        @zrlopez
-requirements-airflow.txt    @zrlopez
-
-# Container definition — digest pins, non-root user, multi-stage build.
-Dockerfile                  @zrlopez
-Dockerfile.dev              @zrlopez
-.dockerignore               @zrlopez
-
-# Infrastructure / observability config.
-docker-compose.yml          @zrlopez
-docker-compose.prod.yml     @zrlopez
-observability/              @zrlopez
+# Dependency manifests — supply chain ownership
+requirements.txt                 @zrlopez
+requirements-dev.txt             @zrlopez
+pyproject.toml                   @zrlopez
