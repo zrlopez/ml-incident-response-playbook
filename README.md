@@ -1,3 +1,14 @@
+---
+title: ML Incident API
+emoji: 🚨
+colorFrom: red
+colorTo: indigo
+sdk: docker
+app_port: 8080
+pinned: true
+license: mit
+---
+
 # ML Incident Response Playbook + Runbook System
 
 ![Status](https://img.shields.io/badge/status-portfolio--ready-brightgreen)
@@ -18,7 +29,7 @@
 | Type safety | mypy strict mode, Pydantic models on all API shapes |
 | Architecture decisions | [ADR directory](docs/decisions/) — 5 decisions documented |
 | Runbook maturity | 7 runbooks with Prometheus-bound thresholds + validation log |
-| Live deployment | [ml-incident-api.fly.dev](https://ml-incident-api.fly.dev/health) |
+| Live deployment | [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api) |
 | Operational docs | [mlops.zrl.dev](https://mlops.zrl.dev) |
 
 A production-style operational documentation repo for ML and AI incident response.
@@ -70,7 +81,8 @@ ml-incident-response-playbook/
 ├── .github/
 │   └── workflows/
 │       ├── secured_ci.yml         # Hardened CI pipeline (TruffleHog, Bandit, mypy, Trivy, SBOM)
-│       └── codeql.yml             # GitHub CodeQL analysis workflow
+│       ├── codeql.yml             # GitHub CodeQL analysis workflow
+│       └── deploy-hf.yml          # Hugging Face Spaces deploy workflow
 ├── api/                           # FastAPI application code
 ├── alembic/                       # Database migration environment
 ├── configs/                       # Environment and service configuration files
@@ -157,9 +169,9 @@ Observability is represented through logging helpers, validation rules, sample i
 4. Diagnostic and mitigation steps are executed.
 5. The incident is logged and followed by a postmortem.
 
-## Deployment Instructions
+## Deployment
 
-This project can be published as a static documentation site with GitHub Pages or MkDocs Material. The repo is also suitable for a lightweight internal-style deployment to mirror production documentation workflows.
+This service is deployed to [Hugging Face Spaces](https://huggingface.co/spaces/zrlo/ml-incident-api) via a GitHub Actions workflow that syncs `main` to HF on every push. The Docker SDK is used — HF builds and runs the existing `Dockerfile` directly with no additional configuration.
 
 ## CI/CD Overview
 
