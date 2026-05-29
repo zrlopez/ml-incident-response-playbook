@@ -9,10 +9,43 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-> R-GOD god-file decomposition complete (Cycle 9, 2026-05-26).
-> Remaining open items: R-C03, R-C04, R-CI02 (now unblocked), plus upstream tech debt TD-01–TD-03.
-> No unresolved regressions. No correctness gaps.
+> Phase 13 scope: Pydantic v2 response model hardening, audit-log API surface, and
+> `src/incident_tracker.py` engine DI migration (deferred from R-C04).
+> All Phase 12 tracker items resolved. No open regressions.
 
+---
+
+## [2.5.0] — 2026-05-28
+
+> Phase 12 complete (Cycle 10, 2026-05-28).
+> Architecture tracker closed. R-C03, R-C04, R-CI02 confirmed complete.
+> Tech debt TD-01–TD-03 dispositioned.
+
+### Changed
+- `chore(tracker/R-C03)`: confirmed COMPLETE — `_denylist` / `_user_repo` bare module-level
+  globals fully removed from `api/dependencies.py`. All auth functions now read exclusively
+  from `request.app.state`. No further action required.
+- `chore(tracker/R-C04)`: confirmed COMPLETE — `_build_engine()` is no longer called at
+  import time for the API path. `api/lifespan.py` calls it only inside the
+  `@asynccontextmanager lifespan` context. The module-level `_engine` singleton in
+  `src/incident_tracker.py` is retained intentionally for backward compatibility with test
+  shims; full DI migration deferred to Phase 13 as a non-blocking improvement.
+- `chore(tracker/R-CI02)`: confirmed COMPLETE — `api/app.py` reduced to a 47-line factory
+  shell; `api.app:app` is a clean Gunicorn/Uvicorn entry point. No further CI wiring needed.
+
+### Tech Debt Dispositions
+- `chore(td/TD-01)`: **Deferred — scheduled review.** `CVE-2026-0994` (protobuf, CVSS 8.2)
+  suppressed in `.trivyignore`. Root cause: `opentelemetry-exporter-otlp-proto-grpc` pins
+  protobuf `<5.0`; upgrade path blocked until OTel SDK ships protobuf-5.x compatibility.
+  Actual risk LOW (no attacker-controlled input reaches `ParseDict()`). Mandatory re-review
+  date: `2026-08-24` (annotated in `.trivyignore`).
+- `chore(td/TD-02)`: **Accepted / not-planned.** `starlette==0.52.1` Dependabot PR-25
+  closed as not-planned (CI-41, 2026-05-25). Starlette is a transitive dependency of
+  FastAPI; version is pinned by FastAPI's resolver. No independent upgrade path available
+  without a FastAPI major bump. Revisit when FastAPI drops Starlette constraint.
+- `chore(td/TD-03)`: **Void — no materialised item.** TD-03 was a placeholder reference
+  in the Cycle 9 tracker note; no corresponding code marker, issue, or suppression was
+  ever created. Closed as void.
 
 ### Added
 - `test(tokens/hs256)`: add `tests/unit/test_tokens_hs256.py` — 8 tests covering the
@@ -31,6 +64,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
     3000 chars of container logs to the pytest failure for immediate CI diagnosis.
   - `.github/workflows/secured_ci.yml`: `SMOKE_REDIS_URL` switched to password-free bridge URL
     `redis://172.17.0.1:6379/0`, avoiding empty-secret auth failures during smoke startup.
+
+---
 
 ## [2.4.0] — 2026-05-27
 
@@ -435,3 +470,4 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 | CI-49 | 1.8.0 | 2026-05-26 | feat(test): add observability coverage tests; wire ETL coverage gaps |
 | CI-50 | 1.8.1 | 2026-05-27 | fix(ci): add missing test files + cov scopes; --cov-fail-under 68 → 75 |
 | CI-51 | 1.8.2 | 2026-05-27 | feat(ci): add SLSA provenance attestation for SBOM artifact |
+| CI-52 | 2.5.0 | 2026-05-28 | chore(tracker): close Phase 12 — confirm R-C03/R-C04/R-CI02; dispose TD-01–TD-03 |
