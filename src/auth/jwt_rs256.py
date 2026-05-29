@@ -1,7 +1,5 @@
 """
-src/auth/jwt_rs256.py — RS256 JWT helpers (ARCH-01)
 ====================================================
-Phase 4 remediation: upgrades JWT signing from HS256 (symmetric shared secret)
 to RS256 (RSA asymmetric key pair), enabling:
 
   - Zero shared-secret risk: verifiers only need the public key
@@ -10,7 +8,6 @@ to RS256 (RSA asymmetric key pair), enabling:
   - Algorithm confusion protection: public key cannot be abused as an HMAC secret
 
 Finding addressed:
-  ARCH-01  HS256 symmetric JWT — all services sharing JWT_SECRET_KEY creates
            a single point of compromise. RS256 eliminates shared-secret risk.
 
 Key management:
@@ -71,7 +68,6 @@ _old_public_key: RSAPublicKey | None = None  # Retained during rotation window
 _key_id: str = ""  # kid claim in JWKS; SHA-256 fingerprint of public key DER
 _old_key_id: str = ""
 
-
 # ── Key loading ───────────────────────────────────────────────────────────────
 
 def _pem_to_key_id(public_key: RSAPublicKey) -> str:
@@ -81,7 +77,6 @@ def _pem_to_key_id(public_key: RSAPublicKey) -> str:
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     )
     return hashlib.sha256(der).hexdigest()[:16]
-
 
 def load_keys() -> bool:
     """
@@ -136,11 +131,9 @@ def load_keys() -> bool:
 
     return True
 
-
 def rs256_available() -> bool:
     """True if RS256 keys are loaded and ready."""
     return _private_key is not None and _public_key is not None
-
 
 # ── Token creation ─────────────────────────────────────────────────────────────
 
@@ -182,7 +175,6 @@ def sign_token(
     )
     return encoded, jti, ttl
 
-
 def verify_token(token: str) -> dict[str, Any]:
     """
     Verify an RS256 JWT. Tries the current public key first, then the old key
@@ -215,7 +207,6 @@ def verify_token(token: str) -> dict[str, Any]:
         options={"require": ["exp", "iat", "jti", "sub"]},
     )
 
-
 # ── JWKS endpoint ────────────────────────────────────────────────────────────────
 
 def _rsa_public_key_to_jwk(public_key: RSAPublicKey, kid: str) -> Dict[str, str]:
@@ -240,9 +231,7 @@ def _rsa_public_key_to_jwk(public_key: RSAPublicKey, kid: str) -> Dict[str, str]
         "e": _int_to_base64url(pub_numbers.e),
     }
 
-
 jwks_router = APIRouter(tags=["Security / JWKS"])
-
 
 @jwks_router.get(
     "/.well-known/jwks.json",
@@ -276,7 +265,6 @@ async def jwks_endpoint() -> Dict[str, List[Dict[str, str]]]:
 
     return {"keys": keys}
 
-
 # ── Dev key generation utility ────────────────────────────────────────────────────
 
 def generate_dev_keypair() -> tuple[str, str]:
@@ -307,7 +295,6 @@ def generate_dev_keypair() -> tuple[str, str]:
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode()
     return private_pem, public_pem
-
 
 if __name__ == "__main__":
     # python -m src.auth.jwt_rs256  → prints a dev key pair

@@ -40,13 +40,11 @@ from src.platform.database import Base
 if TYPE_CHECKING:
     from src.models.incident import Incident
 
-
 class AuditEventType(str, enum.Enum):
     STATUS_TRANSITION = "status_transition"
     METADATA_UPDATE   = "metadata_update"
     CREATED           = "created"
     QUARANTINED       = "quarantined"
-
 
 class IncidentAuditLog(Base):
     """

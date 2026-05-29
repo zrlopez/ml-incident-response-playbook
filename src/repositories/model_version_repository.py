@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.model_version import ModelVersion, ModelVersionStatus
 
-
 class ModelVersionRepository:
     """Async repository for ModelVersion rows."""
 

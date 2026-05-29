@@ -1,10 +1,7 @@
 """
-src/auth/password.py — Argon2 password hashing (ARCH-02 remediation)
 ======================================================================
-Phase 2 remediation: replaces passlib[bcrypt] with argon2-cffi.
 
 Findings addressed:
-  ARCH-02  passlib 1.7.4 unmaintained (last release 2020); no security fixes.
            bcrypt is adequate but argon2id is the 2023 OWASP Password Storage
            Cheat Sheet recommendation for new systems.
            Argon2id is memory-hard, resistant to GPU/ASIC brute-force.
@@ -66,7 +63,6 @@ _HASHER = PasswordHasher(
     type=Argon2Type.ID,  # argon2id — hybrid of argon2i and argon2d
 )
 
-
 def hash_password(plaintext: str) -> str:
     """
     Hash a plaintext password with argon2id.
@@ -77,7 +73,6 @@ def hash_password(plaintext: str) -> str:
     Never store the plaintext — discard it immediately after calling this.
     """
     return _HASHER.hash(plaintext)
-
 
 def verify_password(plaintext: str, stored_hash: str) -> bool:
     """
@@ -126,7 +121,6 @@ def verify_password(plaintext: str, stored_hash: str) -> bool:
     log.error("password.unrecognized_hash_format", prefix=stored_hash[:10])
     return False
 
-
 def needs_rehash(stored_hash: str) -> bool:
     """
     Return True if the stored hash should be upgraded.
@@ -143,10 +137,8 @@ def needs_rehash(stored_hash: str) -> bool:
         return True
     return False
 
-
 def maybe_rehash(stored_hash: str, plaintext: str) -> str | None:
     """
-    ARCH-02 MIGRATION: If the stored hash needs upgrading, return a new argon2id hash.
     Returns None if no rehash is needed.
 
     Usage in login handler:

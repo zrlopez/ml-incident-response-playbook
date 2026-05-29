@@ -24,7 +24,6 @@ import pytest
 
 NUM_WORKERS = 50
 
-
 # ---------------------------------------------------------------------------
 # Fake Redis
 # ---------------------------------------------------------------------------
@@ -64,7 +63,6 @@ class FakeRedis:
         with self._lock:
             return sum(1 for _, (_, exp) in self._store.items() if exp is None or exp > now)
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -83,7 +81,6 @@ def _make_denylist(redis: FakeRedis | None = None) -> tuple[FakeRedis, Any]:
             return r.exists(f"denylist:{token_jti}") == 1
 
     return r, Denylist()
-
 
 # ---------------------------------------------------------------------------
 # Tests

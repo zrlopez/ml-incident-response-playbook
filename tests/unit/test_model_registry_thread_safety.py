@@ -22,7 +22,6 @@ import pytest
 
 NUM_WORKERS = 50
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -59,7 +58,6 @@ def _make_mock_repo() -> MagicMock:
     repo.promote = MagicMock(side_effect=_promote)
     repo.get = MagicMock(side_effect=_get)
     return repo
-
 
 # ---------------------------------------------------------------------------
 # Tests

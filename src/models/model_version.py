@@ -32,14 +32,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from src.incident_tracker import Base
 
-
 class ModelVersionStatus(str, enum.Enum):
     ACTIVE      = "active"
     INACTIVE    = "inactive"
     CANARY      = "canary"
     SHADOW      = "shadow"
     QUARANTINED = "quarantined"
-
 
 class ModelVersion(Base):
     """

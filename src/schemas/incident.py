@@ -20,7 +20,6 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class IncidentResponse(BaseModel):
     """
     Typed representation of a single incident returned by the API.
@@ -49,7 +48,6 @@ class IncidentResponse(BaseModel):
         default=None, description="Resolution timestamp (UTC), null until resolved"
     )
 
-
 class IncidentListResponse(BaseModel):
     """
     Paginated list response for GET /incidents/.
@@ -67,7 +65,6 @@ class IncidentListResponse(BaseModel):
         ),
     )
     count: int = Field(..., description="Number of incidents in this page")
-
 
 class IncidentCreate(BaseModel):
     """
@@ -87,7 +84,6 @@ class IncidentCreate(BaseModel):
     owner: Optional[str] = Field(default=None, description="Assigned owner username")
     model_id: Optional[str] = Field(default=None, description="Associated model identifier")
     metadata: Optional[dict] = Field(default=None, description="Arbitrary key/value context")
-
 
 class IncidentStatusUpdate(BaseModel):
     """

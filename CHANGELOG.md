@@ -9,7 +9,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+> Cycle 3 (2026-05-29): Safety net, CI hardening, developer onboarding, K8s probe separation.
+> R-P4, R-P7, R-P13, R-P16, R-P20, R-P22 closed. Cycle 4 queue promoted.
+
 ### Added
+- **R-P22**: `tests/unit/test_incident_tracker_char.py` — 20-test characterization suite
+  for `src/incident_tracker.py`. Covers ORM model defaults, `to_dict()` shape,
+  `IncidentRepository` CRUD, keyset pagination (KEYSET-01 compound cursor), state-machine
+  enforcement, `init_db()` SQLite fast-path, and `get_session()` commit/rollback lifecycle.
+  Safety net for R-P23 refactor; runs against in-process aiosqlite (no external deps).
+- **R-P7**: `CONTRIBUTING.md` — full contributor onboarding guide covering prerequisites,
+  local setup, env vars, branching conventions, Conventional Commits format, PR checklist,
+  pre-commit hooks, CI gate summary, code style rules, test commands, and architecture notes.
+- **R-P13**: `docker-compose.yml` — verified and hardened: `postgres:16-alpine` +
+  `redis:7-alpine` with health-checks, named volumes, `.env` passthrough for all
+  required secrets. `prometheus` + `grafana` services included. `make ci-local` target
+  now resolves cleanly on a clean clone.
 - `CI-67a` / `R-P21`: Added `tests/unit/test_middleware_pii.py` — 5 regression tests that permanently lock the HIGH-01 privacy contracts for both `api.middleware._pseudo_ip()` and `api.config._rate_limit_key()`.
 
 ### Changed

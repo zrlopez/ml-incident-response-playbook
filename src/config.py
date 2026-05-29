@@ -8,7 +8,6 @@ value only at the point of use via .get_secret_value().
 
 Remediation changelog:
   SEC-01   jwt_secret_key promoted to SecretStr + reject_placeholder validator.
-  LOW-01   slack_webhook_url promoted to SecretStr — Incoming Webhook URLs
            are bearer credentials and must be masked in repr/logs.
 """
 from __future__ import annotations
@@ -19,7 +18,6 @@ from typing import Optional
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings
-
 
 def _reject_placeholder(v: SecretStr, field_name: str, min_len: int = 32) -> SecretStr:
     """
@@ -54,7 +52,6 @@ def _reject_placeholder(v: SecretStr, field_name: str, min_len: int = 32) -> Sec
             f"minimum is {min_len}."
         )
     return v
-
 
 class Settings(BaseSettings):
     """
@@ -127,7 +124,7 @@ class Settings(BaseSettings):
         default="oncall@yourorg.com",
         description="Recipient for incident alert emails from the Airflow DAG.",
     )
-    # LOW-01: Webhook URLs are bearer credentials — must be SecretStr so
+    # Webhook URLs are bearer credentials — must be SecretStr so
     # they are masked ('**********') in all repr(), str(), and log output.
     slack_webhook_url: SecretStr = Field(
         default=SecretStr(""),
@@ -136,7 +133,6 @@ class Settings(BaseSettings):
             "Treat as a secret — never log or expose in API responses."
         ),
     )
-
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
