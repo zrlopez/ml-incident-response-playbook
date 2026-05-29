@@ -90,6 +90,8 @@ Icon
 htmlcov/
 coverage.xml
 junit.xml
+pytest_results*.md
+.coverage_report*.txt
 .tox/
 *.cover
 
