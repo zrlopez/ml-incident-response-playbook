@@ -104,9 +104,9 @@ class UserRecord(Base):
         rec = cls.__new__(cls)  # noqa: PLC0414 — cls is implicitly passed by Python in classmethods
         rec.id = str(uuid.uuid4())
         rec.username = username
-        rec.hashed_password = data["hashed_password"]
-        rec.role = data["role"]
-        rec.disabled = data.get("disabled", False)
+        rec.hashed_password = str(data["hashed_password"])
+        rec.role = str(data["role"])
+        rec.disabled = bool(data.get("disabled", False))
         rec.hash_algorithm = "argon2id"
         rec.created_at = datetime.now(timezone.utc)
         rec.updated_at = datetime.now(timezone.utc)
