@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select, update
-from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.model_version import ModelVersion, ModelVersionStatus
@@ -34,28 +33,35 @@ class ModelVersionRepository:
         registered_at: Optional[datetime] = None,
         activated_at: Optional[datetime] = None,
     ) -> ModelVersion:
+        """Insert or update a ModelVersion row using a portable merge pattern."""
         now = datetime.now(timezone.utc)
-        row_data = {
-            "version": version,
-            "status": status,
-            "artifact_file": artifact_file,
-            "sha256": sha256,
-            "metrics_json": json.dumps(metrics) if metrics is not None else None,
-            "registered_at": registered_at or now,
-            "activated_at": activated_at,
-        }
-        stmt = (
-            sqlite_upsert(ModelVersion)
-            .values(**row_data)
-            .on_conflict_do_update(
-                index_elements=["version"],
-                set_={
-                    k: row_data[k]
-                    for k in ("status", "artifact_file", "sha256", "metrics_json", "activated_at")
-                },
+        metrics_json = json.dumps(metrics) if metrics is not None else None
+
+        existing = await self.get(version)
+        if existing is None:
+            row = ModelVersion(
+                version=version,
+                status=status,
+                artifact_file=artifact_file,
+                sha256=sha256,
+                metrics_json=metrics_json,
+                registered_at=registered_at or now,
+                activated_at=activated_at,
             )
-        )
-        await self._session.execute(stmt)
+            self._session.add(row)
+        else:
+            stmt = (
+                update(ModelVersion)
+                .where(ModelVersion.version == version)
+                .values(
+                    status=status,
+                    artifact_file=artifact_file,
+                    sha256=sha256,
+                    metrics_json=metrics_json,
+                    activated_at=activated_at,
+                )
+            )
+            await self._session.execute(stmt)
         await self._session.flush()
         return await self.get(version)  # type: ignore[return-value]
 
