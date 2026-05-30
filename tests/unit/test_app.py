@@ -2,28 +2,114 @@
 
 Strategy
 --------
-The Gradio UI block (gr.Blocks) is not unit-testable and is excluded from
-coverage by pragma comments in app.py.  The testable surface is:
+Gradio is only in requirements-demo.txt, not requirements-dev.txt.  Importing
+app.py executes ``import gradio as gr`` at module load, which would raise
+ModuleNotFoundError in the standard test environment before any patch can apply.
 
+The fix is to inject a lightweight MagicMock stub for ``gradio`` (and the
+artifact bootstrap / model-registry import side-effects) into sys.modules
+BEFORE app is first imported.  This is done once at module level in the
+``_bootstrap_app_module()`` helper, which is called at import time of this
+test file.  Because Python caches modules in sys.modules, subsequent
+``from app import ...`` calls inside test methods reuse the already-patched
+module without re-executing the module body.
+
+Testable surface (Gradio UI block intentionally excluded):
   _run_inference()  — pure business logic wrapping model_registry.predict()
   _SEVERITY_MAP     — severity label → numeric mapping constant
   _RUNBOOK_HINTS    — is_anomalous bool → hint string constant
-
-All model I/O is mocked; Gradio is never imported during these tests.
 """
 from __future__ import annotations
 
+import sys
+import types
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# Gradio stub — must run before any ``import app`` or ``from app import ...``
+# ---------------------------------------------------------------------------
+
+def _make_gradio_stub() -> types.ModuleType:
+    """Build a minimal fake ``gradio`` module that satisfies app.py's usage.
+
+    app.py uses:
+      gr.Blocks(title=...)  as a context manager
+      gr.Markdown(...)
+      gr.Row() / gr.Column()  as context managers
+      gr.Dropdown(...) / gr.Slider(...) / gr.Button(...) / gr.Textbox(...)
+      submit_btn.click(...)
+    All of these just need to be callable and support ``with`` blocks.
+    A MagicMock handles all of that automatically.
+    """
+    stub = types.ModuleType("gradio")
+    # Every attribute access on the stub returns a new MagicMock by default.
+    # We make the module itself behave like a MagicMock namespace.
+    magic = MagicMock()
+    stub.__dict__.update({
+        "Blocks": magic.Blocks,
+        "Markdown": magic.Markdown,
+        "Row": magic.Row,
+        "Column": magic.Column,
+        "Dropdown": magic.Dropdown,
+        "Slider": magic.Slider,
+        "Button": magic.Button,
+        "Textbox": magic.Textbox,
+    })
+    return stub
+
+
+def _bootstrap_app_module() -> None:
+    """Inject stubs and import app exactly once, making the patched module
+    available for all test methods without re-executing the module body."""
+    # 1. Stub gradio before anything tries to import it.
+    if "gradio" not in sys.modules:
+        sys.modules["gradio"] = _make_gradio_stub()  # type: ignore[assignment]
+
+    # 2. Stub the artifact path check so the bootstrap ``train()`` call in
+    #    app.py is skipped (the artifact file won't exist in CI).
+    _artifact_patch = patch(
+        "pathlib.Path.exists",
+        return_value=True,  # pretend the .joblib artifact already exists
+    )
+
+    # 3. Stub the registry import that app.py executes at module level.
+    mock_registry = MagicMock()
+    mock_registry.health.return_value = {"artifact_exists": True}
+    mock_registry.predict.return_value = {
+        "is_anomalous": False,
+        "anomaly_score": 0.05,
+        "confidence": 0.9,
+    }
+    registry_module = types.ModuleType("ml_models.incident_anomaly.registry")
+    registry_module.model_registry = mock_registry  # type: ignore[attr-defined]
+    registry_module.MODEL_VERSION = "v1-test"  # type: ignore[attr-defined]
+
+    if "ml_models.incident_anomaly.registry" not in sys.modules:
+        sys.modules["ml_models.incident_anomaly.registry"] = registry_module
+
+    # 4. Now it is safe to import app.
+    with _artifact_patch:
+        if "app" not in sys.modules:
+            import app  # noqa: F401  (side-effect: populates sys.modules["app"])
+
+
+# Run bootstrap at test-file import time.
+_bootstrap_app_module()
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_registry_mock(*, artifact_exists: bool = True, is_anomalous: bool = False) -> MagicMock:
-    """Return a mock model_registry with health() and predict() pre-configured."""
+def _make_registry_mock(
+    *, artifact_exists: bool = True, is_anomalous: bool = False
+) -> MagicMock:
+    """Return a fresh mock model_registry with health() and predict() pre-configured."""
     mock = MagicMock()
     mock.health.return_value = {"artifact_exists": artifact_exists}
     mock.predict.return_value = {
@@ -88,7 +174,6 @@ class TestRunbookHints:
 
     def test_normal_hint_contains_normal(self) -> None:
         from app import _RUNBOOK_HINTS
-        # The normal hint should indicate within-bounds status
         hint = _RUNBOOK_HINTS[False]
         assert any(word in hint.lower() for word in ("normal", "standard", "bounds"))
 
@@ -156,8 +241,7 @@ class TestRunInferenceNormal:
 
     def test_score_is_formatted_float(self) -> None:
         _, score, _, _ = self._call()
-        # Should be parseable as a float
-        float(score)
+        float(score)  # raises if not parseable
 
     def test_confidence_ends_with_percent(self) -> None:
         _, _, confidence, _ = self._call()
@@ -179,8 +263,7 @@ class TestRunInferenceNormal:
         with patch("app.model_registry", mock_registry):
             from app import _run_inference
             _run_inference(**_default_inputs())
-        call_args = mock_registry.predict.call_args
-        features = call_args[0][0]  # first positional arg
+        features = mock_registry.predict.call_args[0][0]
         assert len(features) == 7
 
     def test_all_features_are_float(self) -> None:
@@ -226,8 +309,7 @@ class TestRunInferenceSeverityRouting:
         mock_registry = _make_registry_mock(artifact_exists=True)
         with patch("app.model_registry", mock_registry):
             from app import _run_inference
-            inputs = {**_default_inputs(), "severity_label": label}
-            _run_inference(**inputs)
+            _run_inference(**{**_default_inputs(), "severity_label": label})
         return mock_registry.predict.call_args[0][0][0]  # first feature = severity
 
     def test_critical_sends_1(self) -> None:
@@ -243,6 +325,4 @@ class TestRunInferenceSeverityRouting:
         assert self._get_severity_feature("SEV-4 (Low)") == 4.0
 
     def test_unknown_label_falls_back_to_3(self) -> None:
-        # Unknown label should default to 3 (get returns None → int(None) would fail;
-        # the code uses .get(label, 3) so we expect 3.0)
         assert self._get_severity_feature("UNKNOWN") == 3.0
