@@ -51,12 +51,12 @@ def create_access_token(
         raise ValueError("Token payload must include 'sub' and 'role' claims")
     delta = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     if jwt_rs256.rs256_available():
-        return jwt_rs256.sign_token(data.copy(), expires_delta=delta, token_type="access")
+        return jwt_rs256.sign_token(data.copy(), expires_delta=delta, token_type="access")  # noqa: S106
     to_encode = data.copy()
     jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     expire = now + delta
-    to_encode.update({"exp": expire, "iat": now, "jti": jti, "token_type": "access"})
+    to_encode.update({"exp": expire, "iat": now, "jti": jti, "token_type": "access"})  # noqa: S106
     # SEC-01: get_jwt_secret() is the single unwrap point for the SecretStr.
     # Never assign the return value to a module-level or long-lived variable.
     encoded = jwt.encode(to_encode, get_jwt_secret(), algorithm=JWT_ALGORITHM)
@@ -70,12 +70,12 @@ def create_refresh_token(
         raise ValueError("Refresh token payload must include 'sub' claim")
     delta = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     if jwt_rs256.rs256_available():
-        return jwt_rs256.sign_token(data.copy(), expires_delta=delta, token_type="refresh")
+        return jwt_rs256.sign_token(data.copy(), expires_delta=delta, token_type="refresh")  # noqa: S106
     to_encode = data.copy()
     jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     expire = now + delta
-    to_encode.update({"exp": expire, "iat": now, "jti": jti, "token_type": "refresh"})
+    to_encode.update({"exp": expire, "iat": now, "jti": jti, "token_type": "refresh"})  # noqa: S106
     encoded = jwt.encode(to_encode, get_jwt_secret(), algorithm=JWT_ALGORITHM)
     return encoded, jti, int(delta.total_seconds())
 
