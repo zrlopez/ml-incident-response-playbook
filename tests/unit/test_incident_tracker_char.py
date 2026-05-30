@@ -33,6 +33,13 @@ SQLite timezone note:
   that check timestamp fields assert `isinstance(..., datetime)` and
   `is not None` rather than `tzinfo is not None`. The timezone contract
   is enforced at the PostgreSQL layer in integration tests.
+
+R-P23 resolve() note:
+  IncidentRepository has no standalone resolve() method after the R-P23
+  refactor. Resolution is performed via update_status(id, RESOLVED),
+  which sets resolved_at internally via update_status(). resolution_notes
+  must be written directly on the ORM instance before or after the
+  transition. Tests in section 8 reflect this contract.
 """
 from __future__ import annotations
 
@@ -324,7 +331,12 @@ async def test_update_status_missing_incident_raises(
 
 
 # ---------------------------------------------------------------------------
-# 8. IncidentRepository.resolve()
+# 8. Resolution via update_status(RESOLVED)
+#
+# R-P23 note: IncidentRepository has no standalone resolve() method.
+# Resolution is performed via update_status(id, RESOLVED), which sets
+# resolved_at internally. resolution_notes is written directly on the
+# ORM instance.
 # ---------------------------------------------------------------------------
 
 
@@ -335,9 +347,8 @@ async def test_resolve_sets_resolved_at(
     inc = await _create_incident(session)
     # Walk through required transitions: OPEN → INVESTIGATING → RESOLVED
     await repo.update_status(inc.id, IncidentStatus.INVESTIGATING)
-    resolved = await repo.resolve(inc.id, resolution_notes="RCA complete")
+    resolved = await repo.update_status(inc.id, IncidentStatus.RESOLVED)
     # SQLite strips tzinfo; assert resolved_at is a non-None datetime.
-    # UTC timezone contract verified in PostgreSQL integration tests.
     assert resolved.resolved_at is not None
     assert isinstance(resolved.resolved_at, datetime)
     assert resolved.status == IncidentStatus.RESOLVED
@@ -349,9 +360,12 @@ async def test_resolve_stores_resolution_notes(
 ) -> None:
     inc = await _create_incident(session)
     await repo.update_status(inc.id, IncidentStatus.INVESTIGATING)
-    resolved = await repo.resolve(inc.id, resolution_notes="Fixed by rollback")
+    resolved = await repo.update_status(inc.id, IncidentStatus.RESOLVED)
+    # Set resolution_notes directly on the ORM instance (R-P23 contract)
+    resolved.resolution_notes = "Fixed by rollback"
+    await session.flush()
+    await session.refresh(resolved)
     assert resolved.resolution_notes == "Fixed by rollback"
-    # Confirm resolved_at is also set as a side-effect
     assert resolved.resolved_at is not None
 
 
