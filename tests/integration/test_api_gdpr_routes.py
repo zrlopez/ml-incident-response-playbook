@@ -44,7 +44,7 @@ class TestGDPRExport:
 
     @pytest.mark.anyio
     async def test_export_unauthenticated_returns_4xx(self):
-        """Without valid credentials the route must not return 2xx."""
+        """Without valid credentials the route must return 401 or 403."""
         path = _export_path()
         if path is None:
             pytest.skip("No export route")
@@ -52,12 +52,9 @@ class TestGDPRExport:
         from api.gdpr_routes import router
         app = FastAPI()
         app.include_router(router)
-        try:
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-                resp = await c.get(path)
-            assert resp.status_code not in (200, 201, 204)
-        except Exception:
-            pass  # Unhandled dep error also means auth failed — acceptable
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get(path)
+        assert resp.status_code in (401, 403)
 
 
 class TestGDPRDelete:
