@@ -25,14 +25,14 @@ license: mit
 |---|---|
 | Security toolchain | TruffleHog + Bandit + semgrep + Trivy + CodeQL + pip-audit + SBOM ([`secured_ci.yml`](.github/workflows/secured_ci.yml)) |
 | Supply-chain hardening | All GitHub Actions pinned to SHA digests |
-| Test coverage | ≥75% unit, ≥65% integration (enforced in CI) |
+| Test coverage | ≥80% unit, ≥65% integration (enforced in CI) |
 | Type safety | mypy strict mode, Pydantic models on all API shapes |
 | Architecture decisions | [ADR directory](https://github.com/zrlopez/ml-incident-response-playbook/tree/main/docs/adr) — 9 decisions documented |
 | Runbook maturity | 7 runbooks with Prometheus-bound thresholds + validation log |
 | Live deployment | [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api) |
 | Operational docs | [mlops.zrl.dev](https://mlops.zrl.dev) |
 
-A production-style operational documentation repo for ML and AI incident response.
+This repository is a **production-adjacent portfolio artifact** — built to the standards of a real engineering team, not a tutorial. It demonstrates what staff-level MLOps work looks like before it hits a production SLA: a hardened FastAPI service, a secured CI/CD pipeline, an ML anomaly detection layer, GDPR pseudonymisation, RS256 JWT auth, and a full operational runbook suite. Every design decision is documented, every gate is enforced, and every dependency is audited. Built as a hiring signal for Data Operations, MLOps, and Technical Engineering roles.
 
 ## Business Overview
 
@@ -63,7 +63,7 @@ This project showcases a production-grade MLOps incident-response system built w
 - **ML layer** — IsolationForest anomaly detector with a thread-safe model registry, reproducible training pipeline, and a JWT-protected inference endpoint.
 - **Supply-chain security** — SHA-pinned GitHub Actions, Trivy container scanning, Bandit SAST, TruffleHog secret scanning, pip-audit dependency auditing, and Dependabot auto-bumps.
 - **Operational runbooks** — Five incident runbooks with Mermaid decision trees, a severity matrix, escalation templates, and postmortem artifacts.
-- **Engineering rigour** — 530+ unit tests, ≥75% coverage gate, mypy type checking, ruff linting, `CODEOWNERS`, and a full MkDocs documentation site.
+- **Engineering rigour** — 677 unit tests, ≥80% coverage gate, mypy type checking, ruff linting, `CODEOWNERS`, and a full MkDocs documentation site.
 
 ## Feature Highlights
 
@@ -178,7 +178,7 @@ This service is deployed to [Hugging Face Spaces](https://huggingface.co/spaces/
 
 ## CI/CD Overview
 
-The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥75% on unit tests** (SQLite, fast) and **≥65% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
+The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥80% on unit tests** (SQLite, fast) and **≥65% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
 
 ## Roadmap
 
