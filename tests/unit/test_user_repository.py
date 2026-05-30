@@ -1,216 +1,259 @@
-"""tests/unit/test_user_repository.py
+"""
+Unit tests for src/users/repository.py.
 
-Covers src/users/repository.py — InMemoryUserRepository.
+Covers:
+  - UserRecord.from_dict / to_dict
+  - InMemoryUserRepository: get_by_username, authenticate, update_password_hash, disable_user
+  - PostgresUserRepository via mocked async session factory
 
-Strategy
---------
-InMemoryUserRepository requires zero mocking (no DB, no async engine),
-so every branch is exercised directly.
-
-get_user_repository() is intentionally excluded: it lazy-imports
-api.stub_users at call time, which calls _require_dev_password() and
-raises RuntimeError if DEV_*_PASSWORD env vars are absent — killing
-pytest collection. The factory is already exercised indirectly by
-test_api.py via the full app fixture.
-
-PostgresUserRepository and get_db_session are deferred to integration
-tests that need a live engine.
-
-Coverage targets (src/users/repository.py):
-  - UserRecord.from_dict() / to_dict()
-  - InMemoryUserRepository.get_by_username()       — hit and miss
-  - InMemoryUserRepository.update_password_hash()  — found and not-found
-  - InMemoryUserRepository.authenticate()          — success, wrong password,
-                                                     disabled user, rehash path
-  - InMemoryUserRepository.disable_user()          — success and not-found
+All tests use the sqlite_engine fixture (from conftest.py) to ensure
+SQLAlchemy mappers are configured before UserRecord.from_dict is called.
 """
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
-from src.users.repository import InMemoryUserRepository, UserRecord
 from src.auth.password import hash_password
+from src.users.repository import (
+    InMemoryUserRepository,
+    PostgresUserRepository,
+    UserRecord,
+)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
-PLAINTEXT = "correct-horse-battery-staple-99"
-
-
-def _make_users(
-    *,
-    disabled: bool = False,
-    extra: dict | None = None,
-) -> dict[str, dict]:
-    """Build a minimal _USERS-style dict with one active user."""
-    users: dict[str, dict] = {
-        "alice": {
-            "hashed_password": hash_password(PLAINTEXT),
-            "role": "analyst",
-            "disabled": disabled,
-        },
+def _make_users(password: str = "Secret123!") -> dict[str, dict]:
+    hashed = hash_password(password)
+    return {
+        "alice": {"hashed_password": hashed, "role": "admin"},
+        "bob": {"hashed_password": hashed, "role": "analyst", "disabled": True},
     }
-    if extra:
-        users.update(extra)
-    return users
 
 
-def _make_repo(**kwargs) -> InMemoryUserRepository:
-    return InMemoryUserRepository(_make_users(**kwargs))
+def _make_record(username: str = "alice", role: str = "admin", disabled: bool = False) -> UserRecord:
+    hashed = hash_password("Secret123!")
+    return UserRecord.from_dict(username, {"hashed_password": hashed, "role": role, "disabled": disabled})
 
 
-# ---------------------------------------------------------------------------
-# UserRecord
-# ---------------------------------------------------------------------------
+@pytest.fixture()
+def repo(sqlite_engine) -> InMemoryUserRepository:  # sqlite_engine ensures mappers are configured
+    return InMemoryUserRepository(_make_users())
+
+
+# ── UserRecord ────────────────────────────────────────────────────────────────
 
 class TestUserRecord:
-    def test_from_dict_sets_username(self) -> None:
-        record = UserRecord.from_dict("alice", {"hashed_password": "h", "role": "analyst"})
-        assert record.username == "alice"
+    @pytest.mark.anyio
+    async def test_from_dict_sets_fields(self, sqlite_engine):
+        hashed = hash_password("pw")
+        rec = UserRecord.from_dict("testuser", {"hashed_password": hashed, "role": "admin"})
+        assert rec.username == "testuser"
+        assert rec.role == "admin"
+        assert rec.hashed_password == hashed
+        assert rec.disabled is False
+        assert rec.hash_algorithm == "argon2id"
 
-    def test_from_dict_sets_role(self) -> None:
-        record = UserRecord.from_dict("alice", {"hashed_password": "h", "role": "admin"})
-        assert record.role == "admin"
+    @pytest.mark.anyio
+    async def test_from_dict_disabled_flag(self, sqlite_engine):
+        hashed = hash_password("pw")
+        rec = UserRecord.from_dict("u", {"hashed_password": hashed, "role": "analyst", "disabled": True})
+        assert rec.disabled is True
 
-    def test_from_dict_disabled_defaults_false(self) -> None:
-        record = UserRecord.from_dict("alice", {"hashed_password": "h", "role": "analyst"})
-        assert record.disabled is False
-
-    def test_from_dict_disabled_explicit_true(self) -> None:
-        record = UserRecord.from_dict(
-            "alice", {"hashed_password": "h", "role": "analyst", "disabled": True}
-        )
-        assert record.disabled is True
-
-    def test_from_dict_assigns_uuid_id(self) -> None:
-        record = UserRecord.from_dict("alice", {"hashed_password": "h", "role": "analyst"})
-        assert len(record.id) == 36  # UUID4 string
-
-    def test_to_dict_excludes_hashed_password(self) -> None:
-        record = UserRecord.from_dict("alice", {"hashed_password": "secret", "role": "analyst"})
-        d = record.to_dict()
+    @pytest.mark.anyio
+    async def test_to_dict_excludes_password(self, sqlite_engine):
+        hashed = hash_password("pw")
+        rec = UserRecord.from_dict("u", {"hashed_password": hashed, "role": "analyst"})
+        d = rec.to_dict()
         assert "hashed_password" not in d
+        assert d["username"] == "u"
+        assert d["role"] == "analyst"
+        assert "id" in d
+        assert "created_at" in d
+        assert "updated_at" in d
 
-    def test_to_dict_contains_expected_keys(self) -> None:
-        record = UserRecord.from_dict("alice", {"hashed_password": "h", "role": "analyst"})
-        assert {
-            "id", "username", "role", "disabled",
-            "hash_algorithm", "created_at", "updated_at",
-        } == set(record.to_dict())
+    @pytest.mark.anyio
+    async def test_to_dict_id_is_uuid_string(self, sqlite_engine):
+        import uuid
+        hashed = hash_password("pw")
+        rec = UserRecord.from_dict("u", {"hashed_password": hashed, "role": "analyst"})
+        uuid.UUID(rec.to_dict()["id"])  # raises if not a valid UUID
 
 
-# ---------------------------------------------------------------------------
-# InMemoryUserRepository — get_by_username
-# ---------------------------------------------------------------------------
+# ── InMemoryUserRepository ────────────────────────────────────────────────────
 
-class TestGetByUsername:
-    async def test_returns_record_for_known_user(self) -> None:
-        repo = _make_repo()
+class TestInMemoryUserRepository:
+
+    @pytest.mark.anyio
+    async def test_get_by_username_found(self, repo):
         user = await repo.get_by_username("alice")
         assert user is not None
         assert user.username == "alice"
 
-    async def test_returns_none_for_unknown_user(self) -> None:
-        repo = _make_repo()
+    @pytest.mark.anyio
+    async def test_get_by_username_missing(self, repo):
         user = await repo.get_by_username("nobody")
         assert user is None
 
-
-# ---------------------------------------------------------------------------
-# InMemoryUserRepository — update_password_hash
-# ---------------------------------------------------------------------------
-
-class TestUpdatePasswordHash:
-    async def test_updates_hash_for_known_user(self) -> None:
-        repo = _make_repo()
-        await repo.update_password_hash("alice", "newhash", algorithm="argon2id")
-        user = await repo.get_by_username("alice")
-        assert user is not None
-        assert user.hashed_password == "newhash"
-
-    async def test_updates_algorithm(self) -> None:
-        repo = _make_repo()
-        await repo.update_password_hash("alice", "newhash", algorithm="bcrypt")
-        user = await repo.get_by_username("alice")
-        assert user is not None
-        assert user.hash_algorithm == "bcrypt"
-
-    async def test_no_error_for_unknown_user(self) -> None:
-        """Should log a warning and return gracefully — not raise."""
-        repo = _make_repo()
-        await repo.update_password_hash("ghost", "newhash")  # must not raise
-
-    async def test_unknown_user_does_not_affect_store(self) -> None:
-        repo = _make_repo()
-        await repo.update_password_hash("ghost", "newhash")
-        assert await repo.get_by_username("ghost") is None
-
-
-# ---------------------------------------------------------------------------
-# InMemoryUserRepository — authenticate
-# ---------------------------------------------------------------------------
-
-class TestAuthenticate:
-    async def test_returns_user_on_correct_password(self) -> None:
-        repo = _make_repo()
-        user = await repo.authenticate("alice", PLAINTEXT)
+    @pytest.mark.anyio
+    async def test_authenticate_success(self, repo):
+        user = await repo.authenticate("alice", "Secret123!")
         assert user is not None
         assert user.username == "alice"
 
-    async def test_returns_none_on_wrong_password(self) -> None:
-        repo = _make_repo()
-        user = await repo.authenticate("alice", "wrong-password")
+    @pytest.mark.anyio
+    async def test_authenticate_wrong_password(self, repo):
+        user = await repo.authenticate("alice", "WrongPass!")
         assert user is None
 
-    async def test_returns_none_for_unknown_user(self) -> None:
-        repo = _make_repo()
-        user = await repo.authenticate("nobody", PLAINTEXT)
+    @pytest.mark.anyio
+    async def test_authenticate_disabled_user(self, repo):
+        user = await repo.authenticate("bob", "Secret123!")
         assert user is None
 
-    async def test_returns_none_for_disabled_user(self) -> None:
-        repo = _make_repo(disabled=True)
-        user = await repo.authenticate("alice", PLAINTEXT)
+    @pytest.mark.anyio
+    async def test_authenticate_missing_user(self, repo):
+        user = await repo.authenticate("ghost", "Secret123!")
         assert user is None
 
-    async def test_returns_user_role(self) -> None:
-        repo = _make_repo()
-        user = await repo.authenticate("alice", PLAINTEXT)
-        assert user is not None
-        assert user.role == "analyst"
+    @pytest.mark.anyio
+    async def test_update_password_hash(self, repo):
+        new_hash = hash_password("NewPass456!")
+        await repo.update_password_hash("alice", new_hash, algorithm="argon2id")
+        user = await repo.get_by_username("alice")
+        assert user.hashed_password == new_hash
+        assert user.hash_algorithm == "argon2id"
 
+    @pytest.mark.anyio
+    async def test_update_password_hash_missing_user_is_noop(self, repo):
+        await repo.update_password_hash("ghost", "somehash")  # must not raise
 
-# ---------------------------------------------------------------------------
-# InMemoryUserRepository — disable_user
-# ---------------------------------------------------------------------------
-
-class TestDisableUser:
-    async def test_returns_true_for_known_user(self) -> None:
-        repo = _make_repo()
+    @pytest.mark.anyio
+    async def test_disable_user_found(self, repo):
         result = await repo.disable_user("alice")
         assert result is True
-
-    async def test_sets_disabled_flag(self) -> None:
-        repo = _make_repo()
-        await repo.disable_user("alice")
         user = await repo.get_by_username("alice")
-        assert user is not None
         assert user.disabled is True
 
-    async def test_returns_false_for_unknown_user(self) -> None:
-        repo = _make_repo()
-        result = await repo.disable_user("ghost")
+    @pytest.mark.anyio
+    async def test_disable_user_not_found(self, repo):
+        result = await repo.disable_user("nobody")
         assert result is False
 
-    async def test_disabled_user_cannot_authenticate(self) -> None:
-        repo = _make_repo()
-        await repo.disable_user("alice")
-        user = await repo.authenticate("alice", PLAINTEXT)
-        assert user is None
+    @pytest.mark.anyio
+    async def test_disable_already_disabled_user(self, repo):
+        result = await repo.disable_user("bob")
+        assert result is True
+        user = await repo.get_by_username("bob")
+        assert user.disabled is True
 
-    async def test_disable_idempotent(self) -> None:
-        """Disabling an already-disabled user should still return True."""
-        repo = _make_repo(disabled=True)
+    @pytest.mark.anyio
+    async def test_authenticate_triggers_rehash(self, repo):
+        new_hash = hash_password("Secret123!")
+        with patch("src.users.repository.maybe_rehash", return_value=new_hash):
+            user = await repo.authenticate("alice", "Secret123!")
+        assert user is not None
+        stored = await repo.get_by_username("alice")
+        assert stored.hashed_password == new_hash
+
+    @pytest.mark.anyio
+    async def test_authenticate_no_rehash_needed(self, repo):
+        original_hash = (await repo.get_by_username("alice")).hashed_password
+        with patch("src.users.repository.maybe_rehash", return_value=None):
+            user = await repo.authenticate("alice", "Secret123!")
+        assert user is not None
+        stored = await repo.get_by_username("alice")
+        assert stored.hashed_password == original_hash
+
+
+# ── PostgresUserRepository (mocked session) ───────────────────────────────────
+
+class TestPostgresUserRepository:
+
+    def _make_repo(self, scalar_result=None, rowcount=1):
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = scalar_result
+        mock_result.fetchone.return_value = MagicMock() if rowcount else None
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        mock_begin = AsyncMock()
+        mock_begin.__aenter__ = AsyncMock(return_value=mock_begin)
+        mock_begin.__aexit__ = AsyncMock(return_value=False)
+        mock_session.begin = MagicMock(return_value=mock_begin)
+
+        mock_factory = MagicMock(return_value=mock_session)
+        return PostgresUserRepository(mock_factory)
+
+    @pytest.mark.anyio
+    async def test_get_by_username_returns_record(self, sqlite_engine):
+        fake_user = _make_record()
+        repo = self._make_repo(scalar_result=fake_user)
+        result = await repo.get_by_username("alice")
+        assert result is fake_user
+
+    @pytest.mark.anyio
+    async def test_get_by_username_returns_none(self, sqlite_engine):
+        repo = self._make_repo(scalar_result=None)
+        result = await repo.get_by_username("nobody")
+        assert result is None
+
+    @pytest.mark.anyio
+    async def test_update_password_hash(self, sqlite_engine):
+        repo = self._make_repo()
+        await repo.update_password_hash("alice", "newhash", algorithm="argon2id")
+
+    @pytest.mark.anyio
+    async def test_disable_user_found(self, sqlite_engine):
+        repo = self._make_repo(rowcount=1)
         result = await repo.disable_user("alice")
         assert result is True
+
+    @pytest.mark.anyio
+    async def test_disable_user_not_found(self, sqlite_engine):
+        repo = self._make_repo(rowcount=0)
+        result = await repo.disable_user("nobody")
+        assert result is False
+
+    @pytest.mark.anyio
+    async def test_authenticate_success(self, sqlite_engine):
+        fake_user = _make_record()
+        repo = self._make_repo(scalar_result=fake_user)
+        with patch("src.users.repository.maybe_rehash", return_value=None):
+            result = await repo.authenticate("alice", "Secret123!")
+        assert result is fake_user
+
+    @pytest.mark.anyio
+    async def test_authenticate_wrong_password(self, sqlite_engine):
+        fake_user = _make_record()
+        repo = self._make_repo(scalar_result=fake_user)
+        result = await repo.authenticate("alice", "WrongPass!")
+        assert result is None
+
+    @pytest.mark.anyio
+    async def test_authenticate_disabled_user(self, sqlite_engine):
+        fake_user = _make_record(disabled=True)
+        repo = self._make_repo(scalar_result=fake_user)
+        result = await repo.authenticate("alice", "Secret123!")
+        assert result is None
+
+    @pytest.mark.anyio
+    async def test_authenticate_user_not_found(self, sqlite_engine):
+        repo = self._make_repo(scalar_result=None)
+        result = await repo.authenticate("ghost", "Secret123!")
+        assert result is None
+
+    @pytest.mark.anyio
+    async def test_authenticate_triggers_rehash(self, sqlite_engine):
+        fake_user = _make_record()
+        repo = self._make_repo(scalar_result=fake_user)
+        new_hash = hash_password("Secret123!")
+        with patch("src.users.repository.maybe_rehash", return_value=new_hash):
+            result = await repo.authenticate("alice", "Secret123!")
+        assert result is not None
+        assert result.hashed_password == new_hash
