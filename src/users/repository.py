@@ -94,23 +94,26 @@ class UserRecord(Base):
     @classmethod
     def from_dict(cls, username: str, data: dict[str, object]) -> "UserRecord":
         """
-        Construct a UserRecord without triggering SQLAlchemy's ORM __init__.
+        Construct a transient (un-persisted) UserRecord from a plain dict.
 
         Used by InMemoryUserRepository to build in-memory records that satisfy
         the AbstractUserRepository interface without a database session.
-        Bypassing __init__ is intentional: SQLAlchemy's instrumented __init__
-        expects a session context that does not exist in the in-memory path.
+
+        SQLAlchemy's instrumented __init__ does NOT require a session — it only
+        needs one when the object is added to a session. Using cls(...) directly
+        is therefore correct and avoids the _sa_instance_state bug that
+        __new__ caused (instrumentation was never attached on attribute writes).
         """
-        rec = cls.__new__(cls)  # noqa: PLC0414 — cls is implicitly passed by Python in classmethods
-        rec.id = str(uuid.uuid4())
-        rec.username = username
-        rec.hashed_password = str(data["hashed_password"])
-        rec.role = str(data["role"])
-        rec.disabled = bool(data.get("disabled", False))
-        rec.hash_algorithm = "argon2id"
-        rec.created_at = datetime.now(timezone.utc)
-        rec.updated_at = datetime.now(timezone.utc)
-        return rec
+        return cls(
+            id=str(uuid.uuid4()),
+            username=username,
+            hashed_password=str(data["hashed_password"]),
+            role=str(data["role"]),
+            disabled=bool(data.get("disabled", False)),
+            hash_algorithm="argon2id",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
 
     def to_dict(self) -> dict:
         """Safe representation — hashed_password intentionally excluded."""
@@ -235,35 +238,33 @@ class PostgresUserRepository(AbstractUserRepository):
                 result = await session.execute(
                     update(UserRecord)
                     .where(UserRecord.username == username)
-                    .values(
-                        disabled=True,
-                        updated_at=datetime.now(timezone.utc),
-                    )
-                    .returning(UserRecord.username)
+                    .values(disabled=True, updated_at=datetime.now(timezone.utc))
                 )
-                row = result.fetchone()
-        if row:
-            log.warning(
-                "gdpr.user_disabled",
-                username=username,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-            )
-        return row is not None
+                found = result.fetchone() is not None
+        if found:
+            log.info("user.disabled", username=username)
+        else:
+            log.warning("user.disable_not_found", username=username)
+        return found
 
-# ── In-memory test implementation ────────────────────────────────────────────────────────────
+# ── In-memory implementation (test / development only) ──────────────────────────────────────
 class InMemoryUserRepository(AbstractUserRepository):
     """
-    Test/dev drop-in. Pre-seeded with hashed passwords from environment variables.
-    Used by conftest.py fixture to replace the _USERS dict during test runs.
+    Thread-safe (asyncio-safe) in-memory user store.
 
-    Never use in production — enforced by PostgresUserRepository wired in lifespan.
+    Loaded when ENVIRONMENT=test or ENVIRONMENT=development.
+    Seeded from the USERS dict in config (argon2id hashes only).
+
+    NOT for production use: data is lost on process restart and there is
+    no horizontal-scaling support.
     """
 
-    def __init__(self, users: dict[str, dict]) -> None:
-        # Store as UserRecord-like objects for interface compatibility
-        self._store: dict[str, UserRecord] = {}
-        for username, data in users.items():
-            self._store[username] = UserRecord.from_dict(username, data)
+    def __init__(self, users: dict[str, dict[str, object]]) -> None:
+        # username → UserRecord
+        self._store: dict[str, UserRecord] = {
+            username: UserRecord.from_dict(username, data)
+            for username, data in users.items()
+        }
 
     async def get_by_username(self, username: str) -> Optional[UserRecord]:
         return self._store.get(username)
@@ -271,9 +272,14 @@ class InMemoryUserRepository(AbstractUserRepository):
     async def update_password_hash(
         self, username: str, new_hash: str, algorithm: str = "argon2id"
     ) -> None:
-        if username in self._store:
-            self._store[username].hashed_password = new_hash
-            self._store[username].hash_algorithm = algorithm
+        user = self._store.get(username)
+        if user is None:
+            log.warning("user.update_hash_not_found", username=username)
+            return
+        user.hashed_password = new_hash
+        user.hash_algorithm = algorithm
+        user.updated_at = datetime.now(timezone.utc)
+        log.info("user.password_hash_updated", username=username, algorithm=algorithm)
 
     async def authenticate(
         self, username: str, plaintext_password: str
@@ -281,39 +287,58 @@ class InMemoryUserRepository(AbstractUserRepository):
         user = await self.get_by_username(username)
         if user is None or user.disabled:
             return None
+
         if not verify_password(plaintext_password, user.hashed_password):
+            log.warning("auth.verify_failed", username=username)
             return None
+
+        # rehash-on-login migration
         new_hash = maybe_rehash(user.hashed_password, plaintext_password)
         if new_hash:
-            await self.update_password_hash(username, new_hash)
+            await self.update_password_hash(username, new_hash, algorithm="argon2id")
+
+        log.info("auth.login_success", username=username, role=user.role)
         return user
 
     async def disable_user(self, username: str) -> bool:
-        if username not in self._store:
+        user = self._store.get(username)
+        if user is None:
+            log.warning("user.disable_not_found", username=username)
             return False
-        self._store[username].disabled = True
-        self._store[username].updated_at = datetime.now(timezone.utc)
-        log.warning(
-            "gdpr.user_disabled",
-            username=username,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            store="in_memory",
-        )
+        user.disabled = True
+        user.updated_at = datetime.now(timezone.utc)
+        log.info("user.disabled", username=username)
         return True
 
-# ── Session factory (matches incident_tracker.py pattern) ─────────────────────────────
-async def get_user_session() -> AsyncIterator[AsyncSession]:
+
+# ── Factory ──────────────────────────────────────────────────────────────────────────────────
+def get_user_repository() -> AbstractUserRepository:
     """
-    FastAPI dependency: yields a database session scoped to a single request.
-    Uses the same engine as IncidentRepository (same DATABASE_URL).
+    FastAPI dependency: returns the appropriate repository implementation.
+
+    Development / test: InMemoryUserRepository seeded from settings.USERS.
+    Production:         PostgresUserRepository backed by settings.DATABASE_URL.
+
+    Inject via Depends(get_user_repository) in route handlers.
     """
     settings = get_settings()
-    engine = create_async_engine(
-        settings.database_url if hasattr(settings, "database_url") else "sqlite+aiosqlite:///./incidents.db",  # noqa: E501
-        echo=False,
-        pool_pre_ping=True,
-    )
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as session:
+    if settings.environment in ("test", "development"):
+        return InMemoryUserRepository(settings.users)
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    return PostgresUserRepository(session_factory)
+
+
+async def get_db_session() -> AsyncIterator[AsyncSession]:
+    """
+    FastAPI dependency yielding a single AsyncSession per request.
+
+    Used by route handlers that need direct session access (e.g. bulk queries).
+    For most use-cases prefer get_user_repository() which manages sessions
+    internally.
+    """
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
         yield session
-    await engine.dispose()
