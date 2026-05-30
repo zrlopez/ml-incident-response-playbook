@@ -30,15 +30,10 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
-
 from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.platform.database import Base
-
-if TYPE_CHECKING:
-    from src.models.incident import Incident
 
 class AuditEventType(str, enum.Enum):
     STATUS_TRANSITION = "status_transition"
@@ -78,7 +73,7 @@ class IncidentAuditLog(Base):
     )
 
     # Relationship back to parent Incident (lazy="raise" prevents N+1 by default)
-    incident: Mapped[Incident] = relationship(
+    incident: Mapped["Incident"] = relationship(
         "Incident",
         back_populates="audit_logs",
         lazy="raise",
