@@ -269,6 +269,8 @@ jobs:
   # CI-62: test_model_registry_thread_safety.py wired in (50-worker concurrency suite).
   # CI-63: test_redis_denylist_concurrency.py wired in (Redis expiry + race conditions).
   # CI-64: test_incident_service_contract.py wired in (API<->service interface contract).
+  # CI-65: test_password.py, test_incident_tracker_facade.py, test_inference_router.py,
+  #        test_incident_tracker_char.py wired in; gate raised 75 -> 77.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -319,6 +321,9 @@ jobs:
         # CI-62: add test_model_registry_thread_safety.py.
         # CI-63: add test_redis_denylist_concurrency.py.
         # CI-64: add test_incident_service_contract.py.
+        # CI-65: add test_password.py, test_incident_tracker_facade.py,
+        #        test_inference_router.py, test_incident_tracker_char.py.
+        #        Raise --cov-fail-under 75 -> 77.
         run: |
           pytest \
             tests/unit/test_incident_service.py \
@@ -346,6 +351,10 @@ jobs:
             tests/unit/test_model_registry_thread_safety.py \
             tests/unit/test_redis_denylist_concurrency.py \
             tests/unit/test_incident_service_contract.py \
+            tests/unit/test_password.py \
+            tests/unit/test_incident_tracker_facade.py \
+            tests/unit/test_inference_router.py \
+            tests/unit/test_incident_tracker_char.py \
             --cov=src \
             --cov=src/validation \
             --cov=src/repositories \
@@ -354,7 +363,7 @@ jobs:
             --cov=pipelines \
             --cov-report=xml:coverage-unit.xml \
             --cov-report=term-missing \
-            --cov-fail-under=75 \
+            --cov-fail-under=77 \
             -n auto \
             -v
 
