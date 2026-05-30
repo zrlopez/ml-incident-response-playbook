@@ -1,4 +1,4 @@
-# ADR-002: Redis-backed JWT Token Denylist
+# ADR-003: Redis-backed JWT Token Denylist
 
 | Field        | Value                               |
 |---|---|

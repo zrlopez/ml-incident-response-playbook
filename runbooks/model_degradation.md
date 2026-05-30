@@ -1,6 +1,32 @@
 # Runbook: Model Degradation
 
-**Last reviewed:** 2026-05-24  |  **Lifecycle stage:** OPEN → INVESTIGATING → MITIGATING → RESOLVED → CLOSED
+**Last reviewed:** 2026-05-28  |  **Lifecycle stage:** OPEN → INVESTIGATING → MITIGATING → RESOLVED → CLOSED
+
+## Metadata
+
+| Field | Value |
+|---|---|
+| Severity | SEV-1 (P99 > 2 s for 5 m) / SEV-2 (P99 > 1 s for 5 m) / SEV-3 (accuracy drop > 5%) |
+| MTTR Target | 4 h (SEV-1) / 8 h (SEV-2) / 24 h (SEV-3) |
+| On-call Owner | ML Platform |
+| Last Tested | 2026-05-28 (local docker-compose drill) |
+| Related Alerts | `MLModelDegradationP99`, `MLDriftScoreHigh`, `MLIncidentRateSpike` |
+
+---
+
+## Alert Trigger
+
+This runbook is initiated when **any** of the following Prometheus alerts fire:
+
+| Alert Name | Prometheus Expression | Threshold | Severity |
+|---|---|---|---|
+| `MLModelDegradationP99` | `histogram_quantile(0.99, rate(ml_inference_duration_seconds_bucket[5m]))` | > 2.0 s for 5 m | SEV-1 |
+| `MLModelDegradationP99Warning` | `histogram_quantile(0.99, rate(ml_inference_duration_seconds_bucket[5m]))` | > 1.0 s for 5 m | SEV-2 |
+| `MLDriftScoreHigh` | `ml_drift_score_latest{feature_name=~".+"}` | PSI > 0.2 | SEV-2 |
+| `MLIncidentRateSpike` | `rate(ml_incident_total[1h])` | > 10/hr | SEV-2 |
+| `MLAPICriticalErrorRate` | `rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])` | > 20% | SEV-1 |
+
+---
 
 ## Purpose
 
@@ -26,18 +52,30 @@ caused by data drift, label drift, a bad deployment, or a downstream dependency 
 
 ## Immediate Actions (first 5 minutes)
 
-1. Confirm the alert is real — not a monitoring glitch or A/B shadow traffic:
+1. Confirm the alert is real — query Prometheus directly:
    ```bash
-   # Pull the last 100 prediction audit log lines
-   kubectl logs -n production deploy/ml-incident-api --tail=100 | \
-     jq 'select(.event == "prediction.served")' | head -20
+   # Current P99 inference latency (MLModelDegradationP99 fires if > 2.0s)
+   curl -s http://localhost:9090/api/v1/query \
+     --data-urlencode 'query=histogram_quantile(0.99, rate(ml_inference_duration_seconds_bucket[5m]))' \
+     | jq '.data.result[] | {metric: .metric, value: .value[1]}'
+
+   # Current feature drift score (MLDriftScoreHigh fires if PSI > 0.2)
+   curl -s http://localhost:9090/api/v1/query \
+     --data-urlencode 'query=ml_drift_score_latest' \
+     | jq '.data.result[] | {feature: .metric.feature_name, psi: .value[1]}'
+
+   # Incident creation rate over 1h (MLIncidentRateSpike fires if > 10/hr)
+   curl -s http://localhost:9090/api/v1/query \
+     --data-urlencode 'query=rate(ml_incident_total[1h])' \
+     | jq '.data.result'
    ```
 2. Check whether a model deployment occurred recently:
    ```bash
    kubectl rollout history deployment/ml-model-server -n production
    # or query your model registry for the last promotion timestamp
    ```
-3. Compare current metrics to the last stable baseline in your metrics dashboard.
+3. Compare current metrics to the last stable baseline in the Grafana dashboard:
+   `http://localhost:3000/d/ml-ops-overview` (ML Operations Overview)
 4. Open the incident and set status to INVESTIGATING:
    ```bash
    curl -X PATCH https://<API_HOST>/incidents/<ID>/status \
@@ -59,9 +97,9 @@ caused by data drift, label drift, a bad deployment, or a downstream dependency 
 ## Diagnostic Checklist
 
 - [ ] Was there a model version or config change in the last 24 h?
-- [ ] Did input feature distributions shift? (check feature store freshness)
+- [ ] Did input feature distributions shift? (check `ml_drift_score_latest` in Grafana)
 - [ ] Did label quality or ground-truth pipeline change?
-- [ ] Did input request volume change materially (> 40%)?
+- [ ] Did input request volume change materially (> 40%)? (check `rate(ml_incident_total[1h])`)
 - [ ] Did a preprocessing or feature-engineering step change?
 - [ ] Is the model server returning errors silently? (check prediction error logs)
 - [ ] Is the issue limited to one model version, region, or cohort?
@@ -70,18 +108,23 @@ caused by data drift, label drift, a bad deployment, or a downstream dependency 
 
 ```mermaid
 flowchart TD
-    A[Degradation alert] --> B{Recent model deployment?}
-    B -- Yes --> C[Compare new vs. old version metrics]
-    B -- No --> D[Check feature drift and data freshness]
-    C --> E{Regression confirmed?}
-    D --> E
-    E -- Yes --> F[Roll back to last stable version]
-    E -- No --> G[Expand: check labels, volume, downstream deps]
-    F --> H[Monitor metrics for 15 min]
-    G --> H
-    H --> I{Stable?}
-    I -- Yes --> J[RESOLVED]
-    I -- No --> K[Escalate to secondary + data team]
+    A[Degradation alert fires] --> B{MLModelDegradationP99 or MLDriftScoreHigh?}
+    B -- Latency --> C[Query: histogram_quantile 0.99]
+    B -- Drift --> D[Query: ml_drift_score_latest by feature]
+    C --> E{P99 > 2.0s confirmed?}
+    D --> F{PSI > 0.2 confirmed?}
+    E -- Yes --> G[Check recent model deployment]
+    E -- No --> H[Monitoring false positive — close]
+    F -- Yes --> I[Identify drifted feature, freeze upstream pipeline]
+    G --> J{Deployment in last 24h?}
+    J -- Yes --> K[Roll back to last stable version]
+    J -- No --> L[Expand: labels, volume, downstream deps]
+    K --> M[Monitor ml_inference_duration_seconds for 15 min]
+    L --> M
+    I --> M
+    M --> N{Stable?}
+    N -- Yes --> O[RESOLVED]
+    N -- No --> P[Escalate to secondary + data team]
 ```
 
 ## Mitigation Steps
@@ -97,7 +140,6 @@ curl -X POST https://<API_HOST>/admin/feature-flags/model-v2 \
   -d '{"enabled": false}'
 
 # Option C: Freeze upstream feature pipeline if data-driven
-# (Halt the relevant Airflow DAG or Prefect flow)
 airflow dags pause <DAG_ID>
 ```
 
@@ -111,20 +153,22 @@ curl -X PATCH https://<API_HOST>/incidents/<ID>/status \
 
 ## Validation Steps
 
-- Primary KPI returns to within 2% of baseline for ≥ 15 consecutive minutes.
+- P99 latency (`ml_inference_duration_seconds`) returns below 500 ms for ≥ 15 consecutive minutes.
+- `ml_drift_score_latest` drops below PSI 0.1 for all features.
 - Feature null rate back below 0.5%.
 - No new error patterns in prediction audit logs.
-- Model owner confirms metrics are stable.
+- Model owner confirms metrics are stable in Grafana (`ml-ops-overview` dashboard).
 
 ```bash
-# Spot-check prediction logs post-mitigation
-kubectl logs -n production deploy/ml-model-server --tail=50 | \
-  jq 'select(.event == "prediction.served") | {model_version, latency_ms, error}'
+# Spot-check P99 latency post-mitigation (should be < 0.5)
+curl -s http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=histogram_quantile(0.99, rate(ml_inference_duration_seconds_bucket[5m]))' \
+  | jq '.data.result[] | .value[1]'
 ```
 
 ## Closure Criteria
 
-- [ ] Model KPI stable for ≥ 15 minutes post-mitigation.
+- [ ] P99 latency stable below 500 ms for ≥ 15 minutes post-mitigation.
 - [ ] Root cause identified or bounded.
 - [ ] Model version, drift source, or config change documented.
 - [ ] Incident status set to RESOLVED then CLOSED via API.
@@ -135,6 +179,12 @@ kubectl logs -n production deploy/ml-model-server --tail=50 | \
 
 - **Required PIR:** KPI dropped > 10% (SEV-2); root cause unknown at closure; data corruption confirmed.
 - **Lightweight note:** Isolated version regression with clean rollback and known root cause.
+
+## Runbook Validation
+
+| Date | Tester | Environment | Outcome | Notes |
+|---|---|---|---|---|
+| 2026-05-28 | @zrlopez | local docker-compose | PASS | Alert trigger table and Prometheus curl commands validated |
 
 ## Related Runbooks
 

@@ -20,7 +20,6 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class IncidentResponse(BaseModel):
     """
     Typed representation of a single incident returned by the API.
@@ -49,7 +48,6 @@ class IncidentResponse(BaseModel):
         default=None, description="Resolution timestamp (UTC), null until resolved"
     )
 
-
 class IncidentListResponse(BaseModel):
     """
     Paginated list response for GET /incidents/.
@@ -67,3 +65,42 @@ class IncidentListResponse(BaseModel):
         ),
     )
     count: int = Field(..., description="Number of incidents in this page")
+
+class IncidentCreate(BaseModel):
+    """
+    Input schema for POST /incidents/.
+
+    Validates all required fields at the API boundary before the request
+    reaches the service layer. strict=True prevents silent coercion
+    (e.g. int -> str for severity).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    title: str = Field(..., description="Short human-readable incident summary")
+    severity: str = Field(..., description="SEV-1 | SEV-2 | SEV-3 | SEV-4")
+    category: str = Field(..., description="Incident category label")
+    description: Optional[str] = Field(default=None, description="Extended description")
+    owner: Optional[str] = Field(default=None, description="Assigned owner username")
+    model_id: Optional[str] = Field(default=None, description="Associated model identifier")
+    metadata: Optional[dict] = Field(default=None, description="Arbitrary key/value context")
+
+class IncidentStatusUpdate(BaseModel):
+    """
+    Input schema for PATCH /incidents/{id}/status.
+
+    Carries the target status and an optional resolution note. The service
+    layer validates the transition via validate_status_transition() before
+    persisting.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    status: str = Field(
+        ...,
+        description="Target lifecycle status: investigating | mitigating | resolved | closed",
+    )
+    resolution_note: Optional[str] = Field(
+        default=None,
+        description="Required when transitioning to resolved or closed",
+    )

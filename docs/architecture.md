@@ -107,7 +107,7 @@ graph TD
 
 JWT access tokens (15-minute TTL) and refresh tokens (7-day TTL) are issued
 using **RS256 in production** and **HS256 in unit tests** (see
-[ADR-002](adr/ADR-002-jwt-algorithm-selection.md)). Passwords are hashed
+[ADR-004](adr/ADR-004-jwt-algorithm-selection.md)). Passwords are hashed
 with **argon2id** via argon2-cffi (OWASP 2024 recommendation). Logout adds
 the token's JTI (JWT ID) to a Redis sorted set with a TTL matching the
 token's expiry. `is_token_revoked()` fails closed: if Redis is unreachable,
@@ -215,8 +215,8 @@ made, alternatives considered, and consequences.
 | ADR | Title | Status |
 |---|---|---|
 | [ADR-001](adr/ADR-001-incident-tracker-architecture.md) | Incident Tracker Architecture: ORM + Repository Layer | Accepted |
-| [ADR-002](adr/ADR-002-jwt-algorithm-selection.md) | JWT Algorithm Selection: HS256 (tests) / RS256 (production) | Accepted |
-| [ADR-003](adr/ADR-003-alpine-vs-debian-base-image.md) | Container Base Image: Alpine vs Debian | Accepted |
+| [ADR-004](adr/ADR-004-jwt-algorithm-selection.md) | JWT Algorithm Selection: HS256 (tests) / RS256 (production) | Accepted |
+| [ADR-006](adr/ADR-006-alpine-vs-debian-base-image.md) | Container Base Image: Alpine vs Debian | Accepted |
 
 ---
 

@@ -1,4 +1,4 @@
-# ADR-001: Async SQLAlchemy ORM for Incident Persistence
+# ADR-002: Async SQLAlchemy ORM for Incident Persistence
 
 | Field        | Value                               |
 |---|---|

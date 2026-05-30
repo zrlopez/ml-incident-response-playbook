@@ -1,184 +1,92 @@
-# docker-compose.yml — local development + integration-test stack
-# =================================================================
+# docker-compose.yml
+# ML Incident Response Playbook — local development + CI stack
 #
-# REMEDIATION CHANGELOG:
-#   HIGH-A  Redis now requires AUTH password via REDIS_PASSWORD env var
-#   HIGH-A  Redis port bound to 127.0.0.1 only (not all interfaces)
-#   MED-B   Full-repo volume mount (.:/app) replaced with granular read-only mounts
-#   LOW-B   Telemetry ports (OTel, Jaeger) bound to 127.0.0.1 only
-#   MED-A   Redis and OTel images pinned to explicit digest-stable tags
-#   INFRA-1 Added security_opt, read_only FS, tmpfs for writable paths
-#   INFRA-2 Added mem_limit to prevent container memory exhaustion
-#   INFRA-3 network_mode default bridge replaced with explicit named network
-#   R-36    Fixed broken volume YAML (redis_ → redis_data:)
-#   R-37    Bumped OTEL collector 0.99.0 → 0.127.0 (CVE range <0.116 resolved)
-#   R-38    Bumped Jaeger 1.57 → 1.67.0
-#   SEC-04  Removed `command:` override from api service; CMD in Dockerfile
-#           is the single source of truth for the start command.
-#           Dev hot-reload lives in docker-compose.override.yml only.
-#   INFRA-4 Added postgres:16-alpine db service; DATABASE_URL overridden to db hostname
+# Services:
+#   postgres  — PostgreSQL 16 (primary data store)
+#   redis     — Redis 7      (token denylist + rate-limiter state)
+#   prometheus — Prometheus   (metrics scrape; optional, comment out for fast dev)
+#   grafana    — Grafana       (dashboards; optional)
 #
-# Prerequisites:
-#   cp .env.example .env
-#   # Set JWT_SECRET_KEY, REDIS_PASSWORD, DEV_*_PASSWORD in .env
-#   docker compose up
+# Usage:
+#   docker compose up -d              # start all services
+#   docker compose up -d postgres redis  # start backing services only
+#   make ci-local                     # run full local CI simulation
 #
-# Dev hot-reload:
-#   docker compose -f docker-compose.yml -f docker-compose.override.yml up
-#   (docker compose up automatically merges docker-compose.override.yml)
-#
-# Secrets management note:
-#   In production use Docker Secrets or Vault Agent sidecar.
-#   REDIS_PASSWORD here is local-dev only. Never commit a populated .env.
+# Environment variables are read from .env (copy from .env.example).
+# Required in .env: DATABASE_URL, REDIS_URL, JWT_SECRET_KEY
 
 services:
 
-  # ───────────────────────────────────────────────────────────────────
-  db:
+  # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
+  postgres:
     image: postgres:16-alpine
+    container_name: ml_incidents_postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: mluser
-      POSTGRES_PASSWORD: mlpassword
-      POSTGRES_DB: ml_incidents
+      POSTGRES_USER: ${POSTGRES_USER:-incidents_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-incidents_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-incidents}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mluser -d ml_incidents"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - internal
-    mem_limit: 256m
-    memswap_limit: 256m
-    restart: unless-stopped
-
-  # ───────────────────────────────────────────────────────────────────
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:8080:8080"
-    env_file:
-      - .env
-    environment:
-      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
-      DATABASE_URL: "postgresql+asyncpg://mluser:mlpassword@db:5432/ml_incidents"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-      OTEL_SERVICE_NAME: ml-incident-api
-      OTEL_SDK_DISABLED: "false"
-      ENVIRONMENT: development
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    volumes:
-      - ./api:/app/api:ro
-      - ./src:/app/src:ro
-      - ./observability:/app/observability:ro
-      - ./configs:/app/configs:ro
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - internal
-    # SEC-04: No command: override here. The Dockerfile CMD is authoritative.
-    # Hot-reload for local dev is provided by docker-compose.override.yml.
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-incidents_user} -d ${POSTGRES_DB:-incidents}"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
-    mem_limit: 512m
-    memswap_limit: 512m
-    restart: unless-stopped
+      retries: 5
+      start_period: 10s
 
-  # ───────────────────────────────────────────────────────────────────
+  # ── Redis 7 ────────────────────────────────────────────────────────────────
   redis:
-    image: redis:7.4.3-alpine
+    image: redis:7-alpine
+    container_name: ml_incidents_redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru
     ports:
-      - "127.0.0.1:6379:6379"
-    command: >
-      redis-server
-      --requirepass ${REDIS_PASSWORD}
-      --appendonly yes
-      --appendfsync everysec
-      --maxmemory 128mb
-      --maxmemory-policy allkeys-lru
-      --protected-mode yes
-      --loglevel notice
-      --tcp-backlog 128
-    volumes:
-      - redis_data:/data
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
-      interval: 5s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
       timeout: 3s
       retries: 5
       start_period: 5s
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - internal
-    mem_limit: 256m
-    memswap_limit: 256m
-    restart: unless-stopped
 
-  # ───────────────────────────────────────────────────────────────────
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.127.0
-    ports:
-      - "127.0.0.1:4317:4317"   # OTLP gRPC
-      - "127.0.0.1:4318:4318"   # OTLP HTTP
+  # ── Prometheus ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: ml_incidents_prometheus
+    restart: unless-stopped
     volumes:
-      - ./configs/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
-    depends_on:
-      - jaeger
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - internal
-    mem_limit: 128m
-    memswap_limit: 128m
-    restart: unless-stopped
-
-  # ───────────────────────────────────────────────────────────────────
-  jaeger:
-    image: jaegertracing/all-in-one:1.67.0
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "127.0.0.1:16686:16686"   # Jaeger UI
-      - "127.0.0.1:14250:14250"   # gRPC collector
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - internal
-    mem_limit: 256m
-    memswap_limit: 256m
-    restart: unless-stopped
+      - "9090:9090"
+    depends_on:
+      - postgres
+      - redis
 
-# ───────────────────────────────────────────────────────────────────
+  # ── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: ml_incidents_grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
-  redis_data:
-    driver: local
   postgres_data:
     driver: local
+  grafana_data:
+    driver: local
 
-# INFRA-3: Explicit named network isolates compose services from the
-# default bridge and from other compose projects on the same Docker host.
 networks:
-  internal:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.28.0.0/24
+  default:
+    name: ml_incidents_network

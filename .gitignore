@@ -90,6 +90,8 @@ Icon
 htmlcov/
 coverage.xml
 junit.xml
+pytest_results*.md
+.coverage_report*.txt
 .tox/
 *.cover
 
@@ -122,3 +124,4 @@ MAT_*.md
 # and should be reviewed alongside Dockerfile changes.
 node_modules/
 package-lock.json
+cosign.key

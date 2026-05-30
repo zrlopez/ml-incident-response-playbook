@@ -1,7 +1,11 @@
 """
-Database platform module — engine, session factory, and FastAPI dependency.
+Database platform module — engine, session factory, Base, and FastAPI dependency.
 
 ARCH-DB-01: Extracted from src/incident_tracker.py.
+ARCH-DB-02 (R-P23): Base (DeclarativeBase) moved here so all ORM models share
+  a single metadata registry. Previously, audit_log.py imported Base from
+  src.incident_tracker, creating an implicit coupling between the model layer
+  and the infrastructure layer. All models now import Base from this module.
 
 Rationale:
   _build_engine() and get_session() were module-level concerns in incident_tracker.py
@@ -45,10 +49,18 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import DeclarativeBase
 
 from src.config import get_settings
 
 log = structlog.get_logger(__name__)
+
+
+# ── Single shared DeclarativeBase ──────────────────────────────────────────────
+# All ORM models in this project must inherit from this Base so that
+# Base.metadata contains the complete schema for Alembic autogenerate.
+class Base(DeclarativeBase):
+    pass
 
 
 def _build_engine(settings=None):

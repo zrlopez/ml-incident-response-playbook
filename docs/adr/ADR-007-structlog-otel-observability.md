@@ -1,4 +1,4 @@
-# ADR-004: structlog + OpenTelemetry Observability Model
+# ADR-007: structlog + OpenTelemetry Observability Model
 
 | Field        | Value                               |
 |---|---|

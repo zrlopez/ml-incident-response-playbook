@@ -1,12 +1,9 @@
 """
-src/users/repository.py — PostgresUserRepository (ARCH-03 remediation)
 =======================================================================
-Phase 2 remediation: replaces the `_USERS` in-memory dict in api/app.py
 with a proper async SQLAlchemy repository backed by PostgreSQL (or SQLite
 for local/test use via DATABASE_URL).
 
 Findings addressed:
-  ARCH-03  _USERS dict in api/app.py is ephemeral and process-local:
            - passwords reset on every restart (dev UX problem)
            - cannot support horizontal scaling (multiple uvicorn workers)
            - no audit trail for user mutations
@@ -54,12 +51,11 @@ from sqlalchemy import Boolean, DateTime, String, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.incident_tracker import Base  # shared DeclarativeBase — Alembic sees both
+from src.platform.database import Base  # shared DeclarativeBase — Alembic sees both
 from src.auth.password import verify_password, maybe_rehash
 from src.config import get_settings
 
 log = structlog.get_logger(__name__)
-
 
 # ── ORM model ──────────────────────────────────────────────────────────────────────────────
 class UserRecord(Base):
@@ -96,7 +92,7 @@ class UserRecord(Base):
     )
 
     @classmethod
-    def from_dict(cls, username: str, data: dict) -> "UserRecord":
+    def from_dict(cls, username: str, data: dict[str, object]) -> "UserRecord":
         """
         Construct a UserRecord without triggering SQLAlchemy's ORM __init__.
 
@@ -108,9 +104,9 @@ class UserRecord(Base):
         rec = cls.__new__(cls)  # noqa: PLC0414 — cls is implicitly passed by Python in classmethods
         rec.id = str(uuid.uuid4())
         rec.username = username
-        rec.hashed_password = data["hashed_password"]
-        rec.role = data["role"]
-        rec.disabled = data.get("disabled", False)
+        rec.hashed_password = str(data["hashed_password"])
+        rec.role = str(data["role"])
+        rec.disabled = bool(data.get("disabled", False))
         rec.hash_algorithm = "argon2id"
         rec.created_at = datetime.now(timezone.utc)
         rec.updated_at = datetime.now(timezone.utc)
@@ -127,7 +123,6 @@ class UserRecord(Base):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
-
 
 # ── Repository contract ─────────────────────────────────────────────────────────────────────
 class AbstractUserRepository(ABC):
@@ -169,7 +164,6 @@ class AbstractUserRepository(ABC):
         separate background job (see docs/dpo_runbook.md).
         """
         ...
-
 
 # ── PostgreSQL implementation ────────────────────────────────────────────────────────────────
 class PostgresUserRepository(AbstractUserRepository):
@@ -225,7 +219,7 @@ class PostgresUserRepository(AbstractUserRepository):
             log.warning("auth.verify_failed", username=username)
             return None
 
-        # ARCH-02: rehash-on-login migration
+        # rehash-on-login migration
         new_hash = maybe_rehash(user.hashed_password, plaintext_password)
         if new_hash:
             await self.update_password_hash(username, new_hash, algorithm="argon2id")
@@ -255,7 +249,6 @@ class PostgresUserRepository(AbstractUserRepository):
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
         return row is not None
-
 
 # ── In-memory test implementation ────────────────────────────────────────────────────────────
 class InMemoryUserRepository(AbstractUserRepository):
@@ -307,7 +300,6 @@ class InMemoryUserRepository(AbstractUserRepository):
             store="in_memory",
         )
         return True
-
 
 # ── Session factory (matches incident_tracker.py pattern) ─────────────────────────────
 async def get_user_session() -> AsyncIterator[AsyncSession]:

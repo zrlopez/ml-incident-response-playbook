@@ -15,7 +15,6 @@ import pytest
 
 from src.auth.key_store import KeyRotationStore, RS256KeyStore
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
@@ -25,18 +24,15 @@ def store_a() -> RS256KeyStore:
     """Ephemeral 2048-bit store, used as 'current' key."""
     return RS256KeyStore.generate(key_size=2048, key_id="key-a")
 
-
 @pytest.fixture(scope="module")
 def store_b() -> RS256KeyStore:
     """Ephemeral 2048-bit store, used as 'retired' key."""
     return RS256KeyStore.generate(key_size=2048, key_id="key-b")
 
-
 @pytest.fixture(scope="module")
 def store_c() -> RS256KeyStore:
     """Third ephemeral store for deeper rotation pool tests."""
     return RS256KeyStore.generate(key_size=2048, key_id="key-c")
-
 
 # ---------------------------------------------------------------------------
 # RS256KeyStore.generate()
@@ -111,7 +107,6 @@ class TestRS256KeyStoreGenerate:
         s2 = RS256KeyStore.generate(key_size=2048)
         assert s1.key_id != s2.key_id
 
-
 # ---------------------------------------------------------------------------
 # RS256KeyStore.from_public_pem() — verify-only mode
 # ---------------------------------------------------------------------------
@@ -141,7 +136,6 @@ class TestRS256KeyStorePublicOnly:
 
     def test_key_id_preserved(self, store_a, pub_only):
         assert pub_only.key_id == store_a.key_id
-
 
 # ---------------------------------------------------------------------------
 # RS256KeyStore.from_env()
@@ -185,7 +179,6 @@ class TestRS256KeyStoreFromEnv:
             with pytest.raises(RuntimeError, match="RSA_PRIVATE_KEY_PEM"):
                 RS256KeyStore.from_env()
 
-
 # ---------------------------------------------------------------------------
 # KeyRotationStore — construction
 # ---------------------------------------------------------------------------
@@ -213,7 +206,6 @@ class TestKeyRotationStoreConstruction:
         with pytest.raises(ValueError, match="duplicate key_id"):
             KeyRotationStore([store_a, store_a])
 
-
 # ---------------------------------------------------------------------------
 # KeyRotationStore — signing
 # ---------------------------------------------------------------------------
@@ -237,7 +229,6 @@ class TestKeyRotationStoreSigning:
             expires_delta=timedelta(hours=1),
         )
         assert ttl == 3600
-
 
 # ---------------------------------------------------------------------------
 # KeyRotationStore — verification (the core OPEN-01 behaviour)
@@ -302,7 +293,6 @@ class TestKeyRotationStoreVerification:
         with pytest.raises(jwt.DecodeError):
             rotation.verify_token("not.a.token")
 
-
 # ---------------------------------------------------------------------------
 # KeyRotationStore — JWKS output
 # ---------------------------------------------------------------------------
@@ -334,7 +324,6 @@ class TestKeyRotationStoreJWKS:
         assert key["use"] == "sig"
         assert key["alg"] == "RS256"
         assert "n" in key and "e" in key
-
 
 # ---------------------------------------------------------------------------
 # KeyRotationStore.from_env()

@@ -1,0 +1,40 @@
+# =============================================================================
+# observability/prometheus.yml — Prometheus scrape configuration
+# =============================================================================
+# Used by the prometheus service in docker-compose.yml.
+# Mounts into the container at /etc/prometheus/prometheus.yml.
+#
+# Scrape targets:
+#   api:8080/metrics  — FastAPI application metrics (api/metrics.py)
+#
+# Alert rules:
+#   observability/alert_rules.yml — imported below
+#
+# Usage:
+#   docker compose up prometheus
+#   Browse to http://localhost:9090
+# =============================================================================
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: local
+    project: ml-incident-response-playbook
+
+rule_files:
+  - "/etc/prometheus/alert_rules.yml"
+
+scrape_configs:
+  - job_name: ml-incident-api
+    static_configs:
+      - targets: ["api:8080"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+      # In production: replace with real Alertmanager endpoint.
+      # Example: targets: ["alertmanager:9093"]

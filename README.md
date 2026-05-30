@@ -1,3 +1,14 @@
+---
+title: ML Incident API
+emoji: 🚨
+colorFrom: red
+colorTo: indigo
+sdk: gradio
+app_file: app.py
+pinned: true
+license: mit
+---
+
 # ML Incident Response Playbook + Runbook System
 
 ![Status](https://img.shields.io/badge/status-portfolio--ready-brightgreen)
@@ -14,11 +25,11 @@
 |---|---|
 | Security toolchain | TruffleHog + Bandit + semgrep + Trivy + CodeQL + pip-audit + SBOM ([`secured_ci.yml`](.github/workflows/secured_ci.yml)) |
 | Supply-chain hardening | All GitHub Actions pinned to SHA digests |
-| Test coverage | ≥75% unit, ≥60% integration (enforced in CI) |
+| Test coverage | ≥75% unit, ≥65% integration (enforced in CI) |
 | Type safety | mypy strict mode, Pydantic models on all API shapes |
-| Architecture decisions | [ADR directory](docs/decisions/) — 5 decisions documented |
+| Architecture decisions | [ADR directory](https://github.com/zrlopez/ml-incident-response-playbook/tree/main/docs/adr) — 9 decisions documented |
 | Runbook maturity | 7 runbooks with Prometheus-bound thresholds + validation log |
-| Live deployment | [ml-incident-api.fly.dev](https://ml-incident-api.fly.dev/health) |
+| Live deployment | [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api) |
 | Operational docs | [mlops.zrl.dev](https://mlops.zrl.dev) |
 
 A production-style operational documentation repo for ML and AI incident response.
@@ -52,7 +63,7 @@ This project showcases a production-grade MLOps incident-response system built w
 - **ML layer** — IsolationForest anomaly detector with a thread-safe model registry, reproducible training pipeline, and a JWT-protected inference endpoint.
 - **Supply-chain security** — SHA-pinned GitHub Actions, Trivy container scanning, Bandit SAST, TruffleHog secret scanning, pip-audit dependency auditing, and Dependabot auto-bumps.
 - **Operational runbooks** — Five incident runbooks with Mermaid decision trees, a severity matrix, escalation templates, and postmortem artifacts.
-- **Engineering rigour** — 530+ unit tests, ≥68% coverage gate, mypy type checking, ruff linting, `CODEOWNERS`, and a full MkDocs documentation site.
+- **Engineering rigour** — 530+ unit tests, ≥75% coverage gate, mypy type checking, ruff linting, `CODEOWNERS`, and a full MkDocs documentation site.
 
 ## Feature Highlights
 
@@ -70,7 +81,8 @@ ml-incident-response-playbook/
 ├── .github/
 │   └── workflows/
 │       ├── secured_ci.yml         # Hardened CI pipeline (TruffleHog, Bandit, mypy, Trivy, SBOM)
-│       └── codeql.yml             # GitHub CodeQL analysis workflow
+│       ├── codeql.yml             # GitHub CodeQL analysis workflow
+│       └── deploy-hf.yml          # Hugging Face Spaces deploy workflow
 ├── api/                           # FastAPI application code
 ├── alembic/                       # Database migration environment
 ├── configs/                       # Environment and service configuration files
@@ -78,6 +90,7 @@ ml-incident-response-playbook/
 ├── dbt/                           # dbt models and data transformation layer
 ├── docs/
 │   ├── diagrams/                  # Mermaid flowcharts for each incident type
+│   ├── decisions/                 # Architecture Decision Records (ADRs)
 │   ├── templates/                 # Escalation, postmortem, and update templates
 │   └── policies/                  # Governance and security policy documents
 ├── examples/                      # Sample incident logs and postmortem artifacts
@@ -93,12 +106,14 @@ ml-incident-response-playbook/
 ├── src/                           # Shared library code
 ├── tests/                         # Pytest test suite
 ├── validation/                    # Data validation rules and schema checks
+├── app.py                         # Gradio demo entry point (Hugging Face Space)
 ├── Dockerfile
 ├── Dockerfile.dev
 ├── docker-compose.yml
 ├── Makefile
 ├── pyproject.toml
 ├── requirements.txt
+├── requirements-demo.txt          # Slim deps for HF Space demo (gradio + inference only)
 ├── requirements-dev.txt
 ├── requirements-airflow.txt
 ├── README.md
@@ -157,13 +172,13 @@ Observability is represented through logging helpers, validation rules, sample i
 4. Diagnostic and mitigation steps are executed.
 5. The incident is logged and followed by a postmortem.
 
-## Deployment Instructions
+## Deployment
 
-This project can be published as a static documentation site with GitHub Pages or MkDocs Material. The repo is also suitable for a lightweight internal-style deployment to mirror production documentation workflows.
+This service is deployed to [Hugging Face Spaces](https://huggingface.co/spaces/zrlo/ml-incident-api) via a GitHub Actions workflow that syncs `main` to HF on every push. The Gradio SDK is used — HF runs `app.py` directly using `requirements-demo.txt`. The production FastAPI service (`api/app.py`) is deployed separately via Docker.
 
 ## CI/CD Overview
 
-The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥68% on unit tests** (SQLite, fast) and **≥40% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
+The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥75% on unit tests** (SQLite, fast) and **≥65% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
 
 ## Roadmap
 

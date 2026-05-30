@@ -80,7 +80,13 @@ def _service_with_mock_repo(
     if list_open_side_effect is not _UNSET:
         repo.list_open.side_effect = list_open_side_effect
     service._repo = repo
-    # expose session on repo so update_metadata can reach _session
+    # Phase 8: stub out _audit so tests don't need a real AuditLogRepository
+    mock_audit = AsyncMock()
+    mock_audit.log_event = AsyncMock()
+    service._audit = mock_audit
+    # Expose the same mock_session on both the service and the repo mock
+    # so flush assertions in tests resolve to the same object.
+    service._session = mock_session
     repo._session = mock_session
     return service, repo
 
@@ -208,8 +214,9 @@ class TestIncidentServiceTransition:
             )
         )
         repo.update_status.assert_awaited_once_with(
-            incident_id="abc",
-            new_status=IncidentStatus.INVESTIGATING,
+            "abc",
+            IncidentStatus.INVESTIGATING,
+            resolved_at=None,
         )
         assert result is inc
 
@@ -241,7 +248,7 @@ class TestTransitionAuditLog:
         service, repo = _service_with_mock_repo(update_status_return=inc)
 
         mock_log = MagicMock()
-        with patch("src.services.incident_service.log", mock_log):
+        with patch("src.services.incident_service.logger", mock_log):
             self._run(
                 service.transition_status(
                     incident_id="inc-audit-01",
@@ -266,7 +273,7 @@ class TestTransitionAuditLog:
         service, _ = _service_with_mock_repo(update_status_side_effect=err)
 
         mock_log = MagicMock()
-        with patch("src.services.incident_service.log", mock_log):
+        with patch("src.services.incident_service.logger", mock_log):
             with pytest.raises(InvalidTransitionError):
                 self._run(
                     service.transition_status(
@@ -352,7 +359,7 @@ class TestUpdateMetadata:
         inc = _make_incident()
         service, repo = _service_with_mock_repo(get_return=inc)
         mock_log = MagicMock()
-        with patch("src.services.incident_service.log", mock_log):
+        with patch("src.services.incident_service.logger", mock_log):
             self._run(
                 service.update_metadata(
                     incident_id="inc-001",

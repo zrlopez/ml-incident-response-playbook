@@ -40,8 +40,11 @@ async def service(sqlite_session):
     construct via __new__, assign _repo directly.
     """
     from src.incident_tracker import IncidentRepository
+    from src.repositories.audit_log_repository import AuditLogRepository
     svc = IncidentService.__new__(IncidentService)
     svc._repo = IncidentRepository(sqlite_session)
+    svc._audit = AuditLogRepository(sqlite_session)
+    svc._session = sqlite_session
     return svc
 
 

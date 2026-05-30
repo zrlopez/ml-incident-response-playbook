@@ -43,6 +43,9 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # so importing them here is sufficient — Alembic will diff against Base.metadata.
 from src.incident_tracker import Base  # noqa: F401  (Incident model registered here)
 from src.users.repository import UserRecord  # noqa: F401  (UserRecord registered here)
+# Phase 8: register new ORM models so Alembic autogenerate includes them
+from src.models.audit_log import IncidentAuditLog  # noqa: F401
+from src.models.model_version import ModelVersion  # noqa: F401
 
 # ── Alembic Config ─────────────────────────────────────────────────────────────
 config = context.config
