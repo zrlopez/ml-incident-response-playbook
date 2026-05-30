@@ -59,7 +59,7 @@ RUN apk add --no-cache \
 # R-27: pip bumped from 24.3.1 to 25.1.1 (latest stable as of 2026-05-26).
 COPY requirements.txt .
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --upgrade pip==25.1.1 \
+    && /opt/venv/bin/pip install --upgrade pip==26.1 \
     && /opt/venv/bin/pip install \
         --no-cache-dir \
         --no-compile \
