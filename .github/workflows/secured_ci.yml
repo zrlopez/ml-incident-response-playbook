@@ -1,7 +1,7 @@
 # =============================================================================
 # ML Incident Response API - Hardened CI/CD Pipeline
 # =============================================================================
-# Changelog: see CHANGELOG.md (CI-01 — CI-68)
+# Changelog: see CHANGELOG.md (CI-01 — CI-69)
 # =============================================================================
 # ============================================================
 # PERMISSION AUDIT — CI-52 (2026-05-28)
@@ -273,6 +273,8 @@ jobs:
   #        test_incident_tracker_char.py wired in; gate raised 75 -> 77.
   # CI-66c: gate raised 77 -> 80 (actual coverage 79.64% after CI-65).
   # CI-68: Codecov replaced with Codacy for coverage reporting.
+  # CI-69: test_user_repository.py wired in (was untracked locally, never reached CI).
+  #        Covers InMemoryUserRepository and PostgresUserRepository via mocked session.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -328,6 +330,7 @@ jobs:
         # CI-67: add test_health_router.py, test_jwt_rs256.py.
         #        Raise --cov-fail-under 75 -> 77.
         # CI-66c: raise --cov-fail-under 77 -> 80.
+        # CI-69: add test_user_repository.py.
         run: |
           pytest \
             tests/unit/test_incident_service.py \
@@ -361,6 +364,7 @@ jobs:
             tests/unit/test_incident_tracker_char.py \
             tests/unit/test_health_router.py \
             tests/unit/test_jwt_rs256.py \
+            tests/unit/test_user_repository.py \
             --cov=src \
             --cov=src/validation \
             --cov=src/repositories \
