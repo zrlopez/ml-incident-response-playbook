@@ -1,7 +1,7 @@
 # =============================================================================
 # ML Incident Response API - Hardened CI/CD Pipeline
 # =============================================================================
-# Changelog: see CHANGELOG.md (CI-01 — CI-66c)
+# Changelog: see CHANGELOG.md (CI-01 — CI-68)
 # =============================================================================
 # ============================================================
 # PERMISSION AUDIT — CI-52 (2026-05-28)
@@ -272,6 +272,7 @@ jobs:
   # CI-65: test_password.py, test_incident_tracker_facade.py, test_inference_router.py,
   #        test_incident_tracker_char.py wired in; gate raised 75 -> 77.
   # CI-66c: gate raised 77 -> 80 (actual coverage 79.64% after CI-65).
+  # CI-68: Codecov replaced with Codacy for coverage reporting.
   # ---------------------------------------------------------------------------
   unit-tests:
     name: "Unit Tests (Python 3.11, SQLite)"
@@ -379,13 +380,16 @@ jobs:
           path: coverage-unit.xml
           retention-days: 30
 
-      - name: Upload unit coverage reports to Codecov
+      # CI-68: Codacy replaces Codecov for coverage reporting.
+      # continue-on-error: INTENTIONAL — upload failure is non-fatal; pytest gate above
+      # is the actual coverage enforcement control.
+      - name: Upload unit coverage to Codacy
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354  # v6.0.1
+        uses: codacy/codacy-coverage-reporter-action@89d6c85cfafaec52c72b6c5e8b2878d33104c699  # v1.3.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-unit.xml
-          flags: unit
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: coverage-unit.xml
+        continue-on-error: true
 
   integration-tests:
     name: "Tests (Python 3.11)"
@@ -501,13 +505,16 @@ jobs:
           path: coverage-integration.xml
           retention-days: 30
 
-      - name: Upload integration coverage reports to Codecov
+      # CI-68: Codacy replaces Codecov for coverage reporting.
+      # continue-on-error: INTENTIONAL — upload failure is non-fatal; pytest gate above
+      # is the actual coverage enforcement control.
+      - name: Upload integration coverage to Codacy
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354  # v6.0.1
+        uses: codacy/codacy-coverage-reporter-action@89d6c85cfafaec52c72b6c5e8b2878d33104c699  # v1.3.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-integration.xml
-          flags: integration
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: coverage-integration.xml
+        continue-on-error: true
 
   container-scan:
     name: Container Build + Trivy + SBOM
