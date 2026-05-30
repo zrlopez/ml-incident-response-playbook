@@ -316,14 +316,17 @@ def get_user_repository() -> AbstractUserRepository:
     """
     FastAPI dependency: returns the appropriate repository implementation.
 
-    Development / test: InMemoryUserRepository seeded from settings.USERS.
+    Development / test: InMemoryUserRepository seeded from api.stub_users._USERS.
+                        Lazy import mirrors lifespan.py to avoid a circular
+                        dependency between src/ and api/.
     Production:         PostgresUserRepository backed by settings.DATABASE_URL.
 
     Inject via Depends(get_user_repository) in route handlers.
     """
     settings = get_settings()
     if settings.environment in ("test", "development"):
-        return InMemoryUserRepository(settings.users)
+        from api.stub_users import _USERS  # noqa: PLC0415
+        return InMemoryUserRepository(_USERS)
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     return PostgresUserRepository(session_factory)
