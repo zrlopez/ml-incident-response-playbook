@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import FastAPI
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_lifespan.db")
