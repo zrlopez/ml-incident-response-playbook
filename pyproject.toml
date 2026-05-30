@@ -79,13 +79,15 @@ markers = [
 # ML-04: ml_models added to coverage source so inference layer is measured.
 # TEST-01: src/config.py removed from omit — security-critical module must
 #          be covered. New tests in tests/unit/test_auth_config_security.py.
+# COV-01: src/platform/* removed from omit — users/repository.py imports
+#         Base from src.platform.database; omitting the package prevented
+#         instrumentation of the users module entirely.
 source = ["api", "ml_models", "observability", "pipelines", "src"]
 omit = [
     "tests/*",
     "migrations/*",
     "ml_models/incident_anomaly/artifacts/*",
     "src/logger.py",
-    "src/platform/*",
 ]
 concurrency = ["thread", "greenlet"]
 
