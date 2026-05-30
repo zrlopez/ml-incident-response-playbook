@@ -104,9 +104,9 @@ class TestExportMyData:
         import json
         body = json.loads(response.body)
         assert body["gdpr_request"] == "Article 15 — Right of Access"
-        assert "profile" in body
-        assert body["profile"]["username"] == "alice"
-        assert body["profile"]["role"] == "user"
+        assert "account" in body
+        assert body["account"]["username"] == "alice"
+        assert body["account"]["role"] == "user"
 
     @pytest.mark.asyncio
     async def test_content_disposition_header_set(self):
@@ -130,7 +130,7 @@ class TestExportMyData:
         response = await export_my_data(request=req, current_user=current_user)
         import json
         body = json.loads(response.body)
-        assert body["profile"]["username"] == "unknown"
+        assert body["account"]["username"] == "unknown"
 
     @pytest.mark.asyncio
     async def test_no_client_ip_handled(self):

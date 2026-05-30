@@ -3,7 +3,7 @@ tests/integration/test_api_gdpr_routes.py
 """
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -21,10 +21,6 @@ def _delete_path():
     return next((r.path for r in router.routes if r.path.endswith("/me")), None)
 
 
-def _stub_dep():
-    return _ADMIN_USER
-
-
 class TestGDPRExport:
 
     @pytest.mark.anyio
@@ -32,14 +28,14 @@ class TestGDPRExport:
         path = _export_path()
         if path is None:
             pytest.skip("No export route")
-        # Build app INSIDE patch so FastAPI resolves dep graph with stub in place
-        with patch("api.gdpr_routes._get_current_user_dep", new=_stub_dep):
-            from fastapi import FastAPI
-            from api.gdpr_routes import router
-            app = FastAPI()
-            app.include_router(router)
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-                resp = await c.get(path)
+        from fastapi import FastAPI
+        from api.gdpr_routes import router
+        from api.dependencies import get_current_user
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_current_user] = lambda: _ADMIN_USER
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.get(path)
         assert resp.status_code not in (401, 403)
 
     @pytest.mark.anyio
@@ -48,10 +44,16 @@ class TestGDPRExport:
         path = _export_path()
         if path is None:
             pytest.skip("No export route")
-        from fastapi import FastAPI
+        from fastapi import FastAPI, HTTPException, status as http_status
         from api.gdpr_routes import router
+        from api.dependencies import get_current_user
+
+        def _deny():
+            raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
         app = FastAPI()
         app.include_router(router)
+        app.dependency_overrides[get_current_user] = _deny
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             resp = await c.get(path)
         assert resp.status_code in (401, 403)
@@ -64,13 +66,14 @@ class TestGDPRDelete:
         path = _delete_path()
         if path is None:
             pytest.skip("No delete/me route")
-        with patch("api.gdpr_routes._get_current_user_dep", new=_stub_dep):
-            from fastapi import FastAPI
-            from api.gdpr_routes import router
-            app = FastAPI()
-            app.include_router(router)
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-                resp = await c.delete(path)
+        from fastapi import FastAPI
+        from api.gdpr_routes import router
+        from api.dependencies import get_current_user
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_current_user] = lambda: _ADMIN_USER
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.delete(path)
         assert resp.status_code not in (401, 403)
 
 
