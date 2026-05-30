@@ -324,6 +324,7 @@ jobs:
         # CI-64: add test_incident_service_contract.py.
         # CI-65: add test_password.py, test_incident_tracker_facade.py,
         #        test_inference_router.py, test_incident_tracker_char.py.
+        # CI-67: add test_health_router.py, test_jwt_rs256.py.
         #        Raise --cov-fail-under 75 -> 77.
         # CI-66c: raise --cov-fail-under 77 -> 80.
         run: |
@@ -357,6 +358,8 @@ jobs:
             tests/unit/test_incident_tracker_facade.py \
             tests/unit/test_inference_router.py \
             tests/unit/test_incident_tracker_char.py \
+            tests/unit/test_health_router.py \
+            tests/unit/test_jwt_rs256.py \
             --cov=src \
             --cov=src/validation \
             --cov=src/repositories \
