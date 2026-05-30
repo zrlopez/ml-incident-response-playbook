@@ -10,6 +10,12 @@ Covers:
     unrecognized hash format
   - needs_rehash: argon2 current params, argon2 stale params, bcrypt, unknown
   - maybe_rehash: no-op when current, returns new hash when stale
+
+Note on patching strategy:
+  argon2-cffi's PasswordHasher is a C extension type — its methods are
+  read-only slots and cannot be patched with patch.object(instance, method).
+  Tests that need to inject exceptions replace the entire `_HASHER` module
+  attribute with a MagicMock instead.
 """
 from __future__ import annotations
 
@@ -59,16 +65,20 @@ def test_verify_password_wrong() -> None:
 
 
 def test_verify_password_argon2_verification_error() -> None:
-    """VerificationError (not mismatch) logs a warning and returns False."""
+    """VerificationError (not mismatch) — patching entire _HASHER object."""
+    mock_hasher = MagicMock()
+    mock_hasher.verify.side_effect = argon2_exc.VerificationError("bad")
     fake_hash = "$argon2id$v=19$m=65536,t=3,p=4$fakesalt$fakehash"
-    with patch.object(pwd_module._HASHER, "verify", side_effect=argon2_exc.VerificationError("bad")):
+    with patch.object(pwd_module, "_HASHER", mock_hasher):
         assert verify_password("any", fake_hash) is False
 
 
 def test_verify_password_invalid_hash_error() -> None:
-    """InvalidHashError logs an error and returns False."""
+    """InvalidHashError — patching entire _HASHER object."""
+    mock_hasher = MagicMock()
+    mock_hasher.verify.side_effect = argon2_exc.InvalidHashError()
     fake_hash = "$argon2id$corrupted"
-    with patch.object(pwd_module._HASHER, "verify", side_effect=argon2_exc.InvalidHashError()):
+    with patch.object(pwd_module, "_HASHER", mock_hasher):
         assert verify_password("any", fake_hash) is False
 
 
@@ -136,9 +146,11 @@ def test_needs_rehash_current_argon2_returns_false() -> None:
 
 
 def test_needs_rehash_stale_argon2_returns_true() -> None:
-    """Simulate an argon2 hash with outdated params."""
-    with patch.object(pwd_module._HASHER, "check_needs_rehash", return_value=True):
-        stale = "$argon2id$v=19$m=1024,t=1,p=1$fakesalt$fakehash"
+    """Simulate argon2 hash with outdated params — patching entire _HASHER."""
+    mock_hasher = MagicMock()
+    mock_hasher.check_needs_rehash.return_value = True
+    stale = "$argon2id$v=19$m=1024,t=1,p=1$fakesalt$fakehash"
+    with patch.object(pwd_module, "_HASHER", mock_hasher):
         assert needs_rehash(stale) is True
 
 
