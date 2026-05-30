@@ -1,0 +1,19 @@
+# requirements-demo.txt
+# ---------------------------------------------------------------------------
+# Hugging Face Space demo dependencies only.
+#
+# Intentionally separate from requirements.txt, which pins the full
+# production stack (FastAPI, Redis, SQLAlchemy, OpenTelemetry, etc.).
+# Installing that stack in the HF Spaces container would fail on
+# server-only packages such as uvloop and asyncpg.
+#
+# app.py imports only:
+#   - gradio          (Spaces SDK / UI)
+#   - scikit-learn    (IsolationForest model)
+#   - joblib          (artifact deserialization)
+#   - numpy           (feature vector ops)
+# ---------------------------------------------------------------------------
+gradio>=4.44.0
+scikit-learn==1.8.0
+joblib==1.5.3
+numpy==2.2.6

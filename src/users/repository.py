@@ -51,7 +51,7 @@ from sqlalchemy import Boolean, DateTime, String, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.incident_tracker import Base  # shared DeclarativeBase — Alembic sees both
+from src.platform.database import Base  # shared DeclarativeBase — Alembic sees both
 from src.auth.password import verify_password, maybe_rehash
 from src.config import get_settings
 
@@ -92,7 +92,7 @@ class UserRecord(Base):
     )
 
     @classmethod
-    def from_dict(cls, username: str, data: dict) -> "UserRecord":
+    def from_dict(cls, username: str, data: dict[str, object]) -> "UserRecord":
         """
         Construct a UserRecord without triggering SQLAlchemy's ORM __init__.
 
@@ -104,9 +104,9 @@ class UserRecord(Base):
         rec = cls.__new__(cls)  # noqa: PLC0414 — cls is implicitly passed by Python in classmethods
         rec.id = str(uuid.uuid4())
         rec.username = username
-        rec.hashed_password = data["hashed_password"]
-        rec.role = data["role"]
-        rec.disabled = data.get("disabled", False)
+        rec.hashed_password = str(data["hashed_password"])
+        rec.role = str(data["role"])
+        rec.disabled = bool(data.get("disabled", False))
         rec.hash_algorithm = "argon2id"
         rec.created_at = datetime.now(timezone.utc)
         rec.updated_at = datetime.now(timezone.utc)
