@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import sys
 import types
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -47,8 +46,6 @@ def _make_gradio_stub() -> types.ModuleType:
     A MagicMock handles all of that automatically.
     """
     stub = types.ModuleType("gradio")
-    # Every attribute access on the stub returns a new MagicMock by default.
-    # We make the module itself behave like a MagicMock namespace.
     magic = MagicMock()
     stub.__dict__.update({
         "Blocks": magic.Blocks,
@@ -66,18 +63,14 @@ def _make_gradio_stub() -> types.ModuleType:
 def _bootstrap_app_module() -> None:
     """Inject stubs and import app exactly once, making the patched module
     available for all test methods without re-executing the module body."""
-    # 1. Stub gradio before anything tries to import it.
     if "gradio" not in sys.modules:
         sys.modules["gradio"] = _make_gradio_stub()  # type: ignore[assignment]
 
-    # 2. Stub the artifact path check so the bootstrap ``train()`` call in
-    #    app.py is skipped (the artifact file won't exist in CI).
     _artifact_patch = patch(
         "pathlib.Path.exists",
-        return_value=True,  # pretend the .joblib artifact already exists
+        return_value=True,
     )
 
-    # 3. Stub the registry import that app.py executes at module level.
     mock_registry = MagicMock()
     mock_registry.health.return_value = {"artifact_exists": True}
     mock_registry.predict.return_value = {
@@ -92,13 +85,11 @@ def _bootstrap_app_module() -> None:
     if "ml_models.incident_anomaly.registry" not in sys.modules:
         sys.modules["ml_models.incident_anomaly.registry"] = registry_module
 
-    # 4. Now it is safe to import app.
     with _artifact_patch:
         if "app" not in sys.modules:
-            import app  # noqa: F401  (side-effect: populates sys.modules["app"])
+            import app  # noqa: F401
 
 
-# Run bootstrap at test-file import time.
 _bootstrap_app_module()
 
 
@@ -109,7 +100,6 @@ _bootstrap_app_module()
 def _make_registry_mock(
     *, artifact_exists: bool = True, is_anomalous: bool = False
 ) -> MagicMock:
-    """Return a fresh mock model_registry with health() and predict() pre-configured."""
     mock = MagicMock()
     mock.health.return_value = {"artifact_exists": artifact_exists}
     mock.predict.return_value = {
@@ -121,7 +111,6 @@ def _make_registry_mock(
 
 
 def _default_inputs() -> dict[str, Any]:
-    """Default valid inputs matching _run_inference() signature."""
     return dict(
         severity_label="SEV-3 (Medium)",
         alert_count=10,
@@ -138,8 +127,6 @@ def _default_inputs() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 class TestSeverityMap:
-    """The _SEVERITY_MAP constant maps every label to the correct integer."""
-
     def test_sev1_maps_to_1(self) -> None:
         from app import _SEVERITY_MAP
         assert _SEVERITY_MAP["SEV-1 (Critical)"] == 1
@@ -166,8 +153,6 @@ class TestSeverityMap:
 # ---------------------------------------------------------------------------
 
 class TestRunbookHints:
-    """_RUNBOOK_HINTS returns the right guidance string per anomaly flag."""
-
     def test_anomalous_hint_contains_sev(self) -> None:
         from app import _RUNBOOK_HINTS
         assert "SEV" in _RUNBOOK_HINTS[True]
@@ -188,10 +173,6 @@ class TestRunbookHints:
 # ---------------------------------------------------------------------------
 
 class TestRunInferenceArtifactMissing:
-    """When model_registry.health() reports artifact_exists=False, _run_inference
-    returns an error tuple without calling predict().
-    """
-
     def _call(self, **kwargs: Any) -> tuple:
         inputs = {**_default_inputs(), **kwargs}
         mock_registry = _make_registry_mock(artifact_exists=False)
@@ -200,8 +181,7 @@ class TestRunInferenceArtifactMissing:
             return _run_inference(**inputs)
 
     def test_returns_four_tuple(self) -> None:
-        result = self._call()
-        assert len(result) == 4
+        assert len(self._call()) == 4
 
     def test_first_element_is_error_message(self) -> None:
         verdict, *_ = self._call()
@@ -226,8 +206,6 @@ class TestRunInferenceArtifactMissing:
 # ---------------------------------------------------------------------------
 
 class TestRunInferenceNormal:
-    """When artifact exists and model returns is_anomalous=False."""
-
     def _call(self, **overrides: Any) -> tuple:
         inputs = {**_default_inputs(), **overrides}
         mock_registry = _make_registry_mock(artifact_exists=True, is_anomalous=False)
@@ -241,7 +219,7 @@ class TestRunInferenceNormal:
 
     def test_score_is_formatted_float(self) -> None:
         _, score, _, _ = self._call()
-        float(score)  # raises if not parseable
+        float(score)
 
     def test_confidence_ends_with_percent(self) -> None:
         _, _, confidence, _ = self._call()
@@ -263,16 +241,14 @@ class TestRunInferenceNormal:
         with patch("app.model_registry", mock_registry):
             from app import _run_inference
             _run_inference(**_default_inputs())
-        features = mock_registry.predict.call_args[0][0]
-        assert len(features) == 7
+        assert len(mock_registry.predict.call_args[0][0]) == 7
 
     def test_all_features_are_float(self) -> None:
         mock_registry = _make_registry_mock(artifact_exists=True, is_anomalous=False)
         with patch("app.model_registry", mock_registry):
             from app import _run_inference
             _run_inference(**_default_inputs())
-        features = mock_registry.predict.call_args[0][0]
-        assert all(isinstance(f, float) for f in features)
+        assert all(isinstance(f, float) for f in mock_registry.predict.call_args[0][0])
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +256,6 @@ class TestRunInferenceNormal:
 # ---------------------------------------------------------------------------
 
 class TestRunInferenceAnomalous:
-    """When artifact exists and model returns is_anomalous=True."""
-
     def _call(self, **overrides: Any) -> tuple:
         inputs = {**_default_inputs(), **overrides}
         mock_registry = _make_registry_mock(artifact_exists=True, is_anomalous=True)
@@ -303,14 +277,12 @@ class TestRunInferenceAnomalous:
 # ---------------------------------------------------------------------------
 
 class TestRunInferenceSeverityRouting:
-    """Each severity label maps to the correct numeric feature value."""
-
     def _get_severity_feature(self, label: str) -> float:
         mock_registry = _make_registry_mock(artifact_exists=True)
         with patch("app.model_registry", mock_registry):
             from app import _run_inference
             _run_inference(**{**_default_inputs(), "severity_label": label})
-        return mock_registry.predict.call_args[0][0][0]  # first feature = severity
+        return mock_registry.predict.call_args[0][0][0]
 
     def test_critical_sends_1(self) -> None:
         assert self._get_severity_feature("SEV-1 (Critical)") == 1.0
