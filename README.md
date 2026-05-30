@@ -14,10 +14,10 @@ license: mit
 ![Status](https://img.shields.io/badge/status-portfolio--ready-brightgreen)
 [![Docs](https://img.shields.io/website-up-down-green-red/https/mlops.zrl.dev.svg?label=docs)](https://mlops.zrl.dev)
 ![Stack](https://img.shields.io/badge/stack-GitHub%20%2B%20Python%20%2B%20Docker-111827)
-![License](https://img.shields.io/badge/license-MIT-blue)
 [![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml/badge.svg?branch=main)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/decc58f711054c259b9acdae4e3c9639)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/decc58f711054c259b9acdae4e3c9639)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/decc58f711054c259b9acdae4e3c9639)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)!
+[License](https://img.shields.io/badge/license-MIT-blue)
 
 ## Quick Proof of Quality
 
