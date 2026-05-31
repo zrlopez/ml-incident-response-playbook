@@ -85,7 +85,7 @@ def _get_current_user_dep() -> Callable[..., Any]:
 )
 async def export_my_data(
     request: Request,
-    current_user: dict = Depends(lambda: _get_current_user_dep()),
+    current_user: dict = Depends(_get_current_user_dep()),
 ) -> JSONResponse:
     """
     Return a structured JSON export of all personal data held about the
@@ -177,7 +177,7 @@ async def export_my_data(
 )
 async def delete_my_account(
     request: Request,
-    current_user: dict = Depends(lambda: _get_current_user_dep()),
+    current_user: dict = Depends(_get_current_user_dep()),
 ) -> Dict[str, Any]:
     """
     Soft-delete the requesting user's account in compliance with GDPR
