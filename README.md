@@ -13,66 +13,138 @@ license: mit
 
 ![Status](https://img.shields.io/badge/status-portfolio--ready-brightgreen)
 [![Docs](https://img.shields.io/website-up-down-green-red/https/mlops.zrl.dev.svg?label=docs)](https://mlops.zrl.dev)
-![Stack](https://img.shields.io/badge/stack-GitHub%20%2B%20Python%20%2B%20Docker-blue)
+![Stack](https://img.shields.io/badge/stack-Python%20%2B%20FastAPI%20%2B%20Docker%20%2B%20PostgreSQL%20%2B%20Redis-blue)
 [![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml/badge.svg?branch=main)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/decc58f711054c259b9acdae4e3c9639)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/decc58f711054c259b9acdae4e3c9639)](https://app.codacy.com/gh/zrlopez/ml-incident-response-playbook/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+
+A hardened FastAPI service and operational runbook suite for ML incident response — built to enterprise engineering standards with security and observability as first-class concerns.
+
+**Role target:** MLOps Engineer · Data Operations · Platform Engineering
+**Stack:** Python 3.11 · FastAPI · PostgreSQL · Redis · Docker · GitHub Actions · IsolationForest · Pydantic · mypy · structlog · OpenTelemetry
+**Seniority signal:** Staff-adjacent — 9 ADRs, 7 runbooks, 677-test suite, full supply-chain security, live deployment
+**Live:** [mlops.zrl.dev](https://mlops.zrl.dev) · [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api)
+
+---
 
 ## Quick Proof of Quality
 
 | Signal | Evidence |
 |---|---|
 | Security toolchain | TruffleHog + Bandit + semgrep + Trivy + CodeQL + pip-audit + SBOM ([`secured_ci.yml`](.github/workflows/secured_ci.yml)) |
-| Supply-chain hardening | All GitHub Actions pinned to SHA digests |
-| Test coverage | ≥80% unit, ≥65% integration (enforced in CI) |
-| Type safety | mypy strict mode, Pydantic models on all API shapes |
-| Architecture decisions | [ADR directory](https://github.com/zrlopez/ml-incident-response-playbook/tree/main/docs/adr) — 9 decisions documented |
-| Runbook maturity | 7 runbooks with Prometheus-bound thresholds + validation log |
+| Supply-chain hardening | SHA-pinned GitHub Actions; Cosign container image signing ([`cosign.pub`](cosign.pub)); `.trivyignore` with scoped suppression rules |
+| Test suite | 677 unit tests; ≥80% unit coverage gate (SQLite); ≥65% integration coverage gate (Postgres) |
+| Type safety | mypy strict mode; Pydantic models on all API shapes |
+| Architecture decisions | [ADR directory](docs/adr/) — 9 decisions documented (JWT algorithm, async ORM, Redis denylist, base image, Alembic strategy, OTEL stack, and more) |
+| Runbook maturity | [7 runbooks](runbooks/) with Mermaid decision trees + [validation test log](runbooks/runbook_test_log.md) |
+| Security remediation log | [docs/REMEDIATION_LOG.md](docs/REMEDIATION_LOG.md) — live tracking of security findings and resolutions |
+| Pre-commit gates | `.pre-commit-config.yaml` — local quality enforcement before CI |
+| Model card | [MODEL_CARD.md](MODEL_CARD.md) — ML model documentation per industry standard |
 | Live deployment | [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api) |
-| Operational docs | [mlops.zrl.dev](https://mlops.zrl.dev) |
+| Operational docs | [mlops.zrl.dev](https://mlops.zrl.dev) — MkDocs site, auto-deployed via [`docs.yml`](.github/workflows/docs.yml) |
 
-This repository is a **production-adjacent portfolio artifact** — built to the standards of a real engineering team, not a tutorial. It demonstrates what staff-level MLOps work looks like before it hits a production SLA: a hardened FastAPI service, a secured CI/CD pipeline, an ML anomaly detection layer, GDPR pseudonymisation, RS256 JWT auth, and a full operational runbook suite. Every design decision is documented, every gate is enforced, and every dependency is audited. Built as a hiring signal for Data Operations, MLOps, and Technical Engineering roles.
+---
 
-## Business Overview
+## Overview
 
-When AI systems fail in production, teams lose time if incident handling depends on tribal knowledge. This repository simulates a documented operational response layer for AI/ML systems so responders can triage faster, escalate cleanly, and recover with less ambiguity.
+When AI systems fail in production, teams lose time if incident handling depends on tribal knowledge. This repository models a documented operational response layer for AI/ML systems — designed to enterprise operational standards so responders can triage faster, escalate cleanly, and recover with less ambiguity.
 
-## Technical Overview
+The implementation combines a hardened FastAPI service, a secured multi-stage CI/CD pipeline, an ML anomaly detection layer, GDPR pseudonymisation, RS256 JWT auth, Alembic-managed migrations, and a full operational runbook suite with postmortem artifacts. Every design decision is documented in an ADR, every security finding is tracked in the remediation log, and every pipeline gate is enforced and versioned.
 
-This repo combines Markdown runbooks, Mermaid decision trees, validation templates, sample operational logs, lightweight Python utilities, and DevOps-ready support files. It is intentionally structured like an enterprise knowledge base for MLOps, Data Ops, and platform support teams.
-
-## Architecture Summary
-
-```mermaid
-flowchart LR
-    A[Ingestion / Alert Sources] --> B[ETL or Validation Layer]
-    B --> C[Orchestration Engine]
-    C --> D[Storage and Logs]
-    D --> E[Runbooks and Incident Templates]
-    D --> F[Dashboards and Monitoring]
-    F --> G[Alerting and Escalation]
-    E --> H[Postmortems and Governance]
-```
+---
 
 ## What This Demonstrates
 
-This project showcases a production-grade MLOps incident-response system built with security and observability as first-class concerns. It demonstrates:
-
 - **Hardened FastAPI service** — JWT RS256 auth, per-user rate limiting, async Redis denylist, GDPR pseudonymisation, structured logging via structlog, and OpenTelemetry tracing.
-- **ML layer** — IsolationForest anomaly detector with a thread-safe model registry, reproducible training pipeline, and a JWT-protected inference endpoint.
-- **Supply-chain security** — SHA-pinned GitHub Actions, Trivy container scanning, Bandit SAST, TruffleHog secret scanning, pip-audit dependency auditing, and Dependabot auto-bumps.
-- **Operational runbooks** — Five incident runbooks with Mermaid decision trees, a severity matrix, escalation templates, and postmortem artifacts.
-- **Engineering rigour** — 677 unit tests, ≥80% coverage gate, mypy type checking, ruff linting, `CODEOWNERS`, and a full MkDocs documentation site.
+- **ML layer** — IsolationForest anomaly detector with a thread-safe model registry, reproducible training pipeline, and a JWT-protected inference endpoint. See [MODEL_CARD.md](MODEL_CARD.md) for full model documentation.
+- **Supply-chain security** — SHA-pinned GitHub Actions, Cosign container signing, Trivy container scanning, Bandit SAST, TruffleHog secret scanning, pip-audit dependency auditing, and Dependabot auto-bumps.
+- **Operational runbooks** — Seven incident runbooks covering model degradation, API outage, data quality failures, feature store corruption, LLM cost spikes, model rollback, and pipeline failure — each with Mermaid decision trees, a severity matrix, escalation templates, and postmortem artifacts. Runbooks are validated and logged in [`runbook_test_log.md`](runbooks/runbook_test_log.md).
+- **Engineering rigour** — 677 unit tests, ≥80% coverage gate, mypy strict mode, ruff linting, `CODEOWNERS`, pre-commit hooks, and a full MkDocs documentation site.
+- **Security operations** — Live remediation log ([`REMEDIATION_LOG.md`](docs/REMEDIATION_LOG.md)) tracking every security finding from detection through resolution.
 
-## Feature Highlights
+---
 
-- Five incident runbooks with decision-tree flowcharts.
-- Severity matrix and escalation templates.
-- Sample incident logs and postmortem artifacts.
-- Starter Python modules for logging, incident tracking, validation, and anomaly checks.
-- Documentation pages for onboarding, governance, deployment, setup, and monitoring.
-- CI-ready repository structure with Docker and hardened GitHub Actions workflows.
+## Architecture
+
+```mermaid
+flowchart LR
+    Client["Client / Alert Source"]
+    JWT["JWT RS256 Auth\n+ Rate Limiting"]
+    API["FastAPI Service\n(async, structlog, OTEL)"]
+    Redis["Redis\n(JWT denylist, rate limit)"]
+    Postgres["PostgreSQL\n(Alembic migrations)"]
+    ML["IsolationForest\nModel Registry"]
+    Runbooks["Runbooks + Templates\n(7 incident types)"]
+    Monitoring["Prometheus + OTEL\nCollector"]
+    Docs["MkDocs Site\nmlops.zrl.dev"]
+
+    Client --> JWT
+    JWT --> API
+    API --> Redis
+    API --> Postgres
+    API --> ML
+    Postgres --> Runbooks
+    API --> Monitoring
+    Monitoring --> Docs
+```
+
+For full architecture detail, see [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+## CI/CD Pipeline
+
+The repo includes a hardened GitHub Actions pipeline ([`secured_ci.yml`](.github/workflows/secured_ci.yml), 28KB) covering:
+
+- **Secret scanning** — TruffleHog on every push
+- **SAST** — Bandit + mypy strict + semgrep
+- **Dependency auditing** — pip-audit + Dependabot auto-bumps
+- **Container scanning** — Trivy with scoped `.trivyignore`
+- **SBOM generation** — supply-chain artifact on every build
+- **Coverage gating** — ≥80% unit (SQLite, fast) and ≥65% integration (Postgres, full stack)
+- **CodeQL analysis** — [`codeql.yml`](.github/workflows/codeql.yml)
+- **Mermaid rendering** — automated diagram validation ([`mermaid-render.yml`](.github/workflows/mermaid-render.yml))
+- **Release automation** — [`release.yml`](.github/workflows/release.yml)
+- **MkDocs deploy** — [`docs.yml`](.github/workflows/docs.yml) auto-deploys to [mlops.zrl.dev](https://mlops.zrl.dev) on every merge to `main`
+
+All actions are pinned to SHA digests. Coverage gates reflect current enforced minimums and will be updated as the suite matures.
+
+---
+
+## Runbooks
+
+| Runbook | Incident Type |
+|---|---|
+| [`api_outage.md`](runbooks/api_outage.md) | API availability and latency failures |
+| [`data_quality_incident.md`](runbooks/data_quality_incident.md) | Data pipeline quality degradation |
+| [`feature_store_corruption.md`](runbooks/feature_store_corruption.md) | Feature store integrity failures |
+| [`llm_cost_spike.md`](runbooks/llm_cost_spike.md) | Unexpected LLM inference cost spikes |
+| [`model_degradation.md`](runbooks/model_degradation.md) | Model performance drift and accuracy loss |
+| [`model_rollback.md`](runbooks/model_rollback.md) | Controlled model version rollback |
+| [`pipeline_failure.md`](runbooks/pipeline_failure.md) | ML pipeline execution failures |
+
+All runbooks include Mermaid decision trees, Prometheus-bound severity thresholds, escalation templates, and postmortem artifacts. Runbook coverage is tracked in [`runbook_test_log.md`](runbooks/runbook_test_log.md).
+
+---
+
+## Architecture Decision Records
+
+Nine ADRs document every non-trivial design choice:
+
+| ADR | Decision |
+|---|---|
+| [ADR-001](docs/adr/ADR-001-incident-tracker-architecture.md) | Incident tracker architecture |
+| [ADR-002](docs/adr/ADR-002-async-orm.md) | Async ORM selection |
+| [ADR-003](docs/adr/ADR-003-redis-jwt-denylist.md) | Redis JWT denylist design |
+| [ADR-004](docs/adr/ADR-004-jwt-algorithm-selection.md) | JWT algorithm selection (RS256) |
+| [ADR-005](docs/adr/ADR-005-alembic-migration-strategy.md) | Alembic migration strategy |
+| [ADR-006](docs/adr/ADR-006-alpine-vs-debian-base-image.md) | Base image selection |
+| [ADR-007](docs/adr/ADR-007-structlog-otel-observability.md) | structlog + OTEL observability stack |
+| [ADR-008](docs/adr/ADR-008-db-persistence-strategy.md) | Database persistence strategy |
+| [ADR-009](docs/adr/ADR-009-async-architecture.md) | Async architecture pattern |
+
+---
 
 ## Repository Structure
 
@@ -80,19 +152,39 @@ This project showcases a production-grade MLOps incident-response system built w
 ml-incident-response-playbook/
 ├── .github/
 │   └── workflows/
-│       ├── secured_ci.yml         # Hardened CI pipeline (TruffleHog, Bandit, mypy, Trivy, SBOM)
-│       ├── codeql.yml             # GitHub CodeQL analysis workflow
-│       └── deploy-hf.yml          # Hugging Face Spaces deploy workflow
-├── api/                           # FastAPI application code
-├── alembic/                       # Database migration environment
-├── configs/                       # Environment and service configuration files
-├── dashboards/                    # Grafana or observability dashboard definitions
+│       ├── secured_ci.yml         # Hardened CI (TruffleHog, Bandit, mypy, Trivy, SBOM, coverage gates)
+│       ├── codeql.yml             # GitHub CodeQL analysis
+│       ├── docs.yml               # MkDocs build and deploy to mlops.zrl.dev
+│       ├── mermaid-render.yml     # Automated Mermaid diagram validation
+│       ├── release.yml            # Release automation pipeline
+│       ├── deploy-hf.yml          # Hugging Face Spaces deploy
+│       └── stale.yml              # Stale issue/PR management
+├── api/                           # FastAPI application (auth, rate limiting, OTEL, endpoints)
+├── alembic/                       # Alembic migration environment
+├── configs/                       # Environment and service configuration
+├── dashboards/                    # Grafana / observability dashboard definitions
 ├── dbt/                           # dbt models and data transformation layer
 ├── docs/
+│   ├── adr/                       # Architecture Decision Records (ADR-001 through ADR-009)
 │   ├── diagrams/                  # Mermaid flowcharts for each incident type
-│   ├── decisions/                 # Architecture Decision Records (ADRs)
 │   ├── templates/                 # Escalation, postmortem, and update templates
-│   └── policies/                  # Governance and security policy documents
+│   ├── policies/                  # Governance and security policy documents
+│   ├── metrics/                   # KPI and metric documentation
+│   ├── dashboards/                # Dashboard reference docs
+│   ├── architecture.md            # Full architecture document
+│   ├── api_reference.md           # API endpoint reference
+│   ├── ci-conventions.md          # CI/CD conventions and pipeline documentation
+│   ├── data_dictionary.md         # Data model and schema dictionary
+│   ├── deployment.md              # Deployment guide
+│   ├── governance.md              # Governance policy
+│   ├── monitoring.md              # Monitoring guide
+│   ├── onboarding.md              # Onboarding guide
+│   ├── severity_matrix.md         # Incident severity classification matrix
+│   ├── troubleshooting.md         # Operational troubleshooting guide
+│   ├── validation_rules.md        # Data validation rules
+│   ├── branch-protection-policy.md # Branch protection policy
+│   ├── operational_principles.md  # Operational engineering principles
+│   └── REMEDIATION_LOG.md         # Live security finding and remediation tracker
 ├── examples/                      # Sample incident logs and postmortem artifacts
 ├── infrastructure/                # IaC and deployment manifests
 ├── metrics/                       # KPI definitions and metric tracking
@@ -101,194 +193,128 @@ ml-incident-response-playbook/
 ├── observability/                 # Logging helpers, drift checks, anomaly detection
 ├── orchestration/                 # Airflow DAGs and scheduling templates
 ├── pipelines/                     # Data pipeline definitions
-├── runbooks/                      # Step-by-step incident response runbooks
+├── runbooks/                      # Step-by-step incident response runbooks (7 types)
 ├── scripts/                       # Utility and seed scripts
 ├── src/                           # Shared library code
-├── tests/                         # Pytest test suite
+├── tests/
+│   ├── unit/                      # Unit tests (SQLite, fast; ≥80% coverage gate)
+│   ├── integration/               # Integration tests (Postgres, full stack; ≥65% gate)
+│   ├── fixtures/                  # Shared test fixtures
+│   └── conftest.py
 ├── validation/                    # Data validation rules and schema checks
 ├── app.py                         # Gradio demo entry point (Hugging Face Space)
-├── Dockerfile
-├── Dockerfile.dev
-├── docker-compose.yml
+├── MODEL_CARD.md                  # ML model documentation (IsolationForest anomaly detector)
+├── CHANGELOG.md                   # Versioned change history
+├── Dockerfile                     # Production image
+├── Dockerfile.dev                 # Development image
+├── docker-compose.yml             # Base compose config
+├── docker-compose.override.yml    # Local dev overrides
+├── docker-compose.prod.yml        # Production compose config
+├── cosign.pub                     # Cosign public key for container image verification
 ├── Makefile
 ├── pyproject.toml
 ├── requirements.txt
-├── requirements-demo.txt          # Slim deps for HF Space demo (gradio + inference only)
+├── requirements-demo.txt          # Slim deps for HF Space (gradio + inference only)
 ├── requirements-dev.txt
 ├── requirements-airflow.txt
-├── README.md
+├── codecov.yml
+├── mkdocs.yml
+├── alembic.ini
+├── .pre-commit-config.yaml        # Pre-commit hooks (ruff, mypy, TruffleHog)
+├── .trivyignore                   # Scoped Trivy suppression rules
 └── SECURITY.md
 ```
 
-## Installation
-
-### Prerequisites
-
-- Git.
-- Python 3.11+.
-- Docker and Docker Compose.
-- A Markdown editor or VS Code.
-
-### Local Development Setup
-
-```bash
-git clone https://github.com/zrlopez/ml-incident-response-playbook.git
-cd ml-incident-response-playbook
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Docker Usage
-
-```bash
-docker build -t ml-incident-response-playbook .
-docker run --rm -p 8080:8080 ml-incident-response-playbook
-```
-
-If you use Docker Compose, start the supporting services with:
-
-```bash
-docker compose up --build
-```
-
-## Orchestration Overview
-
-The repository includes an Airflow-style DAG example and orchestration templates to show how incident checks, validation tasks, and anomaly detection jobs would be scheduled in a production environment.
-
-## Monitoring Overview
-
-Monitoring is centered on incident counts, severity trends, MTTA, MTTR, and repeat incident rate. The repo also includes a monitoring guide and KPI tracking notes to show how operational health would be reviewed over time.
-
-## Observability Overview
-
-Observability is represented through logging helpers, validation rules, sample incident logs, and anomaly-detection scaffolding. These assets demonstrate how production teams would connect alerts, logs, metrics, and incident ownership.
-
-## Sample Workflows
-
-1. Alert fires.
-2. Incident is classified by category and severity.
-3. The matching runbook is opened.
-4. Diagnostic and mitigation steps are executed.
-5. The incident is logged and followed by a postmortem.
+---
 
 ## Deployment
 
-This service is deployed to [Hugging Face Spaces](https://huggingface.co/spaces/zrlo/ml-incident-api) via a GitHub Actions workflow that syncs `main` to HF on every push. The Gradio SDK is used — HF runs `app.py` directly using `requirements-demo.txt`. The production FastAPI service (`api/app.py`) is deployed separately via Docker.
+This service has two deployment targets:
 
-## CI/CD Overview
+**Hugging Face Spaces (live demo):** The Gradio interface ([`app.py`](app.py)) is deployed to [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api) via [`deploy-hf.yml`](.github/workflows/deploy-hf.yml), which syncs `main` on every push using `requirements-demo.txt` (slim inference-only deps).
 
-The repo includes a hardened GitHub Actions pipeline (`secured_ci.yml`) covering secret scanning, dependency auditing, SAST (Bandit + mypy + semgrep), test coverage gating, container scanning with Trivy, and SBOM generation. All actions are pinned to SHA digests. Coverage gates are enforced at two levels: **≥80% on unit tests** (SQLite, fast) and **≥65% on integration tests** (Postgres, full stack). A combined end-to-end coverage figure has not yet been profiled; these gates reflect the current enforced minimums and will be updated as the test suite matures.
+**Production FastAPI service:** The full service runs via Docker using the production compose config:
 
-## Roadmap
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+```
 
-- Add richer sample incident records.
-- Expand validation and monitoring examples.
-- Add a richer observability demo.
+The MkDocs documentation site is auto-deployed to [mlops.zrl.dev](https://mlops.zrl.dev) via [`docs.yml`](.github/workflows/docs.yml) on every merge to `main`.
 
-## Contributing
+---
 
-Full contributing guidelines live in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md).
+## Local Development Setup
 
-Contributions are welcome — bug fixes, documentation improvements, new runbook
-templates, and security hardening are all in scope.
+### Prerequisites
 
-### Before You Start
+- Python 3.11+
+- Docker and Docker Compose
+- Git
 
-- Check [open issues](https://github.com/zrlopez/ml-incident-response-playbook/issues)
-  to avoid duplicating work.
-- For significant changes, open an issue first to discuss the approach.
-- All contributors are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md)
-  and the [Security Policy](SECURITY.md).
-
-### Development Setup
+### Setup
 
 ```bash
 git clone https://github.com/zrlopez/ml-incident-response-playbook.git
 cd ml-incident-response-playbook
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env          # Fill in required values
 alembic upgrade head           # Apply DB migrations
 python scripts/seed_users.py --dry-run  # Verify seed config
 ```
 
-Run the test suite before opening a pull request:
+Run the test suite:
 
 ```bash
-pytest tests/ -v --tb=short
+# Unit tests (fast, SQLite)
+pytest tests/unit/ -v --tb=short
+
+# Integration tests (requires Postgres via Docker Compose)
+docker compose up -d db redis
+pytest tests/integration/ -v --tb=short
 ```
 
-### Branching and Commits
+Run the full CI pipeline locally via Make:
 
-- Branch from `main` using the pattern `type/short-description`:
-  `fix/auth-rate-limit`, `feat/rs256-jwks`, `docs/postmortem-template`.
-- Keep commits atomic — one logical change per commit.
-- Use [Conventional Commits](https://www.conventionalcommits.org/) format:
+```bash
+make lint     # ruff + mypy
+make test     # full test suite with coverage
+make security # bandit + pip-audit
+```
 
-  ```
-  type(scope): short imperative summary
+---
 
-  Optional body explaining WHY, not what.
-  Closes #123
-  ```
+## Scope and Known Tradeoffs
 
-  Valid types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`.
+This is a single-tenant reference implementation. Known scope boundaries:
 
-### Pull Request Checklist
+- **Multi-tenant key isolation** is not implemented; tracked in [ADR-003](docs/adr/ADR-003-redis-jwt-denylist.md)
+- **Combined end-to-end coverage** has not been profiled; the ≥80%/≥65% gates reflect per-suite enforced minimums
+- **Orchestration** (Airflow DAGs, `orchestration/`) is templated and representative, not a live scheduler
+- **Observability** (OTEL, Prometheus) is configured but the collector target is the HF Spaces demo environment
 
-Before marking your PR ready for review, confirm:
+---
 
-- [ ] `pytest tests/ -v` passes locally with no new failures.
-- [ ] New code paths have corresponding tests in `tests/`.
-- [ ] Docstrings added for any new public functions or classes.
-- [ ] No secrets, credentials, or real PII appear in any file
-  (the CI TruffleHog scan will block the merge if found).
-- [ ] `MASTER_ACTION_TRACKER.md` updated if your change addresses a tracked finding.
-- [ ] `SECURITY.md` updated if you change the security control surface.
-- [ ] `.env.example` updated if you add new environment variables.
-- [ ] Markdown runbooks or templates follow the existing style
-  (heading hierarchy, Mermaid diagram syntax, table formatting).
+## Roadmap
 
-### Code Style
+- **v1.1** — Richer synthetic incident corpus with schema evolution examples
+- **v1.2** — Expanded observability demo with live Prometheus scrape targets
+- **v1.3** — Multi-tenant key isolation per ADR-003
 
-- Python: follow [PEP 8](https://peps.python.org/pep-0008/).
-  Line length: 100 characters. Format with `ruff format .` before committing.
-- Type hints required on all new function signatures.
-- Structured logging via `structlog` — no bare `print()` in application code.
-- Pydantic models for all API request/response shapes.
-- No `TODO` comments without a tracking issue number: `# TODO(#42): description`.
+---
 
-### Security Contributions
+## Contributing
 
-If your change touches authentication, authorization, secrets handling, or
-dependency versions:
+See [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for full guidelines including branching conventions, commit format, PR checklist, and security contribution policy.
 
-- Reference the relevant `ARCH-*` or `CRIT-*` finding ID from `MASTER_ACTION_TRACKER.md`.
-- Add or update tests in `tests/test_api.py` covering the security behavior.
-- For vulnerability reports, follow the [Security Policy](SECURITY.md) —
-  **do not open a public issue for unpatched vulnerabilities**.
+All contributors are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md) and [Security Policy](SECURITY.md).
 
-### Documentation Contributions
-
-Runbooks, postmortem templates, and policy docs live in `runbooks/`, `templates/`,
-and `docs/`. When adding or updating them:
-
-- Keep all examples synthetic — no real hostnames, IPs, usernames, or incident data.
-- Mermaid diagrams should render cleanly in GitHub's Markdown preview.
-- Link new documents from the relevant index or parent document.
-
-### Maintainer Review SLA
-
-Expect an initial review within **5 business days**. A second review or merge
-follows within **10 business days** of the last substantive update.
+---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[MIT License](LICENSE)
 
 ## Contact
 
-Portfolio: https://zrl.dev
-
-GitHub: https://github.com/zrlopez
+Portfolio: [zrl.dev](https://zrl.dev) · GitHub: [github.com/zrlopez](https://github.com/zrlopez)
