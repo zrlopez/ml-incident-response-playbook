@@ -24,7 +24,8 @@ A hardened FastAPI service and operational runbook suite for ML incident respons
 **Role target:** MLOps Engineer · Data Operations · Platform Engineering  
 **Stack:** Python 3.11 · FastAPI · PostgreSQL · Redis · Docker · GitHub Actions · IsolationForest · Pydantic · mypy · structlog · OpenTelemetry  
 **Seniority signal:** Staff-adjacent — 9 ADRs, 7 runbooks, 677-test suite, full supply-chain security, live deployment  
-**Live:** [mlops.zrl.dev](https://mlops.zrl.dev) · [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api)
+**Documentation:** [mlops.zrl.dev](https://mlops.zrl.dev)  
+**Live Anomaly Detection Demo:** [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api)
 
 ---
 
@@ -231,7 +232,7 @@ ml-incident-response-playbook/
 
 This service has two deployment targets:
 
-**Hugging Face Spaces (live demo):** The Gradio interface ([`app.py`](app.py)) is deployed to [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api) via [`deploy-hf.yml`](.github/workflows/deploy-hf.yml), which syncs `main` on every push using `requirements-demo.txt` (slim inference-only deps).
+**Hugging Face Spaces (live anomaly detection demo):** The Gradio interface ([`app.py`](app.py)) is deployed to [huggingface.co/spaces/zrlo/ml-incident-api](https://huggingface.co/spaces/zrlo/ml-incident-api) via [`deploy-hf.yml`](.github/workflows/deploy-hf.yml), which syncs `main` on every push using `requirements-demo.txt` (slim inference-only deps).
 
 **Production FastAPI service:** The full service runs via Docker using the production compose config:
 
