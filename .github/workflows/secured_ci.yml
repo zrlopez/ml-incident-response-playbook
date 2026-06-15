@@ -87,7 +87,8 @@ jobs:
             --output-file requirements.generated.txt \
             --no-emit-trusted-host \
             --no-annotate \
-            --quiet
+            --quiet \
+            --no-strip-extras
 
       - name: Check for lockfile drift
         run: |
