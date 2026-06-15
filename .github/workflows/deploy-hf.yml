@@ -41,4 +41,9 @@ jobs:
 
           git commit -m "deploy: sync from GitHub main $(git rev-parse --short HEAD~1 2>/dev/null || echo init)"
 
-          git push --force https://zrlo:${HF_TOKEN}@huggingface.co/spaces/zrlo/ml-incident-api hf-deploy:main
+          # Retry with exponential backoff on transient errors (e.g. 429 rate limit)
+          for i in 1 2 3; do
+            git push --force https://zrlo:${HF_TOKEN}@huggingface.co/spaces/zrlo/ml-incident-api hf-deploy:main \
+              && break \
+              || sleep $((i * 5))
+          done
