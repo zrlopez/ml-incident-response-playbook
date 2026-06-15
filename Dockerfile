@@ -78,11 +78,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     PATH="/opt/venv/bin:$PATH"
 
-# Runtime deps only: shared libs needed at runtime (not build tools).
+# Base image packages: patch all existing packages, then install runtime deps.
 # libpq: asyncpg runtime linkage
 # openblas: numpy/pandas/sklearn runtime linkage
 # libstdc++: g++ runtime lib (grpcio, sklearn)
-RUN apk add --no-cache \
+RUN apk upgrade --no-cache && \
+    apk add --no-cache \
         curl \
         libpq \
         openblas \
