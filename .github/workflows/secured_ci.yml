@@ -92,16 +92,20 @@ jobs:
             # Strip extras bracket: sqlalchemy[asyncio] -> sqlalchemy
             base="${name%%[*}"
             # Find the line in requirements.txt (it may have extras)
-            rline=$(grep -E "^${base}(=|\[)" requirements.txt | head -1)
+            rline=$(grep -i -E "^${base}(=|\[)" requirements.txt | head -1)
             if [ -z "$rline" ]; then
               echo "ERROR: ${name}==${ver} missing from requirements.txt"
               ERR=1
-            elif [ "$rline" != "${name}==${ver}" ] && [ "$rline" != "${base}==${ver}" ]; then
-              echo "ERROR: ${name} version mismatch"
-              echo "  pyproject.toml: ${name}==${ver}"
-              echo "  requirements.txt: $rline"
-              echo "  Run 'make deps-compile' then commit both files."
-              ERR=1
+            else
+              # Case-insensitive version comparison
+              rver=$(echo "$rline" | sed 's/.*==//')
+              if [ "$rver" != "$ver" ]; then
+                echo "ERROR: ${name} version mismatch"
+                echo "  pyproject.toml: ${name}==${ver}"
+                echo "  requirements.txt: $rline"
+                echo "  Run 'make deps-compile' then commit both files."
+                ERR=1
+              fi
             fi
           done < <(sed -n '/^dependencies = \[/,/^\]/p' pyproject.toml \
             | grep -E '".*==' \
