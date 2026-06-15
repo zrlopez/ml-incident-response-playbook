@@ -21,7 +21,7 @@ numpy==2.2.6
 pandas==2.3.3
 scikit-learn==1.8.0
 tenacity==9.1.2
-structlog==25.4.0
+structlog==25.5.0
 
 # Data validation (used by ml_incident_dag validate_data task)
 pandera==0.23.1
