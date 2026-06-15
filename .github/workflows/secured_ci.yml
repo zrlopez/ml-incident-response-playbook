@@ -81,27 +81,35 @@ jobs:
       - name: Install pip-tools
         run: pip install pip-tools
 
-      - name: Regenerate requirements.txt from pyproject.toml
+      - name: Check for lockfile drift (direct deps only)
         run: |
-          pip-compile pyproject.toml \
-            --output-file requirements.generated.txt \
-            --no-emit-trusted-host \
-            --no-annotate \
-            --quiet \
-            --no-strip-extras
-
-      - name: Check for lockfile drift
-        run: |
-          # Normalise both files: strip comments, sort, compare package==version lines only.
-          grep -v '^#' requirements.txt | grep -v '^$' | sort > /tmp/req_committed.txt
-          grep -v '^#' requirements.generated.txt | grep -v '^$' | sort > /tmp/req_generated.txt
-          if ! diff -u /tmp/req_committed.txt /tmp/req_generated.txt; then
-            echo ""
-            echo "ERROR: requirements.txt is out of sync with pyproject.toml."
-            echo "Run 'make deps-compile' locally and commit the updated requirements.txt."
-            exit 1
-          fi
-          echo "Lockfile check passed — requirements.txt matches pyproject.toml."
+          # Compare direct dependency pins from both files. Transitive deps
+          # float freely with pip-compile resolution — comparing the full tree
+          # creates noisy CI failures from upstream releases.
+          ERR=0
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            # Extract package==version from pyproject.toml line like:
+            #     "fastapi==0.136.3",
+            dep=$(echo "$line" | sed 's/.*"\(.*\)".*/\1/')
+            pkg="${dep%%=*}"
+            # Strip extras: sqlalchemy[asyncio] -> sqlalchemy
+            pkg="${pkg%%[*}"
+            # Find matching line in requirements.txt
+            match=$(grep -i "^${pkg}==" requirements.txt | head -1)
+            if [ -z "$match" ]; then
+              echo "ERROR: $dep declared in pyproject.toml but missing from requirements.txt"
+              ERR=1
+            elif [ "$match" != "$dep" ]; then
+              echo "ERROR: version mismatch for $pkg"
+              echo "  pyproject.toml: $dep"
+              echo "  requirements.txt: $match"
+              echo "  Run 'make deps-compile' locally and commit the updated requirements.txt."
+              ERR=1
+            fi
+          done < <(grep '==' pyproject.toml | grep -v '^#' | sed -n 's/.*"\(.*\)".*/\1/p')
+          if [ "$ERR" -eq 1 ]; then exit 1; fi
+          echo "Lockfile check passed — all direct deps match pyproject.toml."
 
   dependency-audit:
     name: dependency-audit
