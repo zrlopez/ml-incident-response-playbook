@@ -94,9 +94,9 @@ jobs:
             dep=$(echo "$line" | sed 's/.*"\(.*\)".*/\1/')
             pkg="${dep%%=*}"
             # Strip extras: sqlalchemy[asyncio] -> sqlalchemy
-            pkg="${pkg%%[*}"
-            # Find matching line in requirements.txt
-            match=$(grep -i "^${pkg}==" requirements.txt | head -1)
+  pkg="${pkg%%[*}"
+  # Find matching line in requirements.txt (extras brackets optional)
+  match=$(grep -i "^${pkg}\b" requirements.txt | head -1)
             if [ -z "$match" ]; then
               echo "ERROR: $dep declared in pyproject.toml but missing from requirements.txt"
               ERR=1
