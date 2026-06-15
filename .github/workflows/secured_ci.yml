@@ -87,7 +87,7 @@ jobs:
           # in requirements.txt with matching version. Transitive deps
           # (which float with pip-compile resolution) are not compared.
           ERR=0
-          while IFS='=' read -r name ver; do
+          while read -r name ver; do
             [ -z "$name" ] && continue
             # Strip extras bracket: sqlalchemy[asyncio] -> sqlalchemy
             base="${name%%[*}"
