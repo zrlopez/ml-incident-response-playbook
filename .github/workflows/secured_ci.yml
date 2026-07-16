@@ -197,7 +197,7 @@ jobs:
         continue-on-error: true  # INTENTIONAL: SARIF upload failure is non-fatal. See CI-52.
 
       - name: Upload Bandit SARIF
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa  # v4.36.0
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4.37.0
         if: always()
         with:
           sarif_file: ./bandit-app.sarif
@@ -241,7 +241,7 @@ jobs:
         # Fork PRs are guarded by the `if:` above; they never reach this step.
 
       - name: Upload semgrep SARIF
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa  # v4.36.0
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4.37.0
         if: always()
         with:
           sarif_file: semgrep.sarif
@@ -589,7 +589,7 @@ jobs:
             ml-incident-api:${{ github.sha }}
 
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa  # v4.36.0
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4.37.0
         if: always()
         with:
           sarif_file: trivy-container.sarif
