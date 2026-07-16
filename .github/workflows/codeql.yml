@@ -7,23 +7,14 @@
 #   - Findings surface as Security tab alerts, not CI gate failures
 #   - Longer timeout (30 min) shouldn't block the main CI feedback loop
 #
-# What CodeQL catches that Bandit does not:
-#   - Taint-flow from HTTP input to sensitive sinks (SQL, shell, file path)
-#   - Insecure redirect chains (CWE-601)
-#   - Path traversal via user-controlled input (CWE-022)
-#   - SQL injection via ORM query construction (CWE-089)
-#   - XSS via template rendering (CWE-079)
-#   - Cryptographic weakness patterns
-#
-# Remediation:
-#   P1-08: CodeQL semantic SAST added (2026-05-24)
-#   P1-04: codeql-action steps SHA-pinned to verified commit digest (2026-05-24)
-#
 # ACTION SHA DIGEST REFERENCE:
-#   github/codeql-action/init@v4.36.0
-#   github/codeql-action/autobuild@v4.36.0
-#   github/codeql-action/analyze@v4.36.0
-#     -> 7211b7c8077ea37d8641b6271f6a365a22a5fbfa
+#   github/codeql-action/*@v4.37.0
+#     -> 99df26d4f13ea111d4ec1a7dddef6063f76b97e9
+#   actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+#     -> 9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+#
+# Python uses build-mode: none (no compiled build). Autobuild is not needed and
+# caused version-mismatch failures when init/analyze/autobuild pins diverged.
 #
 # NOTE: Default Setup must be DISABLED in Settings -> Code security -> Code scanning
 # for this advanced workflow to upload SARIF without conflict.
@@ -55,16 +46,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4.37.0
         with:
           languages: python
+          build-mode: none
           queries: security-and-quality
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@7211b7c8077ea37d8641b6271f6a365a22a5fbfa  # v4.36.0
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9  # v4.37.0
