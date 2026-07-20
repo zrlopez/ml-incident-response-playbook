@@ -45,7 +45,7 @@ opentelemetry-instrumentation-asgi==0.62b1
 opentelemetry-instrumentation-fastapi==0.62b1
 opentelemetry-proto==1.41.1
 opentelemetry-sdk==1.41.1
-opentelemetry-semantic-conventions==0.62b1
+opentelemetry-semantic-conventions==0.65b0
 opentelemetry-util-http==0.62b1
 packaging==26.2
 pandas==2.3.3
