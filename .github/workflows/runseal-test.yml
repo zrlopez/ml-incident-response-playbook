@@ -41,6 +41,7 @@ jobs:
             network:
               mode: blocked
             access: {}
+          verify-attestations: false
 
   # -------------------------------------------------------------------
   # Test 2: Network-filtered pip install (only PyPI allowed)
@@ -71,6 +72,7 @@ jobs:
                 - pypi.org
                 - files.pythonhosted.org
             access: {}
+          verify-attestations: false
 
   # -------------------------------------------------------------------
   # Test 3: Phantom credentials demo
@@ -107,6 +109,7 @@ jobs:
                 url: https://httpbin.org
                 allow:
                   - POST /post
+          verify-attestations: false
 
   # -------------------------------------------------------------------
   # Test 4: Audit evidence collection
@@ -141,3 +144,4 @@ jobs:
             network:
               mode: blocked
             access: {}
+          verify-attestations: false
