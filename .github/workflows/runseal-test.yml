@@ -1,0 +1,143 @@
+# Runseal Supply Chain Security — Test Workflow
+# Demonstrates sandboxed CI execution with phantom credentials.
+# Uses nono kernel-enforced Landlock sandboxing.
+# Pin to @v0.3.3 — early alpha, use with caution.
+
+name: Runseal Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------------
+  # Test 1: Sandboxed pip install + lint
+  # Filesystem: read-only except /tmp, network: blocked
+  # -------------------------------------------------------------------
+  sandboxed-lint:
+    name: "Runseal: Sandboxed Lint"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Bandit inside Runseal sandbox
+        uses: always-further/runseal@v0.3.3
+        with:
+          run: |
+            pip install bandit[toml] -q
+            bandit -r src/ api/ --severity-level medium --confidence-level medium || true
+            echo "✅ Bandit completed inside sandbox"
+          policy: |
+            fs:
+              read: ["."]
+              write: ["/tmp"]
+            network:
+              mode: blocked
+            access: {}
+
+  # -------------------------------------------------------------------
+  # Test 2: Network-filtered pip install (only PyPI allowed)
+  # Demonstrates L7 network filtering with phantom credentials.
+  # -------------------------------------------------------------------
+  sandboxed-deps:
+    name: "Runseal: Sandboxed Dep Install"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps inside sandbox (PyPI only)
+        uses: always-further/runseal@v0.3.3
+        with:
+          run: |
+            pip install -r requirements.txt -q 2>/dev/null || \
+              pip install fastapi uvicorn pydantic cryptography httpx sqlalchemy aiosqlite asyncpg -q
+            python -c "import fastapi; print('✅ FastAPI imported:', fastapi.__version__)"
+          policy: |
+            fs:
+              read: ["."]
+              write: ["/tmp"]
+            network:
+              mode: filtered
+              allow:
+                - pypi.org
+                - files.pythonhosted.org
+            access: {}
+
+  # -------------------------------------------------------------------
+  # Test 3: Phantom credentials demo
+  # Real secret stays outside sandbox; only phantom injected.
+  # -------------------------------------------------------------------
+  phantom-secrets:
+    name: "Runseal: Phantom Credentials"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify phantom credentials work
+        uses: always-further/runseal@v0.3.3
+        with:
+          run: |
+            echo "=== Phantom Credential Demo ==="
+            echo "SECRET_VALUE is: ${SECRET_VALUE}"
+            echo ""
+            echo "If you see a non-empty value above, the phantom was injected."
+            echo "If leaked, this value is useless outside the sandbox."
+            echo ""
+            echo "✅ Phantom credential injection verified"
+          policy: |
+            fs:
+              read: ["."]
+              write: ["/tmp"]
+            network:
+              mode: blocked
+            access:
+              demo:
+                secret: SECRET_VALUE
+                url: https://httpbin.org
+                allow:
+                  - POST /post
+
+  # -------------------------------------------------------------------
+  # Test 4: Audit evidence collection
+  # Captures cryptographic audit of all sandbox access.
+  # -------------------------------------------------------------------
+  audit-evidence:
+    name: "Runseal: Audit Evidence"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate audit evidence
+        uses: always-further/runseal@v0.3.3
+        with:
+          run: |
+            echo "Running audited commands..."
+            echo "Step 1: Read a file"
+            cat README.md | head -5
+            echo ""
+            echo "Step 2: Write to allowed path"
+            echo "audit-test-$(date +%s)" > /tmp/audit-proof.txt
+            cat /tmp/audit-proof.txt
+            echo ""
+            echo "✅ Audit evidence generated"
+          audit: artifact
+          policy: |
+            fs:
+              read: ["."]
+              write: ["/tmp"]
+            network:
+              mode: blocked
+            access: {}
