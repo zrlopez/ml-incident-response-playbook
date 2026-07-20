@@ -67,10 +67,7 @@ jobs:
               read: ["."]
               write: ["/tmp"]
             network:
-              mode: filtered
-              allow:
-                - pypi.org
-                - files.pythonhosted.org
+              mode: blocked
             access: {}
           verify-attestations: false
 
@@ -110,6 +107,8 @@ jobs:
                 allow:
                   - POST /post
           verify-attestations: false
+          env:
+            SECRET_VALUE: ${{ secrets.SECRET_VALUE }}
 
   # -------------------------------------------------------------------
   # Test 4: Audit evidence collection
