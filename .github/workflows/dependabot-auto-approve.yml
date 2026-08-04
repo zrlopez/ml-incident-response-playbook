@@ -1,0 +1,50 @@
+# =============================================================================
+# Dependabot Auto-Approve & Auto-Merge
+# =============================================================================
+# Runs on pull_request_target so it has access to repo secrets even for
+# Dependabot PRs (which use a read-only token on pull_request events).
+#
+# Flow:
+#   1. Approve the PR if opened by dependabot[bot]
+#   2. Enable auto-merge (squash) so it merges once the required CI passes
+#
+# Security notes:
+#   - pull_request_target checks out the BASE branch code for the workflow
+#     itself, not the PR head — safe against malicious PRs.
+#   - Only fires for dependabot[bot]; all other actors are skipped.
+#   - Auto-merge only triggers after required status checks pass (branch
+#     protection rules still enforced).
+# =============================================================================
+name: Dependabot Auto-Approve
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-approve:
+    name: Auto-approve Dependabot PR
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@dbb049abf0d677abbd7f7eee0375145b417fdd34  # v2.3.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve PR
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge (squash)
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
