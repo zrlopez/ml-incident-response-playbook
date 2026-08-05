@@ -180,6 +180,45 @@
 | P1-08 | CodeQL semantic SAST workflow added (`security-and-quality` query suite) | HIGH | ✅ CLOSED | `.github/workflows/codeql.yml` |
 | CI-10 | Branch protection ruleset enforced on `main` | MED | ✅ CLOSED | GitHub repo Settings — Rulesets |
 
+### Phase 12
+
+### ML-09 — Integration coverage gate raised 53% → 65% (CI-67 Complete)
+
+**Date:** 2026-08-05  
+**Files:** `tests/integration/test_inference_integration.py` (new), `.github/workflows/secured_ci.yml`, `Makefile`, `README.md`
+
+**Problem:** Integration `--cov-fail-under` gate was pinned at 53% (CI-66b deferral), while README claimed ≥65%. The inference router (`api/routers/inference.py`) had zero integration-level HTTP coverage. The mismatch was a direct factual contradiction visible in CI.
+
+**Fix:** Added `tests/integration/test_inference_integration.py` with 10 ASGI-transport tests covering:
+- IT-INF-01..02: Happy path 200 (nominal + extreme vector)
+- IT-INF-03..04: 503 paths (missing artifact, predict() raises)
+- IT-INF-05: 401/403 unauthenticated gate
+- IT-INF-06: 422 Pydantic validation rejection
+- IT-INF-07..08: GET /anomaly/health (threshold exposed, artifact_exists reflected)
+- IT-INF-09: model_version constant round-trip
+- IT-INF-10: inference_latency_ms non-negative invariant
+
+No Postgres or Redis required — ModelRegistry is patched per-test via `unittest.mock.patch`. Gate raised to 65% in both `secured_ci.yml` and `Makefile`. README Scope section updated to match.
+
+**Gate:** `--cov-fail-under=65` ✅
+
+---
+
+ — ML Layer + Observability Hardening (2026-08-05)
+
+| ID | Finding | Sev | Status | Files Changed |
+|----|---------|-----|--------|---------------|
+| ML-01 | `_ANOMALY_THRESHOLD` was a hard-coded `0.0` constant; no env-var override; registry logs used stdlib `logging` not structlog | HIGH | ✅ CLOSED | `ml_models/incident_anomaly/registry.py` |
+| ML-02 | `scripts/train_model.py` did not auto-generate SHA-256 artifact checksum; `model_metadata.json` missing `artifact_sha256` and `anomaly_threshold` fields | MED | ✅ CLOSED | `scripts/train_model.py` |
+| ML-03 | `api/routers/inference.py` used stdlib `logging.getLogger(__name__)` — inference logs bypassed structlog PII-scrubbing and JSON pipeline | HIGH | ✅ CLOSED | `api/routers/inference.py` |
+| ML-04 | `MODEL_CARD.md` Output Schema implied threshold was fixed; no threshold configuration guidance; `confidence` not annotated as uncalibrated | MED | ✅ CLOSED | `MODEL_CARD.md` |
+| ML-05 | No ADR covering anomaly model design decisions (algorithm selection, contamination rationale, threshold strategy, drift wiring) | MED | ✅ CLOSED | `docs/adr/ADR-010-anomaly-model-design.md` (new) |
+| ML-06 | `MODEL_CARD.md` missing Productionization Gaps section; honest gap analysis not documented | LOW | ✅ CLOSED | `MODEL_CARD.md` |
+| ML-07 | `runbooks/model_degradation.md` referenced drift detection generically without tying to implemented `check_drift_suite()`, `ANOMALY_THRESHOLD` env var, or API health endpoint | LOW | ✅ CLOSED | `runbooks/model_degradation.md` |
+| ML-08 | `Dockerfile.dev` base image `python:3.11-slim` not digest-pinned; no supply-chain rationale for intentional omission | LOW | ✅ CLOSED | `Dockerfile.dev` |
+
+---
+
 ### Phase 0 — Critical/High/Medium (Complete)
 
 | ID | Finding | Sev | Status | Files Changed |

@@ -2,8 +2,16 @@
 # ML Incident Response API - Development Dockerfile
 # For local development only — not hardened for production use.
 # Production image: Dockerfile (multi-stage Alpine, non-root, SHA-pinned)
-# Remediation 2026-05-23
-# CRIT-03: Replaced `python -m http.server` CMD with uvicorn
+#
+# Supply-chain note (2026-08-05):
+#   The base image below is intentionally NOT digest-pinned. In dev, faster
+#   iteration (patched slim images via `docker pull`) outweighs the supply-chain
+#   risk that digest pinning mitigates. The production Dockerfile pins both
+#   build and runtime stages to verified SHA-256 digests.
+#
+#   If you need a reproducible dev environment (e.g. CI snapshot testing),
+#   pin the digest: python:3.11-slim@sha256:<digest>
+#   Run `docker inspect python:3.11-slim | jq '.[0].RepoDigests'` to obtain it.
 # =============================================================================
 FROM python:3.11-slim AS builder
 

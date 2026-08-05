@@ -34,6 +34,7 @@ Notes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import sys
@@ -146,6 +147,17 @@ def train(seed: int = 42, n_samples: int = 2000, verbose: bool = False) -> None:
     joblib.dump(model, ARTIFACT_FILE)
     log.info("Model saved to %s", ARTIFACT_FILE)
 
+    # Write SHA-256 manifest so ModelRegistry can verify artifact integrity
+    # on load (SEC-04). Format: "<hex>  <filename>" (shasum-compatible).
+    sha = hashlib.sha256()
+    with ARTIFACT_FILE.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(65_536), b""):
+            sha.update(chunk)
+    digest = sha.hexdigest()
+    manifest_file = ARTIFACT_FILE.with_suffix(".joblib.sha256")
+    manifest_file.write_text(f"{digest}  {ARTIFACT_FILE.name}\n")
+    log.info("SHA-256 manifest written to %s (digest=%s...)", manifest_file, digest[:16])
+
     metadata = {
         "model_version": MODEL_VERSION,
         "algorithm": "IsolationForest",
@@ -153,10 +165,12 @@ def train(seed: int = 42, n_samples: int = 2000, verbose: bool = False) -> None:
         "library_license": "BSD-3-Clause",
         "n_estimators": 200,
         "contamination": 0.05,
+        "anomaly_threshold": 0.0,
         "random_state": seed,
         "n_train_samples": n_normal,
         "feature_names": FEATURE_NAMES,
         "artifact_file": str(ARTIFACT_FILE.name),
+        "artifact_sha256": digest,
         "attribution": (
             "scikit-learn: Pedregosa et al., JMLR 12, pp. 2825-2830, 2011. "
             "BSD-3-Clause. See MODEL_CARD.md."

@@ -62,14 +62,13 @@ test-cov:
 
 # ── Integration tests (requires live Postgres + Redis) ───────────────────────────
 test-int:
-	# R-P3 (Cycle 1): gate aligned to 53% to match CI-66b reality.
-	# CI-67 will raise this back to 65% once Redis/lifespan/auth
-	# fixture gaps are resolved. DO NOT raise this gate manually
-	# until CI-67 integration fixture work is complete.
+	# CI-67 COMPLETE: integration inference tests added (test_inference_integration.py,
+	# 10 tests, IT-INF-01..10). Gate raised 53% -> 65% as planned.
+	# See docs/REMEDIATION_LOG.md Phase 12 (ML-09).
 	pytest tests/integration/ \
 		--cov=api --cov=observability --cov=src \
 		--cov-report=term-missing \
-		--cov-fail-under=53 \
+		--cov-fail-under=65 \
 		-v
 
 # ── ci-local: mirrors the full CI pipeline locally (CI-65) ─────────────────────────

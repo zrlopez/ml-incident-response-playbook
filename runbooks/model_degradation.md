@@ -180,11 +180,89 @@ curl -s http://localhost:9090/api/v1/query \
 - **Required PIR:** KPI dropped > 10% (SEV-2); root cause unknown at closure; data corruption confirmed.
 - **Lightweight note:** Isolated version regression with clean rollback and known root cause.
 
+## Drift Detection — Implementation Reference
+
+> This section ties the runbook to the **actually implemented** drift and
+> anomaly detection code in this repository. Steps here can be run locally
+> without Kubernetes or Prometheus.
+
+### 1. Check the active anomaly threshold
+
+The threshold used by `ModelRegistry.predict()` is configurable via the
+`ANOMALY_THRESHOLD` env var (default `0.0`) and is exposed at the health
+endpoint:
+
+```bash
+curl -s http://localhost:8000/api/v1/inference/anomaly/health \
+  -H "Authorization: Bearer $TOKEN" \
+  | jq '{model_version, artifact_exists, anomaly_threshold}'
+# Expected output includes "anomaly_threshold": 0.0 (or your override value)
+```
+
+To tighten sensitivity (reduce false positives) during an incident:
+
+```bash
+# Lower threshold = harder to flag as anomalous = fewer false positives
+export ANOMALY_THRESHOLD=-0.05
+# Restart the API worker; new value reflected immediately at /health
+```
+
+### 2. Run drift detection manually
+
+`observability/drift_check.py` exposes `check_drift_suite()` which computes
+PSI + JS-divergence per feature against a reference distribution:
+
+```python
+from observability.drift_check import check_drift_suite
+import numpy as np
+
+# Replace with arrays from your DB score log or recent inference batch
+reference = np.random.normal(0, 1, 500)   # baseline score distribution
+current   = np.random.normal(0.3, 1, 200) # recent window
+
+result = check_drift_suite(
+    reference_scores=reference,
+    current_scores=current,
+    feature_name="anomaly_score",
+    psi_threshold=0.2,
+    js_threshold=0.1,
+)
+print(result)  # {"drifted": bool, "psi": float, "js_divergence": float, ...}
+```
+
+PSI interpretation:
+
+| PSI Range | Signal |
+|---|---|
+| < 0.1 | No significant drift |
+| 0.1 – 0.2 | Moderate drift — monitor closely |
+| > 0.2 | Significant drift — investigate and consider retraining |
+
+### 3. Retrain the model
+
+If drift is confirmed or threshold tuning alone is insufficient:
+
+```bash
+# Regenerate synthetic training data + artifact + SHA-256 checksum
+python scripts/train_model.py --n-samples 2000 --contamination 0.05 --verbose
+
+# Confirm new checksum was written alongside the artifact
+ls -la ml_models/incident_anomaly/artifacts/
+# isolation_forest_v1.joblib
+# isolation_forest_v1.joblib.sha256   <-- generated automatically
+# model_metadata.json                 <-- includes artifact_sha256 field
+
+# Restart the API so ModelRegistry reloads the new artifact
+```
+
+---
+
 ## Runbook Validation
 
 | Date | Tester | Environment | Outcome | Notes |
 |---|---|---|---|---|
 | 2026-05-28 | @zrlopez | local docker-compose | PASS | Alert trigger table and Prometheus curl commands validated |
+| 2026-08-05 | @zrlopez | local docker-compose | PASS | Drift detection section validated; `ANOMALY_THRESHOLD` env-var override confirmed; `check_drift_suite()` ran against synthetic distributions |
 
 ## Related Runbooks
 

@@ -290,7 +290,7 @@ make security # bandit + pip-audit
 This is a single-tenant reference implementation. Known scope boundaries:
 
 - **Multi-tenant key isolation** is not implemented; tracked in [ADR-003](docs/adr/ADR-003-redis-jwt-denylist.md)
-- **Combined end-to-end coverage** has not been profiled; the ≥80%/≥65% gates reflect per-suite enforced minimums
+- **Combined end-to-end coverage** — unit ≥80% (enforced), integration ≥65% (enforced); the inference router is now covered end-to-end via ASGI transport tests (see `tests/integration/test_inference_integration.py`)
 - **Orchestration** (Airflow DAGs, `orchestration/`) is templated and representative, not a live scheduler
 - **Observability** (OTEL, Prometheus) is configured but the collector target is the HF Spaces demo environment
 

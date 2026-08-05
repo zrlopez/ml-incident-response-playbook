@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -43,14 +44,31 @@ import numpy as np
 from numpy.typing import NDArray
 from sklearn.ensemble import IsolationForest
 
-log = logging.getLogger(__name__)
+from src.logger import get_logger
+
+log = get_logger(__name__)
 
 _ARTIFACT_DIR = Path(__file__).parent / "artifacts"
 _MODEL_FILE = _ARTIFACT_DIR / "isolation_forest_v1.joblib"
 _MANIFEST_FILE = _ARTIFACT_DIR / "isolation_forest_v1.joblib.sha256"
 MODEL_VERSION = "1.0.0"
 
-_ANOMALY_THRESHOLD: float = 0.0
+# ---------------------------------------------------------------------------
+# Configurable anomaly threshold
+# ---------------------------------------------------------------------------
+# The IsolationForest decision_function returns scores in roughly [-0.5, 0.5].
+# Negative scores = more anomalous. The default of 0.0 classifies anything
+# below the mean path length as anomalous, which yields ~contamination-rate
+# positives on the training distribution.
+#
+# Override via env var ANOMALY_THRESHOLD (float) to tune precision/recall
+# tradeoff without retraining. Example:
+#   ANOMALY_THRESHOLD=-0.05  → fewer false positives (higher precision)
+#   ANOMALY_THRESHOLD=0.05   → fewer false negatives (higher recall)
+#
+# Calibration guidance: plot score histogram on a representative sample,
+# then choose threshold at the desired operating point on the PR curve.
+_ANOMALY_THRESHOLD: float = float(os.environ.get("ANOMALY_THRESHOLD", "0.0"))
 
 _EXPECTED_SHA256: str = "0" * 64  # sentinel — replace with real digest
 
@@ -68,6 +86,7 @@ class HealthResult(TypedDict):
     artifact_file: str
     artifact_exists: bool
     loaded_at: float | None
+    anomaly_threshold: float  # active threshold; configurable via ANOMALY_THRESHOLD env var
 
 
 def _load_expected_hash() -> str | None:
@@ -195,6 +214,7 @@ class ModelRegistry:
             artifact_file=_MODEL_FILE.name,
             artifact_exists=_MODEL_FILE.exists(),
             loaded_at=self._loaded_at,
+            anomaly_threshold=_ANOMALY_THRESHOLD,
         )
 
 
