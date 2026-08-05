@@ -1,6 +1,6 @@
 # Model Card — Incident Anomaly Detector
 
-<!-- MODEL_CARD_VERSION: 1.0.0  Last updated: 2026-05-27 -->
+<!-- MODEL_CARD_VERSION: 1.1.0  Last updated: 2026-08-05 -->
 
 ---
 
@@ -15,7 +15,7 @@
 | **Primary use** | Flag statistically anomalous incidents for escalation triage in an ML incident response workflow |
 | **Deployment surface** | `POST /api/v1/inference/anomaly` (FastAPI, JSON over HTTPS) |
 | **Author** | zrlopez |
-| **Date** | 2026-05-27 |
+| **Date** | 2026-08-05 |
 
 ---
 
@@ -37,7 +37,7 @@ modification, are permitted provided that the following conditions are met:
    this list of conditions and the following disclaimer in the documentation
    and/or other materials provided with the distribution.
 3. Neither the name of the copyright holder nor the names of its contributors
-   may be used to endorse or promote products derived from this software
+   may be used to endorse or promote products inherit from this software
    without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
@@ -45,7 +45,7 @@ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
 LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+CONSEQUential DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
 SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
 INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
@@ -90,6 +90,8 @@ Key properties that make it well-suited for incident triage:
 - Produces a continuous anomaly score in \[-1, +1\] (negative = more anomalous)
 - No labeled data required — pure unsupervised, suitable for cold-start
 
+**Why not LOF, OCSVM, or Autoencoder?** See [ADR-010](docs/adr/ADR-010-anomaly-model-and-drift-strategy.md) for full algorithm selection tradeoff table.
+
 ---
 
 ## Training Data
@@ -101,7 +103,7 @@ Key properties that make it well-suited for incident triage:
 | **Size** | 2,000 samples (1,800 normal + 200 injected anomalies for qualitative validation) |
 | **PII** | None — all data is procedurally generated; no real incident records used |
 | **Bias** | Synthetic distributions may not reflect production incident patterns at any specific organization |
-| **Limitations** | Model should be retrained on real operational data before use in any production system |
+| **Limitations** | Model must be retrained on real operational data before use in any production system |
 
 ---
 
@@ -124,10 +126,37 @@ Key properties that make it well-suited for incident triage:
 | Field | Type | Description |
 |---|---|---|
 | `anomaly_score` | float | Raw Isolation Forest decision function score (negative = anomalous) |
-| `is_anomalous` | bool | True when `anomaly_score < threshold` (default threshold: `0.0`) |
+| `is_anomalous` | bool | True when `anomaly_score < ANOMALY_THRESHOLD` (env-configurable, default: `-0.05`) |
 | `confidence` | float | Normalized score in \[0.0, 1.0\] — distance from decision boundary |
 | `model_version` | str | Semantic version of the loaded model artifact |
 | `inference_latency_ms` | float | Wall-clock inference time in milliseconds |
+
+---
+
+## Threshold Calibration
+
+The anomaly classification threshold is controlled by the `ANOMALY_THRESHOLD`
+environment variable (default: `-0.05`). This is distinct from the
+`contamination` parameter used at training time.
+
+**Why `-0.05` and not `0.0`?**
+IsolationForest scores cluster near 0.0 for borderline inliers. A threshold
+of exactly `0.0` classifies ~50% of borderline incidents as anomalous, causing
+alert fatigue. `-0.05` shifts the boundary to capture only incidents clearly
+on the anomalous side of the score distribution.
+
+**Calibration procedure for production:**
+1. Score a reference window of ≥ 500 known-normal incidents
+2. Plot the score distribution (histogram or KDE)
+3. Choose the threshold at the Nth percentile of normal scores, where N
+   corresponds to your acceptable false-positive rate (e.g., 95th percentile
+   → ~5% false positive rate on normal traffic)
+4. Validate against any available labeled anomaly samples (precision/recall)
+5. Set `ANOMALY_THRESHOLD` in your deployment environment
+6. Re-calibrate after every model retraining
+
+**Monitoring:** The active threshold is exposed in `GET /api/v1/inference/anomaly/health`
+so operators can verify the configured value at runtime.
 
 ---
 
@@ -135,13 +164,33 @@ Key properties that make it well-suited for incident triage:
 
 | Metric | Value | Notes |
 |---|---|---|
-| Contamination parameter | 0.05 | 5% expected anomaly rate |
+| Contamination parameter | 0.05 | 5% expected anomaly rate (see ADR-010 § Decision 2) |
 | Precision (anomaly class) | ~0.82 | On held-out synthetic validation set |
 | Recall (anomaly class) | ~0.77 | On held-out synthetic validation set |
 | Inference p95 latency | < 5 ms | Single-sample, loaded model |
 
 > **Note:** These metrics reflect synthetic data only. Real-world performance
 > will differ. This model is a portfolio demonstration artifact.
+> For production use, re-evaluate on real incident data. See
+> [ADR-010](docs/adr/ADR-010-anomaly-model-and-drift-strategy.md) for
+> the full productionization roadmap.
+
+---
+
+## Drift Monitoring Plan
+
+Drift detection is implemented in `observability/drift_check.py` and wired
+into the incident system via `observability/drift_pipeline.py`.
+
+| Signal | Method | Threshold | Action |
+|---|---|---|---|
+| Score distribution drift | PSI (Population Stability Index) | < 0.10: stable; 0.10–0.20: monitor; ≥ 0.20: retrain | Create SEV-2 incident on MAJOR |
+| Feature drift | Jensen-Shannon divergence per feature | JSD ≥ 0.10: drifted | Log warning, include in drift report |
+| Anomaly rate spike | Count of `is_anomalous=True` in evaluation window | > 10% of window: escalate severity | Co-occurs with PSI check |
+
+**Evaluation cadence:** Every 6 hours (configurable in scheduler).  
+**Reference baseline:** Training-time score histogram (stored in `model_metadata.json`).  
+**Retraining trigger:** MAJOR drift + anomaly_count > N → open retrain incident + CI/CD webhook.
 
 ---
 
@@ -150,9 +199,27 @@ Key properties that make it well-suited for incident triage:
 - ✅ Portfolio demonstration of ML-integrated incident response tooling
 - ✅ Template for operationalizing anomaly detection in incident workflows
 - ✅ Reference implementation of model registry, versioning, and inference APIs
+- ✅ Demonstrates end-to-end drift detection pipeline (with production stubs)
 - ❌ Not validated for production use on real incident data
 - ❌ Not suitable for automated incident triage without human review
 - ❌ Not tested on data from any specific organization or infrastructure
+
+---
+
+## Productionization Requirements
+
+This section is intentionally explicit about what this demo does NOT cover:
+
+| Requirement | Status | Notes |
+|---|---|---|
+| Real incident training data | ❌ Not implemented | Need ≥ 1,000 labeled real incidents |
+| `inference_logs` DB table | ❌ Deferred | Phase 1 — Alembic migration pending |
+| Score histogram at training time | ❌ Deferred | Phase 1 — store in model_metadata.json |
+| Scheduled drift evaluation | ❌ Deferred | Phase 2 — scheduler wiring pending |
+| Prometheus drift gauge | ❌ Deferred | Phase 2 |
+| Contamination re-calibration on real data | ❌ Deferred | Phase 3 |
+| Autoencoder / ensemble model evaluation | ❌ Deferred | Phase 3 |
+| Key rotation + model artifact re-signing | ❌ Deferred | Phase 2 |
 
 ---
 
@@ -173,3 +240,4 @@ Key properties that make it well-suited for incident triage:
 | Validate score distribution drift | `@zrlopez` | Quarterly |
 | Update scikit-learn dependency | Dependabot | Automatic (patch/minor) |
 | Review model card | `@zrlopez` | On each model version bump |
+| Re-calibrate ANOMALY_THRESHOLD | `@zrlopez` | After every retrain |

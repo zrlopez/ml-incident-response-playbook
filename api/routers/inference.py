@@ -22,10 +22,15 @@ Remediation changelog:
           Annotated with properly-annotated UserClaims TypedDict;
           added explicit AnomalyResponse return annotation on detect_anomaly;
           ignore_errors mypy override removed.
+  LOG-01  Replaced stdlib `logging.getLogger(__name__)` with structlog via
+          `src.logger.get_logger(__name__)`. All inference log events now
+          travel the same processor pipeline as the rest of the service:
+          field-level redaction, PII scrubbing, service context injection,
+          ISO-8601 timestamps, and JSON output in production.
+          See: observability/logging_config.py, src/logger.py, ADR-007.
 """
 from __future__ import annotations
 
-import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -34,8 +39,10 @@ from fastapi.security import OAuth2PasswordBearer
 from api.dependencies import get_current_user
 from ml_models.incident_anomaly.registry import MODEL_VERSION, model_registry
 from ml_models.incident_anomaly.schema import AnomalyRequest, AnomalyResponse
+from src.logger import get_logger
 
-log = logging.getLogger(__name__)
+# LOG-01: structlog-backed logger — PII scrubbing and JSON pipeline apply.
+log = get_logger(__name__)
 
 
 def _sanitize_for_log(value: Any) -> str:
@@ -101,18 +108,23 @@ async def detect_anomaly(
     try:
         result = model_registry.predict(features)
     except Exception as exc:
-        log.exception("Inference error: %s", exc)
+        log.exception(
+            "inference.error",
+            exc_info=exc,
+            endpoint="/api/v1/inference/anomaly",
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Model inference failed. Check server logs.",
         ) from exc
 
+    # LOG-01: structlog event — travels through PII scrubbing processor chain.
     log.info(
-        "inference anomaly_score=%.4f is_anomalous=%s latency_ms=%.2f user=%s",
-        result["anomaly_score"],
-        result["is_anomalous"],
-        result["inference_latency_ms"],
-        _sanitize_for_log(current_user.get("sub", "unknown")),
+        "inference.anomaly_scored",
+        anomaly_score=result["anomaly_score"],
+        is_anomalous=result["is_anomalous"],
+        inference_latency_ms=result["inference_latency_ms"],
+        user=_sanitize_for_log(current_user.get("sub", "unknown")),
     )
 
     return AnomalyResponse(

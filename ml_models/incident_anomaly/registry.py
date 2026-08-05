@@ -28,11 +28,16 @@ Remediation changelog:
   ML-04   Added explicit return type annotations throughout; replaced
           bare Any-typed dict returns with TypedDict; numpy array ops
           annotated so mypy can verify; ignore_errors override removed.
+  ML-05   Replaced hardcoded _ANOMALY_THRESHOLD = 0.0 with a config-driven
+          value loaded from the ANOMALY_THRESHOLD environment variable
+          (default: -0.05). This enables per-environment threshold tuning
+          without code changes and documents the calibration rationale.
+          See ADR-010 and MODEL_CARD.md § Threshold Calibration for details.
 """
 from __future__ import annotations
 
 import hashlib
-import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -43,14 +48,34 @@ import numpy as np
 from numpy.typing import NDArray
 from sklearn.ensemble import IsolationForest
 
-log = logging.getLogger(__name__)
+from src.logger import get_logger
+
+log = get_logger(__name__)
 
 _ARTIFACT_DIR = Path(__file__).parent / "artifacts"
 _MODEL_FILE = _ARTIFACT_DIR / "isolation_forest_v1.joblib"
 _MANIFEST_FILE = _ARTIFACT_DIR / "isolation_forest_v1.joblib.sha256"
 MODEL_VERSION = "1.0.0"
 
-_ANOMALY_THRESHOLD: float = 0.0
+# ML-05: Config-driven threshold.
+#
+# Choosing a threshold:
+#   The IsolationForest decision_function() returns values in roughly [-1, +1].
+#   Negative values are more anomalous. The scikit-learn default boundary is 0.0,
+#   but 0.0 is often too aggressive for operational incident data where many
+#   legitimate high-severity incidents will score just below 0.
+#
+#   Recommended calibration procedure:
+#     1. Score a representative validation window of known-normal incidents.
+#     2. Plot the score distribution; find the quantile that captures your
+#        acceptable false-positive rate (e.g., 95th percentile of normal scores).
+#     3. Set ANOMALY_THRESHOLD to that value (typically -0.10 to -0.02).
+#     4. Re-evaluate Precision/Recall on labeled anomaly samples.
+#
+#   Default of -0.05 is a conservative starting point that reduces false
+#   positives relative to 0.0 while retaining sensitivity to true outliers.
+#   Override via environment variable for per-environment tuning.
+_ANOMALY_THRESHOLD: float = float(os.environ.get("ANOMALY_THRESHOLD", "-0.05"))
 
 _EXPECTED_SHA256: str = "0" * 64  # sentinel — replace with real digest
 
@@ -68,6 +93,7 @@ class HealthResult(TypedDict):
     artifact_file: str
     artifact_exists: bool
     loaded_at: float | None
+    anomaly_threshold: float
 
 
 def _load_expected_hash() -> str | None:
@@ -76,15 +102,13 @@ def _load_expected_hash() -> str | None:
         raw = _MANIFEST_FILE.read_text().strip().split()[0]
         if len(raw) == 64:
             return raw
-        log.warning("registry.manifest_malformed", extra={"path": str(_MANIFEST_FILE)})
+        log.warning("registry.manifest_malformed", path=str(_MANIFEST_FILE))
 
     if _EXPECTED_SHA256 == "0" * 64:
         log.warning(
             "registry.hash_check_skipped",
-            extra={
-                "reason": "_EXPECTED_SHA256 is zero-sentinel; pin a real digest or ship a .sha256 manifest",
-                "artifact": _MODEL_FILE.name,
-            },
+            reason="_EXPECTED_SHA256 is zero-sentinel; pin a real digest or ship a .sha256 manifest",
+            artifact=_MODEL_FILE.name,
         )
         return None
     return _EXPECTED_SHA256
@@ -115,7 +139,8 @@ def _verify_artifact_hash(path: Path) -> None:
         )
     log.info(
         "registry.artifact_hash_verified",
-        extra={"artifact": path.name, "sha256": actual[:16] + "..."},
+        artifact=path.name,
+        sha256=actual[:16] + "...",
     )
 
 
@@ -171,6 +196,7 @@ class ModelRegistry:
         score: float = float(model.decision_function(x)[0])
         latency_ms: float = (time.perf_counter() - t0) * 1_000
 
+        # ML-05: threshold is config-driven, not hardcoded.
         is_anomalous: bool = score < _ANOMALY_THRESHOLD
         raw_confidence: np.floating[Any] = 1.0 / (1.0 + np.exp(score * 3))
         confidence: float = float(np.clip(raw_confidence, 0.0, 1.0))
@@ -186,7 +212,8 @@ class ModelRegistry:
         """Return a health summary for use by the /ready endpoint.
 
         SEC-05: Does NOT expose the absolute filesystem path of the artifact.
-        Callers receive only the filename and version — no container internals.
+        ML-05:  Exposes the active anomaly_threshold so operators can verify
+                the configured value without reading environment variables.
         """
         loaded: bool = self._model is not None
         return HealthResult(
@@ -195,6 +222,7 @@ class ModelRegistry:
             artifact_file=_MODEL_FILE.name,
             artifact_exists=_MODEL_FILE.exists(),
             loaded_at=self._loaded_at,
+            anomaly_threshold=_ANOMALY_THRESHOLD,
         )
 
 
