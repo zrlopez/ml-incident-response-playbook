@@ -16,16 +16,10 @@ Attribution:
     Copyright (c) 2007-2025 The scikit-learn developers.
     See MODEL_CARD.md for full license, attribution, and BibTeX citation.
 
-Remediation changelog:
-  ML-04   Replaced bare `dict` return type on inference_health with
-          dict[str, Any]; replaced type: ignore[type-arg] on current_user
-          Annotated with properly-annotated UserClaims TypedDict;
-          added explicit AnomalyResponse return annotation on detect_anomaly;
-          ignore_errors mypy override removed.
+Changelog: see docs/REMEDIATION_LOG.md (ML-04, LOG-01).
 """
 from __future__ import annotations
 
-import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -34,12 +28,17 @@ from fastapi.security import OAuth2PasswordBearer
 from api.dependencies import get_current_user
 from ml_models.incident_anomaly.registry import MODEL_VERSION, model_registry
 from ml_models.incident_anomaly.schema import AnomalyRequest, AnomalyResponse
+from src.logger import get_logger
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 def _sanitize_for_log(value: Any) -> str:
-    """Return a single-line, log-safe representation of user-influenced values."""
+    """Return a single-line, log-safe representation of user-influenced values.
+
+    Used to strip CRLF from user-controlled strings before passing to structlog.
+    structlog's JSON renderer prevents injection, but defense-in-depth applies.
+    """
     text = str(value) if value is not None else "unknown"
     return text.replace("\r", "").replace("\n", "")
 
@@ -101,18 +100,21 @@ async def detect_anomaly(
     try:
         result = model_registry.predict(features)
     except Exception as exc:
-        log.exception("Inference error: %s", exc)
+        log.exception(
+            "inference.error",
+            error=str(exc),
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Model inference failed. Check server logs.",
         ) from exc
 
     log.info(
-        "inference anomaly_score=%.4f is_anomalous=%s latency_ms=%.2f user=%s",
-        result["anomaly_score"],
-        result["is_anomalous"],
-        result["inference_latency_ms"],
-        _sanitize_for_log(current_user.get("sub", "unknown")),
+        "inference.scored",
+        anomaly_score=round(result["anomaly_score"], 4),
+        is_anomalous=result["is_anomalous"],
+        latency_ms=round(result["inference_latency_ms"], 2),
+        user=_sanitize_for_log(current_user.get("sub", "unknown")),
     )
 
     return AnomalyResponse(

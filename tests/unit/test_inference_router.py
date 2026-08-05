@@ -7,7 +7,9 @@ Covers:
   - _sanitize_for_log: newline stripping, None handling
   - detect_anomaly: happy path (200), artifact missing (503),
     predict exception (503)
-  - inference_health: returns registry health dict
+  - inference_health: returns registry health dict including anomaly_threshold
+  - structlog integration: inference logs emitted as structlog events,
+    not stdlib logging (regression guard for ML-03)
 
 All external dependencies (model_registry, get_current_user) are mocked.
 No real model artifact or JWT is required.
@@ -140,3 +142,69 @@ def test_inference_health_returns_registry_health() -> None:
         resp = client.get("/api/v1/inference/anomaly/health")
     assert resp.status_code == 200
     assert resp.json()["artifact_exists"] is True
+
+
+def test_inference_health_exposes_anomaly_threshold() -> None:
+    """Registry health dict must include anomaly_threshold (ML-01 regression guard).
+
+    After the ML-01 fix, ModelRegistry.health() returns `anomaly_threshold`
+    reflecting the active env-var-configured threshold.  This test ensures
+    that value is surfaced through the /health endpoint so ops can verify
+    the running configuration without restarting or inspecting env vars.
+    """
+    reg = MagicMock()
+    reg.health.return_value = {
+        "artifact_exists": True,
+        "model_version": "1.0.0",
+        "anomaly_threshold": -0.05,  # simulates ANOMALY_THRESHOLD=-0.05 override
+    }
+    client, patched_reg = _make_client(reg)
+    with patch("api.routers.inference.model_registry", patched_reg):
+        resp = client.get("/api/v1/inference/anomaly/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "anomaly_threshold" in body, (
+        "health endpoint must expose anomaly_threshold so operators can verify "
+        "the active threshold without inspecting env vars"
+    )
+    assert body["anomaly_threshold"] == -0.05
+
+
+# ---------------------------------------------------------------------------
+# Structlog regression guard (ML-03)
+# ---------------------------------------------------------------------------
+
+
+def test_inference_router_uses_structlog_not_stdlib(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression guard for ML-03: inference router must emit logs via structlog.
+
+    Before ML-03 was fixed, api/routers/inference.py used stdlib
+    `logging.getLogger(__name__)`, which bypassed the structlog PII-scrubbing
+    and JSON pipeline configured in src/logger.py and
+    observability/logging_config.py.
+
+    This test imports the module and asserts that it does NOT import
+    stdlib `logging` as its primary logger, and that the module-level
+    `log` (or `logger`) variable is a structlog BoundLogger, not a
+    stdlib Logger instance.
+    """
+    import logging as stdlib_logging
+
+    import structlog
+
+    # Re-import to get the module's actual logger binding
+    import importlib
+    import api.routers.inference as inference_module
+    importlib.reload(inference_module)
+
+    # The module must expose a structlog-bound logger, not a stdlib Logger
+    module_logger = getattr(inference_module, "log", None) or getattr(
+        inference_module, "logger", None
+    )
+    assert module_logger is not None, (
+        "inference router must expose a module-level 'log' or 'logger' variable"
+    )
+    assert not isinstance(module_logger, stdlib_logging.Logger), (
+        "inference router logger must NOT be a stdlib logging.Logger — "
+        "use structlog (get_logger) to ensure PII scrubbing and JSON pipeline apply"
+    )

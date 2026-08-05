@@ -124,10 +124,31 @@ Key properties that make it well-suited for incident triage:
 | Field | Type | Description |
 |---|---|---|
 | `anomaly_score` | float | Raw Isolation Forest decision function score (negative = anomalous) |
-| `is_anomalous` | bool | True when `anomaly_score < threshold` (default threshold: `0.0`) |
-| `confidence` | float | Normalized score in \[0.0, 1.0\] — distance from decision boundary |
+| `is_anomalous` | bool | True when `anomaly_score < threshold` (configurable — see below) |
+| `confidence` | float | Sigmoid-normalized score in [0.0, 1.0] — **not a calibrated probability** |
 | `model_version` | str | Semantic version of the loaded model artifact |
 | `inference_latency_ms` | float | Wall-clock inference time in milliseconds |
+
+### Threshold Configuration
+
+The decision threshold defaults to `0.0` and is configurable via the
+`ANOMALY_THRESHOLD` environment variable without retraining:
+
+| Value | Effect |
+|---|---|
+| `0.0` (default) | Decision boundary at the contamination-derived split |
+| `< 0.0` (e.g. `-0.05`) | Higher precision — fewer false positives (less alert fatigue) |
+| `> 0.0` (e.g. `0.05`) | Higher recall — fewer false negatives (catch more anomalies) |
+
+The active threshold is exposed at `GET /api/v1/inference/anomaly/health`
+(`anomaly_threshold` field) so it can be verified in any environment.
+
+### Confidence Score Note
+
+`confidence` is computed as `sigmoid(score × 3)` — a monotonic transformation
+for UX convenience. It is **not** a calibrated probability. Do not treat it as
+P(anomaly | features). Calibrated probabilities would require Platt scaling or
+isotonic regression fitted on a labeled holdout set.
 
 ---
 
@@ -173,3 +194,22 @@ Key properties that make it well-suited for incident triage:
 | Validate score distribution drift | `@zrlopez` | Quarterly |
 | Update scikit-learn dependency | Dependabot | Automatic (patch/minor) |
 | Review model card | `@zrlopez` | On each model version bump |
+
+---
+
+## Productionization Gaps
+
+This model is a **portfolio demonstration artifact**. The table below documents
+what would be required before deploying it to a real production system:
+
+| Gap | Impact | Mitigation Path |
+|---|---|---|
+| Synthetic training data only | Model may not generalize to real incident distributions | Collect labeled incidents post-PIR; retrain on real data with stratified split |
+| Fixed `contamination=0.05` | Optimal contamination is org-specific (true anomaly rate varies wildly) | Grid-search over contamination on a labeled holdout; pick threshold that minimizes business cost function |
+| No calibrated probabilities | `confidence` is not P(anomaly\|features); can mislead downstream consumers | Fit Platt scaling or isotonic regression on a labeled validation set post-hoc |
+| Drift detection not wired end-to-end | `check_drift_suite()` exists but isn't called from any scheduled job or API path | Implement a `/api/v1/inference/drift` endpoint or cron job that reads score histograms from DB and invokes `check_drift_suite()` |
+| No multi-model lifecycle | Single model version; no champion/challenger, shadow mode, or A/B testing | Extend `ModelRegistry` to support multiple named versions; add `/models/{version}/predict` routing |
+| No labeled ground truth loop | No mechanism to collect human labels on predictions for continuous evaluation | Build feedback endpoint (`POST /incidents/{id}/label`) and aggregate into a growing evaluation dataset |
+
+> See [ADR-010](./adr/ADR-010-anomaly-model-design.md) for the full design
+> rationale, algorithm selection tradeoffs, and intended productionization path.
