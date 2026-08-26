@@ -63,9 +63,9 @@ class TestDefaultThreshold:
         """ModelRegistry.health() must include anomaly_threshold key."""
         reg_module = _reload_registry(monkeypatch, None)
         registry = reg_module.ModelRegistry()
-        # Patch _artifact_path to avoid real filesystem dependency
-        with patch.object(registry, "_artifact_path", new=MagicMock()):
-            registry._artifact_path.exists.return_value = False
+        # Patch module-level artifact path to avoid real filesystem dependency
+        with patch.object(reg_module, "_MODEL_FILE", new=MagicMock()) as mock_path:
+            mock_path.exists.return_value = False
             health = registry.health()
         assert "anomaly_threshold" in health, (
             "health() must expose anomaly_threshold so operators can verify "
@@ -113,20 +113,8 @@ def test_threshold_flips_is_anomalous(
     mock_model.decision_function.return_value = [raw_score]
     mock_model.predict.return_value = [-1 if raw_score < float(threshold) else 1]
 
-    with (
-        patch.object(registry, "_model", new=mock_model),
-        patch.object(registry, "_artifact_loaded", new=True),
-    ):
-        result = registry.predict(
-            severity_numeric=2,
-            alert_count=10,
-            time_to_detect_minutes=30.0,
-            affected_services=3,
-            on_call_escalations=1,
-            duplicate_alert_ratio=0.1,
-            blast_radius_pct=20.0,
-            mttr_minutes=60.0,
-        )
+    with patch.object(registry, "_model", new=mock_model):
+        result = registry.predict([2, 10, 30.0, 3, 1, 0.1, 20.0])
 
     assert result["is_anomalous"] == expected_anomalous, (
         f"Failed: {description}\n"
@@ -152,7 +140,7 @@ def test_health_reflects_env_threshold(
     """health() anomaly_threshold must match the ANOMALY_THRESHOLD env var."""
     reg_module = _reload_registry(monkeypatch, threshold_str)
     registry = reg_module.ModelRegistry()
-    with patch.object(registry, "_artifact_path", new=MagicMock()) as mock_path:
+    with patch.object(reg_module, "_MODEL_FILE", new=MagicMock()) as mock_path:
         mock_path.exists.return_value = False
         health = registry.health()
     assert health["anomaly_threshold"] == pytest.approx(expected_float)

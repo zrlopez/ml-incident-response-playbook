@@ -264,18 +264,25 @@ alembic upgrade head           # Apply DB migrations
 python scripts/seed_users.py --dry-run  # Verify seed config
 ```
 
-Run the test suite:
+Verify the local quality gates:
 
 ```bash
-# Unit tests (fast, SQLite)
-pytest tests/unit/ -v --tb=short
+pytest -q
+ruff check .
+mypy api src ml_models observability pipelines scripts tests
+```
 
-# Integration tests (requires Postgres via Docker Compose)
+Expected result: the full pytest suite passes locally. Ruff/mypy remain available
+through the Makefile aliases below for CI parity.
+
+Run integration tests against local services:
+
+```bash
 docker compose up -d db redis
 pytest tests/integration/ -v --tb=short
 ```
 
-Run the full CI pipeline locally via Make:
+Run Makefile aliases when you want the CI-style bundle:
 
 ```bash
 make lint     # ruff + mypy
