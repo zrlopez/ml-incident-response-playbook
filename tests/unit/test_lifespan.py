@@ -16,16 +16,19 @@ Covered:
 from __future__ import annotations
 
 import os
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from fastapi import FastAPI
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_lifespan.db")
-os.environ.setdefault("DEV_ALICE_PASSWORD", "alicepassword123")
-os.environ.setdefault("DEV_BOB_PASSWORD", "bobpassword456")
-os.environ.setdefault("DEV_CAROL_PASSWORD", "carolpassword789")
+os.environ.setdefault("DEV_ADMIN_PASSWORD", "adminpassword123")
+os.environ.setdefault("DEV_ANALYST_PASSWORD", "analystpassword456")
+os.environ.setdefault("DEV_OPERATOR_PASSWORD", "operatorpassword789")
 os.environ.setdefault("JWT_SECRET_KEY", "ci-unit-test-secret-32chars-safe!!")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+
+_DUMMY_USER_HASH = "not_a_real_hash_for_unit_tests"
 
 
 def _make_app() -> FastAPI:
@@ -53,12 +56,23 @@ def _mock_key_store(raise_on_load: bool = False) -> MagicMock:
     return ks
 
 
+def _stub_users() -> dict[str, dict[str, object]]:
+    return {
+        "alice": {
+            "username": "alice",
+            "role": "admin",
+            "hashed_password": _DUMMY_USER_HASH,
+            "disabled": False,
+        }
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers: patch the heavy dependencies we don't want to execute for real
 # ---------------------------------------------------------------------------
 
 BASE_PATCHES = [
-    ("api.lifespan.init_db", AsyncMock()),
+    ("src.incident_tracker.init_db", AsyncMock()),
     ("api.lifespan.configure_otel", MagicMock()),
     ("api.lifespan.shutdown_otel", MagicMock()),
 ]
@@ -73,9 +87,9 @@ async def test_in_memory_path_wires_stub_users():
     ks.key_id = "k1"
     ks.all_keys = ["k"]
 
-    stub_users = {"alice": {"username": "alice", "role": "admin", "hashed_password": "h", "disabled": False}}
+    stub_users = _stub_users()
 
-    with patch("api.lifespan.init_db", AsyncMock()), \
+    with patch("src.incident_tracker.init_db", AsyncMock()), \
          patch("api.lifespan.configure_otel"), \
          patch("api.lifespan.shutdown_otel"), \
          patch("api.lifespan.RedisDenylist", return_value=denylist), \
@@ -95,7 +109,7 @@ async def test_blocker01_importerror_raises_runtime_error():
     app = _make_app()
     denylist = _mock_denylist()
 
-    with patch("api.lifespan.init_db", AsyncMock()), \
+    with patch("src.incident_tracker.init_db", AsyncMock()), \
          patch("api.lifespan.configure_otel"), \
          patch("api.lifespan.shutdown_otel"), \
          patch("api.lifespan.RedisDenylist", return_value=denylist), \
@@ -129,9 +143,9 @@ async def test_rs256_active_key_store_loaded():
     ks.all_keys = ["k"]
     mock_router = MagicMock()
 
-    stub_users = {"alice": {"username": "alice", "role": "admin", "hashed_password": "h", "disabled": False}}
+    stub_users = _stub_users()
 
-    with patch("api.lifespan.init_db", AsyncMock()), \
+    with patch("src.incident_tracker.init_db", AsyncMock()), \
          patch("api.lifespan.configure_otel"), \
          patch("api.lifespan.shutdown_otel"), \
          patch("api.lifespan.RedisDenylist", return_value=denylist), \
@@ -155,9 +169,9 @@ async def test_rs256_active_key_store_load_fails_sets_none():
     denylist = _mock_denylist()
     mock_router = MagicMock()
 
-    stub_users = {"alice": {"username": "alice", "role": "admin", "hashed_password": "h", "disabled": False}}
+    stub_users = _stub_users()
 
-    with patch("api.lifespan.init_db", AsyncMock()), \
+    with patch("src.incident_tracker.init_db", AsyncMock()), \
          patch("api.lifespan.configure_otel"), \
          patch("api.lifespan.shutdown_otel"), \
          patch("api.lifespan.RedisDenylist", return_value=denylist), \
@@ -178,7 +192,10 @@ async def test_rs256_active_key_store_load_fails_sets_none():
 async def test_db_init_failure_propagates():
     """DB init error raised → lifespan propagates it."""
     app = _make_app()
-    with patch("api.lifespan.init_db", AsyncMock(side_effect=RuntimeError("db down"))):
+    with patch(
+        "src.incident_tracker.init_db",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    ):
         from api.lifespan import lifespan
         with pytest.raises(RuntimeError, match="db down"):
             async with lifespan(app):
@@ -190,9 +207,9 @@ async def test_shutdown_calls_denylist_close():
     """Shutdown phase calls denylist.close() and shutdown_otel."""
     app = _make_app()
     denylist = _mock_denylist()
-    stub_users = {"alice": {"username": "alice", "role": "admin", "hashed_password": "h", "disabled": False}}
+    stub_users = _stub_users()
 
-    with patch("api.lifespan.init_db", AsyncMock()), \
+    with patch("src.incident_tracker.init_db", AsyncMock()), \
          patch("api.lifespan.configure_otel"), \
          patch("api.lifespan.shutdown_otel") as mock_shutdown, \
          patch("api.lifespan.RedisDenylist", return_value=denylist), \

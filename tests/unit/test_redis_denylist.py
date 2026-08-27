@@ -94,7 +94,7 @@ class TestConnect:
         mock_client = MagicMock()
         mock_client.ping = AsyncMock(side_effect=ConnectionError("refused"))
         with patch("api.redis_denylist.aioredis.from_url", return_value=mock_client):
-            with pytest.raises(DenylistUnavailableError):
+            with pytest.raises(ConnectionError, match="refused"):
                 await dl.connect()
 
 

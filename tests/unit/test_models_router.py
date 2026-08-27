@@ -128,7 +128,7 @@ class TestGetModelVersion:
     async def test_404_when_version_not_found(self):
         from api.routers.models import get_model_version
         from fastapi import HTTPException
-        svc = _make_svc(get_version_record=None, get_version_side_effect=KeyError("v9.9"))
+        svc = _make_svc(get_version_record=None)
         with pytest.raises(HTTPException) as exc_info:
             await get_model_version(version="v9.9", current_user=ADMIN_USER, svc=svc)
         assert exc_info.value.status_code == 404
