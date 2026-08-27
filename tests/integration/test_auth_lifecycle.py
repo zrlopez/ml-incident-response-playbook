@@ -118,6 +118,9 @@ async def app_client(rs256_keys, sqlite_engine) -> AsyncGenerator[AsyncClient, N
     - _denylist is patched with a no-op stub so Redis is not required.
     """
     os.environ.setdefault("JWT_SECRET_KEY", "test-secret-minimum-32-chars-xxxxxxxxxxxx")
+    os.environ.setdefault("DEV_ADMIN_PASSWORD", "test-admin-pw-32chars-aaaaaaaaaa")
+    os.environ.setdefault("DEV_ANALYST_PASSWORD", "test-analyst-pw-32chars-aaaaaa")
+    os.environ.setdefault("DEV_OPERATOR_PASSWORD", "test-operator-pw-32chars-aaaaa")
 
     from api.app import app
     from src.incident_tracker import get_session
