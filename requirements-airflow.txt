@@ -13,7 +13,7 @@ apache-airflow==3.2.2
 
 # Airflow providers used by DAGs in this project
 apache-airflow-providers-postgres>=6.0.0,<7.0.0
-apache-airflow-providers-amazon>=9.0.0,<10.0.0
+apache-airflow-providers-amazon>=9.35.0,<10.0.0
 apache-airflow-providers-slack>=9.0.0,<10.0.0
 
 # Shared data layer utilities (no web framework deps)
