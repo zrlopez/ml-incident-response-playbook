@@ -153,76 +153,76 @@ Nine ADRs document every non-trivial design choice:
 ml-incident-response-playbook/
 ├── .github/
 │   └── workflows/
-│       ├── secured_ci.yml         # Hardened CI (TruffleHog, Bandit, mypy, Trivy, SBOM, coverage gates)
-│       ├── codeql.yml             # GitHub CodeQL analysis
-│       ├── docs.yml               # MkDocs build and deploy to mlops.zrl.dev
-│       ├── mermaid-render.yml     # Automated Mermaid diagram validation
-│       ├── release.yml            # Release automation pipeline
-│       ├── deploy-hf.yml          # Hugging Face Spaces deploy
-│       └── stale.yml              # Stale issue/PR management
-├── api/                           # FastAPI application (auth, rate limiting, OTEL, endpoints)
-├── alembic/                       # Alembic migration environment
-├── configs/                       # Environment and service configuration
-├── dashboards/                    # Grafana / observability dashboard definitions
-├── dbt/                           # dbt models and data transformation layer
+│       ├── secured_ci.yml          # Hardened CI (TruffleHog, Bandit, mypy, Trivy, SBOM, coverage gates)
+│       ├── codeql.yml              # GitHub CodeQL analysis
+│       ├── docs.yml                # MkDocs build and deploy to mlops.zrl.dev
+│       ├── mermaid-render.yml      # Automated Mermaid diagram validation
+│       ├── release.yml             # Release automation pipeline
+│       ├── deploy-hf.yml           # Hugging Face Spaces deploy
+│       └── stale.yml               # Stale issue/PR management
+├── api/                            # FastAPI application (auth, rate limiting, OTEL, endpoints)
+├── alembic/                        # Alembic migration environment
+├── configs/                        # Environment and service configuration
+├── dashboards/                     # Grafana / observability dashboard definitions
+├── dbt/                            # dbt models and data transformation layer
 ├── docs/
-│   ├── adr/                       # Architecture Decision Records (ADR-001 through ADR-009)
-│   ├── diagrams/                  # Mermaid flowcharts for each incident type
-│   ├── templates/                 # Escalation, postmortem, and update templates
-│   ├── policies/                  # Governance and security policy documents
-│   ├── metrics/                   # KPI and metric documentation
-│   ├── dashboards/                # Dashboard reference docs
-│   ├── architecture.md            # Full architecture document
-│   ├── api_reference.md           # API endpoint reference
-│   ├── ci-conventions.md          # CI/CD conventions and pipeline documentation
-│   ├── data_dictionary.md         # Data model and schema dictionary
-│   ├── deployment.md              # Deployment guide
-│   ├── governance.md              # Governance policy
-│   ├── monitoring.md              # Monitoring guide
-│   ├── onboarding.md              # Onboarding guide
-│   ├── severity_matrix.md         # Incident severity classification matrix
-│   ├── troubleshooting.md         # Operational troubleshooting guide
-│   ├── validation_rules.md        # Data validation rules
+│   ├── adr/                        # Architecture Decision Records (ADR-001 through ADR-009)
+│   ├── diagrams/                   # Mermaid flowcharts for each incident type
+│   ├── templates/                  # Escalation, postmortem, and update templates
+│   ├── policies/                   # Governance and security policy documents
+│   ├── metrics/                    # KPI and metric documentation
+│   ├── dashboards/                 # Dashboard reference docs
+│   ├── architecture.md             # Full architecture document
+│   ├── api_reference.md            # API endpoint reference
+│   ├── ci-conventions.md           # CI/CD conventions and pipeline documentation
+│   ├── data_dictionary.md          # Data model and schema dictionary
+│   ├── deployment.md               # Deployment guide
+│   ├── governance.md               # Governance policy
+│   ├── monitoring.md               # Monitoring guide
+│   ├── onboarding.md               # Onboarding guide
+│   ├── severity_matrix.md          # Incident severity classification matrix
+│   ├── troubleshooting.md          # Operational troubleshooting guide
+│   ├── validation_rules.md         # Data validation rules
 │   ├── branch-protection-policy.md # Branch protection policy
-│   ├── operational_principles.md  # Operational engineering principles
-│   └── REMEDIATION_LOG.md         # Live security finding and remediation tracker
-├── examples/                      # Sample incident logs and postmortem artifacts
-├── infrastructure/                # IaC and deployment manifests
-├── metrics/                       # KPI definitions and metric tracking
-├── migrations/                    # Alembic migration scripts
-├── ml_models/                     # Model artifacts and evaluation scaffolding
-├── observability/                 # Logging helpers, drift checks, anomaly detection
-├── orchestration/                 # Airflow DAGs and scheduling templates
-├── pipelines/                     # Data pipeline definitions
-├── runbooks/                      # Step-by-step incident response runbooks (7 types)
-├── scripts/                       # Utility and seed scripts
-├── src/                           # Shared library code
+│   ├── operational_principles.md   # Operational engineering principles
+│   └── REMEDIATION_LOG.md          # Live security finding and remediation tracker
+├── examples/                       # Sample incident logs and postmortem artifacts
+├── infrastructure/                 # IaC and deployment manifests
+├── metrics/                        # KPI definitions and metric tracking
+├── migrations/                     # Alembic migration scripts
+├── ml_models/                      # Model artifacts and evaluation scaffolding
+├── observability/                  # Logging helpers, drift checks, anomaly detection
+├── orchestration/                  # Airflow DAGs and scheduling templates
+├── pipelines/                      # Data pipeline definitions
+├── runbooks/                       # Step-by-step incident response runbooks (7 types)
+├── scripts/                        # Utility and seed scripts
+├── src/                            # Shared library code
 ├── tests/
-│   ├── unit/                      # Unit tests (SQLite, fast; ≥80% coverage gate)
-│   ├── integration/               # Integration tests (Postgres, full stack; ≥65% gate)
-│   ├── fixtures/                  # Shared test fixtures
+│   ├── unit/                       # Unit tests (SQLite, fast; ≥80% coverage gate)
+│   ├── integration/                # Integration tests (Postgres, full stack; ≥65% gate)
+│   ├── fixtures/                   # Shared test fixtures
 │   └── conftest.py
-├── validation/                    # Data validation rules and schema checks
-├── app.py                         # Gradio demo entry point (Hugging Face Space)
-├── MODEL_CARD.md                  # ML model documentation (IsolationForest anomaly detector)
-├── CHANGELOG.md                   # Versioned change history
-├── Dockerfile                     # Production image
-├── Dockerfile.dev                 # Development image
-├── docker-compose.yml             # Base compose config
-├── docker-compose.override.yml    # Local dev overrides
-├── docker-compose.prod.yml        # Production compose config
-├── cosign.pub                     # Cosign public key for container image verification
+├── validation/                     # Data validation rules and schema checks
+├── app.py                          # Gradio demo entry point (Hugging Face Space)
+├── MODEL_CARD.md                   # ML model documentation (IsolationForest anomaly detector)
+├── CHANGELOG.md                    # Versioned change history
+├── Dockerfile                      # Production image
+├── Dockerfile.dev                  # Development image
+├── docker-compose.yml              # Base compose config
+├── docker-compose.override.yml     # Local dev overrides
+├── docker-compose.prod.yml         # Production compose config
+├── cosign.pub                      # Cosign public key for container image verification
 ├── Makefile
 ├── pyproject.toml
 ├── requirements.txt
-├── requirements-demo.txt          # Slim deps for HF Space (gradio + inference only)
+├── requirements-demo.txt           # Slim deps for HF Space (gradio + inference only)
 ├── requirements-dev.txt
 ├── requirements-airflow.txt
 ├── codecov.yml
 ├── mkdocs.yml
 ├── alembic.ini
-├── .pre-commit-config.yaml        # Pre-commit hooks (ruff, mypy, TruffleHog)
-├── .trivyignore                   # Scoped Trivy suppression rules
+├── .pre-commit-config.yaml         # Pre-commit hooks (ruff, mypy, TruffleHog)
+├── .trivyignore                    # Scoped Trivy suppression rules
 └── SECURITY.md
 ```
 
@@ -259,9 +259,9 @@ git clone https://github.com/zrlopez/ml-incident-response-playbook.git
 cd ml-incident-response-playbook
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-cp .env.example .env          # Fill in required values
-alembic upgrade head           # Apply DB migrations
-python scripts/seed_users.py --dry-run  # Verify seed config
+cp .env.example .env                     # Fill in required values
+alembic upgrade head                     # Apply DB migrations
+python scripts/seed_users.py --dry-run   # Verify seed config
 ```
 
 Verify the local quality gates:
