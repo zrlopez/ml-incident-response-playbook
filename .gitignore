@@ -125,3 +125,9 @@ MAT_*.md
 node_modules/
 package-lock.json
 cosign.key
+
+# ── Nextra docs site (Vercel) ───────────────────────────────────────────────────
+.next/
+out/
+.vercel/
+next-env.d.ts
