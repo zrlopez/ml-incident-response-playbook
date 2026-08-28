@@ -6,11 +6,13 @@
 #   2026-05-25 v1.0.1 CI-37 fix(docs): add digest reference block; add inline SHA
 #                    comments on all action uses (F-03 — convention compliance)
 #   2026-08-28 v2.0.0 CI-70 ci(docs): replace legacy docs deploy with Vercel health check
+#   2026-08-28 v2.1.0 CI-71 ci(docs): build tracked Next docs source before health check
 # =============================================================================
 #
 # The public documentation site is deployed by Vercel at https://mlops.zrl.dev.
-# This workflow no longer builds or deploys docs. It verifies that the live
-# Vercel-hosted docs endpoint responds successfully after repository changes.
+# This workflow builds the tracked Next.js docs source under `site/` and verifies
+# that the live Vercel-hosted docs endpoint responds successfully after
+# repository changes. Vercel still owns deployment.
 #
 # Trigger: push to main; pull_request to main; workflow_dispatch
 # URL:     https://mlops.zrl.dev/
@@ -33,9 +35,23 @@ concurrency:
 
 jobs:
   health-check:
-    name: Vercel docs health check
+    name: Vercel docs build and health check
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f  # v6.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Build tracked Vercel docs source
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+
       - name: Verify Vercel docs site responds
         run: |
           status=$(curl -L -sS -o /tmp/docs.html -w "%{http_code}" https://mlops.zrl.dev/)
