@@ -131,3 +131,4 @@ cosign.key
 out/
 .vercel/
 next-env.d.ts
+.vercel
