@@ -1,7 +1,7 @@
 # ML Incident Response Playbook
 
 [![CI](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml/badge.svg)](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/secured_ci.yml)
-[![Docs](https://github.com/zrlopez/ml-incident-response-playbook/actions/workflows/docs.yml/badge.svg)](https://mlops.zrl.dev/)
+[![Docs](https://img.shields.io/website-up-down-green-red/https/mlops.zrl.dev.svg?label=docs)](https://mlops.zrl.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/LICENSE)
 
 A **production-grade FastAPI service** for detecting, triaging, and resolving
@@ -32,17 +32,31 @@ revocation, and Prometheus + OpenTelemetry instrumentation.
 ```bash
 git clone https://github.com/zrlopez/ml-incident-response-playbook.git
 cd ml-incident-response-playbook
-cp .env.example .env          # fill in secrets
-docker compose up --build     # API at http://localhost:8000
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env
+docker compose up -d postgres redis prometheus grafana
+uvicorn api.app:app --reload --port 8000
 ```
 
 See [Setup](setup.md) and [Deployment](deployment.md) for full details.
+
+## Portfolio review path
+
+If you only have a few minutes, start with:
+
+1. [Operational Walkthrough](walkthrough.md)
+2. [Architecture](architecture.md)
+3. [Model Card](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/MODEL_CARD.md)
+4. [Model Degradation Runbook](https://github.com/zrlopez/ml-incident-response-playbook/blob/main/runbooks/model_degradation.md)
+5. [CI/CD Conventions](ci-conventions.md)
 
 ---
 
 ## Navigation
 
 - **[Architecture](architecture.md)** — component diagram, layer descriptions, request lifecycle, tech decisions
+- **[Operational Walkthrough](walkthrough.md)** — narrative path from alert to postmortem
 - **[API Reference](api_reference.md)** — endpoint contracts, auth flows, error schemas
 - **[Monitoring](monitoring.md)** — Prometheus metrics, alert rules, drift detection
 - **[Governance](governance.md)** — data handling, PII policy, SLA definitions

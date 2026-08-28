@@ -12,7 +12,7 @@
 #   make ci-local       Mirror full CI run locally (CI-65)
 #   make audit          Run pip-audit security scan
 #   make pre-commit     Run all pre-commit hooks against all files
-#   make docs           Serve MkDocs locally
+#   make docs           Open the Vercel-hosted docs site
 #   make clean          Remove build/cache artifacts
 # =============================================================================
 
@@ -127,7 +127,7 @@ pre-commit:
 
 # ── Docs ──────────────────────────────────────────────────────────────────────────────
 docs:
-	mkdocs serve
+	@open https://mlops.zrl.dev 2>/dev/null || xdg-open https://mlops.zrl.dev 2>/dev/null || echo "https://mlops.zrl.dev"
 
 # ── Clean ──────────────────────────────────────────────────────────────────────────────
 clean:

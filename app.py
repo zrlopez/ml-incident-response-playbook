@@ -32,7 +32,7 @@ See Also
 - ``api/app.py``            — production FastAPI factory
 - ``api/routers/inference.py`` — authenticated inference route
 - ``ml_models/incident_anomaly/registry.py`` — model registry
-- ``DEMO.md``               — architecture decision record for this split
+- ``docs/walkthrough.md``   — portfolio walkthrough of the incident flow
 - ``MODEL_CARD.md``         — model provenance, limitations, and license
 """
 from __future__ import annotations

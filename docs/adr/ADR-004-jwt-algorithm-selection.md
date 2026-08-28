@@ -1,4 +1,4 @@
-# ADR-002 — JWT Algorithm Selection: HS256 (tests) / RS256 (production)
+# ADR-004 — JWT Algorithm Selection: HS256 (tests) / RS256 (production)
 
 **Status:** Accepted  
 **Date:** 2026-05-28  

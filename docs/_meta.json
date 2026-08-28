@@ -1,0 +1,29 @@
+{
+  "index": "Home",
+  "walkthrough": "Operational Walkthrough",
+  "architecture": "Architecture",
+  "api_reference": "API Reference",
+  "data_dictionary": "Data Dictionary",
+  "monitoring": "Monitoring",
+  "metrics": "Metrics",
+  "governance": "Governance",
+  "deployment": "Deployment",
+  "ci-conventions": "CI/CD Conventions",
+  "operational_principles": "Operational Principles",
+  "onboarding": "Onboarding",
+  "setup": "Setup",
+  "troubleshooting": "Troubleshooting",
+  "severity_matrix": "Severity Matrix",
+  "validation_rules": "Validation Rules",
+  "ml_models": "ML Models",
+  "branch-protection-policy": "Branch Protection Policy",
+  "adr": "Architecture Decision Records",
+  "dashboards": "Dashboards",
+  "policies": "Policies",
+  "templates": "Templates",
+  "CONTRIBUTING": "Contributing",
+  "REMEDIATION_LOG": "Remediation Log",
+  "assets": {
+    "display": "hidden"
+  }
+}

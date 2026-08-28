@@ -11,7 +11,7 @@ Base URL (staging): `https://staging.mlplatform.internal/api/v1`
 
 ## Authentication
 
-### `POST /auth/token` `[public]`
+### `POST /auth/token` — public
 
 Issues a short-lived JWT access token and a long-lived refresh token stored in an httpOnly cookie.
 

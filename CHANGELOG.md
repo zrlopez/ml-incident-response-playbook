@@ -311,14 +311,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [1.5.1] — 2026-05-25
 
 ### Fixed
-- `CI-29`: resolve 10 MkDocs strict-mode warnings.
+- `CI-29`: resolve 10 legacy docs strict-mode warnings.
 
 ---
 
 ## [1.5.0] — 2026-05-25
 
 ### Added
-- `CI-28`: MkDocs Material site + GitHub Pages deploy workflow.
+- `CI-28`: legacy static docs deploy workflow.
 
 ---
 
@@ -442,8 +442,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 | CI-25 | 1.2.8 | 2026-05-24 | fix(ci): set sarif scan exit-code to 0; table scan is the hard gate |
 | CI-26 | 1.3.0 | 2026-05-25 | refactor(ci): replace SQLite test job with integration-tests as gate |
 | CI-27 | 1.4.0 | 2026-05-25 | feat(test): add unit-tests job (SQLite, no Postgres); --cov-fail-under=60 |
-| CI-28 | 1.5.0 | 2026-05-25 | feat(docs): add MkDocs Material site + GitHub Pages deploy workflow |
-| CI-29 | 1.5.1 | 2026-05-25 | fix(docs): resolve 10 MkDocs strict-mode warnings |
+| CI-28 | 1.5.0 | 2026-05-25 | feat(docs): add legacy static docs deploy workflow |
+| CI-29 | 1.5.1 | 2026-05-25 | fix(docs): resolve 10 legacy docs strict-mode warnings |
 | CI-30 | 1.5.2 | 2026-05-25 | chore(docs): point site_url and Docs badge to mlops.zrl.dev |
 | CI-31 | 1.5.3 | 2026-05-25 | fix(ci): seed semgrep.sarif before semgrep step |
 | CI-32 | 1.5.4 | 2026-05-25 | fix(sast): cast RSAPrivateKey/RSAPublicKey in key_store.py |

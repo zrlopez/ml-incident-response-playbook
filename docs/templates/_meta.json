@@ -1,0 +1,7 @@
+{
+  "escalation_template": "Escalation Template",
+  "governance-exception-request": "Exception Request",
+  "incident_response_template": "Incident Response Template",
+  "incident_update_template": "Incident Update Template",
+  "postmortem_template": "Postmortem Template"
+}
