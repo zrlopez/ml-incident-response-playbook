@@ -124,4 +124,9 @@ MAT_*.md
 # and should be reviewed alongside Dockerfile changes.
 node_modules/
 package-lock.json
+!site/package-lock.json
+!site/lib/
+site/node_modules/
+site/.next/
+site/out/
 cosign.key
