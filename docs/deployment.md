@@ -44,18 +44,20 @@ Interactive API docs are available at `http://localhost:8000/docs`.
 
 ## Docker Compose Stack
 
-`docker-compose.yml` starts all services together: the API, Redis, Prometheus,
-and Jaeger (for local trace visualisation).
+`docker-compose.yml` starts the local backing and observability services:
+PostgreSQL, Redis, Prometheus, and Grafana. Run the FastAPI service locally with
+Uvicorn, or combine the base file with `docker-compose.prod.yml` for the
+containerized API profile.
 
 ```bash
-# Build and start all services
-docker compose up --build
+# Start local backing services and dashboards
+docker compose up -d postgres redis prometheus grafana
 
-# Tail API logs only
-docker compose logs -f api
+# Start the API locally
+uvicorn api.app:app --reload --port 8000
 
-# Run tests against the live stack
-docker compose exec api pytest tests/ -v
+# Run integration tests against the live backing services
+pytest tests/integration/ -v
 
 # Stop and remove containers
 docker compose down
@@ -63,11 +65,10 @@ docker compose down
 
 | Service | Port | Purpose |
 |---|---|---|
-| `api` | 8000 | FastAPI application |
+| `postgres` | 5432 | Primary relational store |
 | `redis` | 6379 | JWT denylist |
 | `prometheus` | 9090 | Metrics collection and alerting |
-| `jaeger` | 16686 | Distributed trace UI |
-| `otel-collector` | 4317 | OTLP gRPC receiver |
+| `grafana` | 3000 | Dashboard UI |
 
 ---
 

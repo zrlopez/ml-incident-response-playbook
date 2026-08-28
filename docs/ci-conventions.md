@@ -104,7 +104,7 @@ ci(sast): add bandit hard gate for medium severity findings
 | File | Purpose | Trigger |
 |---|---|---|
 | `.github/workflows/secured_ci.yml` | Primary security-gated CI pipeline | push: main/develop; PR: main |
-| `.github/workflows/docs.yml` | MkDocs site build and GitHub Pages deploy | push: main; PR: main; workflow_dispatch |
+| `.github/workflows/docs.yml` | Vercel docs-site health check | push: main; PR: main; workflow_dispatch |
 | `.github/workflows/mermaid-render.yml` | Render `docs/diagrams/*.mmd` to PNG; commits output back to branch | push: main/develop on `*.mmd` path; workflow_dispatch |
 
 **File naming convention:** `kebab-case.yml`. Workflow files must declare a
@@ -214,8 +214,8 @@ This document (Section 5.4) is the authoritative cross-repository reference map.
 
 | Action | Tag | Verified SHA | Used In |
 |---|---|---|---|
-| `actions/checkout` | v4.3.0 | `ef36d1093e2975a02b4c6a03c8b73990a59a478f` | secured_ci.yml, docs.yml, mermaid-render.yml |
-| `actions/setup-python` | v5.6.0 | `a26af69be951a213d495a4c3e4e4022e16d87065` | secured_ci.yml, docs.yml |
+| `actions/checkout` | v4.3.0 | `ef36d1093e2975a02b4c6a03c8b73990a59a478f` | secured_ci.yml, mermaid-render.yml |
+| `actions/setup-python` | v5.6.0 | `a26af69be951a213d495a4c3e4e4022e16d87065` | secured_ci.yml |
 | `actions/setup-node` | v4.4.0 | `49933ea5288caeca8642d1e84afbd3f7d6820020` | mermaid-render.yml |
 | `actions/upload-artifact` | v4.6.2 | `ea165f8d65b6e75b540449e92b4886f43607fa02` | secured_ci.yml |
 | `docker/setup-buildx-action` | v4.1.0 | `d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5` | secured_ci.yml |
@@ -226,8 +226,7 @@ This document (Section 5.4) is the authoritative cross-repository reference map.
 | `github/codeql-action/*` | v4.36.0 | `7211b7c8077ea37d8641b6271f6a365a22a5fbfa` | secured_ci.yml |
 | `actions/dependency-review-action` | v5.0.0 | `a1d282b36b6f3519aa1f3fc636f609c47dddb294` | secured_ci.yml |
 | `semgrep/semgrep-action` | v1.1.0 | `713efdd345f3035192eaa63f56867b88e63e4e5d` | secured_ci.yml |
-| `actions/upload-pages-artifact` | v5.0.0 | `fc324d3547104276b827a68afc52ff2a11cc49c9` | docs.yml |
-| `actions/deploy-pages` | v5.0.0 | `cd2ce8fcbc39b97be8ca5fce6e763baed58fa128` | docs.yml |
+
 
 **Known gap — `mermaid-render.yml`:**
 `[GAP: mermaid-render.yml uses actions/checkout@v4.3.0 as a tag-only pin,
@@ -385,7 +384,7 @@ concurrency:
 | Workflow | Group prefix |
 |---|---|
 | `secured_ci.yml` | `ci` |
-| `docs.yml` | `pages` |
+| `docs.yml` | `docs` |
 | `mermaid-render.yml` | `mermaid` |
 
 **Exception:** Do not use `cancel-in-progress: true` for deployment workflows
@@ -419,7 +418,7 @@ Mandatory same-commit checklist:
 - [ ] **This file (`docs/ci-conventions.md`) updated:**
   - Section 4.1: current highest `CI-NN`
   - Section 5.4: reference map if any action version changed
-- [ ] `mkdocs.yml` nav updated if a new doc file was added
+- [ ] Vercel docs navigation updated if a new public docs page was added
 
 ---
 

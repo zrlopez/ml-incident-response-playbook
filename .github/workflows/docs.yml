@@ -1,27 +1,19 @@
 # =============================================================================
-# MkDocs GitHub Pages Deploy
+# Docs Site Health Check
 # =============================================================================
 # Changelog (Conventional Commits — type(scope): summary):
-#   2026-05-25 v1.0.0 CI-28 feat(docs): initial MkDocs Material + GitHub Pages deploy
+#   2026-05-25 v1.0.0 CI-28 feat(docs): initial legacy static docs deploy
 #   2026-05-25 v1.0.1 CI-37 fix(docs): add digest reference block; add inline SHA
 #                    comments on all action uses (F-03 — convention compliance)
+#   2026-08-28 v2.0.0 CI-70 ci(docs): replace legacy docs deploy with Vercel health check
 # =============================================================================
 #
-# ACTION SHA DIGEST REFERENCE (all verified via get_tag API object.sha):
-#   actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-#     -> ef36d1093e2975a02b4c6a03c8b73990a59a478f
-#   actions/setup-python@v6.2.0
-#     -> a309ff8b426b58ec0e2a45f0f869d46889d02405
-#   actions/upload-pages-artifact@v5.0.0
-#     -> fc324d3547104276b827a68afc52ff2a11cc49c9
-#   actions/deploy-pages@v5.0.0
-#     -> cd2ce8fcbc39b97be8ca5fce6e763baed58fa128
-# =============================================================================
+# The public documentation site is deployed by Vercel at https://mlops.zrl.dev.
+# This workflow no longer builds or deploys docs. It verifies that the live
+# Vercel-hosted docs endpoint responds successfully after repository changes.
 #
-# Builds the MkDocs Material site and deploys to GitHub Pages (gh-pages branch).
-#
-# Trigger: push to main; pull_request to main (build-only, no deploy)
-# URL:     https://zrlopez.github.io/ml-incident-response-playbook/
+# Trigger: push to main; pull_request to main; workflow_dispatch
+# URL:     https://mlops.zrl.dev/
 # =============================================================================
 name: Docs
 
@@ -34,52 +26,25 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: docs-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build MkDocs site
+  health-check:
+    name: Vercel docs health check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0  # full history for git-revision-date plugin if added later
-
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
-        with:
-          python-version: '3.11'
-          cache: pip
-
-      - name: Install MkDocs + plugins
+      - name: Verify Vercel docs site responds
         run: |
-          pip install \
-            mkdocs==1.6.1 \
-            mkdocs-material==9.5.47 \
-            mkdocs-mermaid2-plugin==1.2.1 \
-            pymdown-extensions==10.14.3
-
-      - name: Build site
-        run: mkdocs build --strict --verbose
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
-        with:
-          path: site/
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy Pages
-        id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0
+          status=$(curl -L -sS -o /tmp/docs.html -w "%{http_code}" https://mlops.zrl.dev/)
+          if [ "$status" != "200" ]; then
+            echo "ERROR: https://mlops.zrl.dev returned HTTP $status"
+            exit 1
+          fi
+          grep -qi "ML Incident" /tmp/docs.html || {
+            echo "ERROR: docs response did not contain expected project marker"
+            exit 1
+          }
+          echo "Vercel docs site is healthy."

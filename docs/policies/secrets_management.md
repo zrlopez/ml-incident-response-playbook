@@ -122,8 +122,8 @@ aws secretsmanager rotate-secret \
   --rotation-rules AutomaticallyAfterDays=90
 ```
 
-For database credentials, use the [RDS-provided rotation Lambda](
-https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotating-secrets-rds.html).
+For database credentials, use the
+[RDS-provided rotation Lambda](https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotating-secrets-rds.html).
 
 ---
 

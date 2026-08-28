@@ -1,4 +1,4 @@
-# ADR-003 — Container Base Image: Alpine vs Debian
+# ADR-006 — Container Base Image: Alpine vs Debian
 
 **Status:** Accepted  
 **Date:** 2026-05-28  

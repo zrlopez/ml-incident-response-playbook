@@ -80,7 +80,7 @@
 | R-P52 | Phase 17 | Portfolio | Add "Known Limitations" callout section to README | LOW | BACKLOG | — | `README.md` | Section present; no overselling |
 | R-P53 | Phase 17 | Portfolio | Update Roadmap section to strategic format: Q3 2026 / Q4 2026 / Aspirational | LOW | BACKLOG | R-P50 | `README.md` | Roadmap reflects actual planned phases |
 | R-P54 | Phase 17 | Portfolio | Verify all badge URLs resolve and are accurate | LOW | BACKLOG | R-P20 | `README.md` | All badges return 200; values match CI state |
-| R-P55 | Phase 17 | Portfolio | Verify all internal doc links are not broken | LOW | BACKLOG | R-P34–R-P37 | `README.md`, `docs/` | `mkdocs build --strict` passes with 0 broken links |
+| R-P55 | Phase 17 | Portfolio | Verify all internal doc links are not broken | LOW | BACKLOG | R-P34–R-P37 | `README.md`, `docs/` | Markdown link check passes with 0 broken links |
 | R-P56 | Phase 17 | Portfolio | Final README read-through — remove stale Fly.io references; verify `zrl.dev` link | LOW | BACKLOG | R-P51–R-P55 | `README.md` | Zero Fly.io references; `zrl.dev` links resolve |
 
 ---

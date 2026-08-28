@@ -211,5 +211,5 @@ what would be required before deploying it to a real production system:
 | No multi-model lifecycle | Single model version; no champion/challenger, shadow mode, or A/B testing | Extend `ModelRegistry` to support multiple named versions; add `/models/{version}/predict` routing |
 | No labeled ground truth loop | No mechanism to collect human labels on predictions for continuous evaluation | Build feedback endpoint (`POST /incidents/{id}/label`) and aggregate into a growing evaluation dataset |
 
-> See [ADR-010](./adr/ADR-010-anomaly-model-design.md) for the full design
+> See [ADR-010](docs/adr/ADR-010-anomaly-model-design.md) for the full design
 > rationale, algorithm selection tradeoffs, and intended productionization path.

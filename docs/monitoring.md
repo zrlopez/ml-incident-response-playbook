@@ -10,7 +10,7 @@ This document describes the full observability stack for the ML Incident Respons
 
 The platform uses a three-pillar observability approach: **metrics** (Prometheus + Grafana), **structured logs** (JSON → stdout → Loki), and **distributed traces** (OpenTelemetry → Tempo). Each pillar is independently queryable but they share a unified correlation key: the `trace_id` emitted by the FastAPI middleware on every request and included in all log lines and spans.
 
-The `docker-compose.yml` in the repo root spins up all three collection backends alongside the application. In production, each component maps to a managed equivalent (e.g., Grafana Cloud, Datadog, or an internal Prometheus federation).
+The `docker-compose.yml` in the repo root starts the local backing and observability services: PostgreSQL, Redis, Prometheus, and Grafana. The FastAPI application runs separately with Uvicorn during local development. In production, each component maps to a managed equivalent (e.g., Grafana Cloud, Datadog, or an internal Prometheus federation).
 
 ---
 
