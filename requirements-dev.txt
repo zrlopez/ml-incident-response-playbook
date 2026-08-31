@@ -35,4 +35,4 @@ pip-audit==2.9.0
 pre-commit==4.6.0
 hypothesis>=6.155.0
 testcontainers>=4.8
-docker>=7.0
+docker>=7.2.0
