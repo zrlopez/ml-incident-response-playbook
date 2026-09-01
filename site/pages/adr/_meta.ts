@@ -1,0 +1,12 @@
+export default {
+  "ADR-001-incident-tracker-architecture": "ADR-001 Tracker",
+  "ADR-002-async-orm": "ADR-002 Async ORM",
+  "ADR-003-redis-jwt-denylist": "ADR-003 JWT Denylist",
+  "ADR-004-jwt-algorithm-selection": "ADR-004 JWT Algo",
+  "ADR-005-alembic-migration-strategy": "ADR-005 Alembic",
+  "ADR-006-alpine-vs-debian-base-image": "ADR-006 Base Image",
+  "ADR-007-structlog-otel-observability": "ADR-007 Observability",
+  "ADR-008-db-persistence-strategy": "ADR-008 Persistence",
+  "ADR-009-async-architecture": "ADR-009 Async",
+  "ADR-010-anomaly-model-design": "ADR-010 Anomaly Model"
+}

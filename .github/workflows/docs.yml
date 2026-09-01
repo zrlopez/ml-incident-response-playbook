@@ -7,6 +7,7 @@
 #                    comments on all action uses (F-03 — convention compliance)
 #   2026-08-28 v2.0.0 CI-70 ci(docs): replace legacy docs deploy with Vercel health check
 #   2026-08-28 v2.1.0 CI-71 ci(docs): build tracked Next docs source before health check
+#   2026-09-01 v2.2.0 ci(docs): Nextra site on main uses pnpm; title branding fix
 # =============================================================================
 #
 # The public documentation site is deployed by Vercel at https://mlops.zrl.dev.
@@ -40,17 +41,21 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f  # v6.1.0
         with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: site/package-lock.json
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
 
       - name: Build tracked Vercel docs source
         working-directory: site
         run: |
-          npm ci
-          npm run build
+          pnpm install --frozen-lockfile
+          pnpm build
 
       - name: Verify Vercel docs site responds
         run: |
