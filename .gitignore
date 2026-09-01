@@ -130,3 +130,5 @@ site/node_modules/
 site/.next/
 site/out/
 cosign.key
+
+site/.vercel/
