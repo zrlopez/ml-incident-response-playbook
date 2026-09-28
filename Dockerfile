@@ -30,7 +30,7 @@
 # ------------------------------------------------------------------
 # R-06 TODO: replace tag with digest once verified (see changelog above).
 # Tag-only: python:3.12-alpine — safe for dev/CI; inline digest pin required before production release.
-FROM python:3.14-alpine@sha256:016508ba505da24f7139765bc4bb669df4e88eb2f12eeadd571bf2f88d7533df AS builder
+FROM python:3.14-alpine@sha256:9e9fde4d32eedce0b661d9ab91e826b62dddf28e928c230ec55f1866cac66b01 AS builder
 
 WORKDIR /build
 
@@ -70,7 +70,7 @@ RUN python -m venv /opt/venv \
 # Stage 2: runtime image
 # Purpose: minimal production image. No build tools, no compilers, no pip.
 # ------------------------------------------------------------------
-FROM python:3.14-alpine@sha256:016508ba505da24f7139765bc4bb669df4e88eb2f12eeadd571bf2f88d7533df AS runtime
+FROM python:3.14-alpine@sha256:9e9fde4d32eedce0b661d9ab91e826b62dddf28e928c230ec55f1866cac66b01 AS runtime
 
 # SEC-1: Runtime-only env vars. Never set secrets as ENV — use env_file or secrets.
 ENV PYTHONDONTWRITEBYTECODE=1 \
