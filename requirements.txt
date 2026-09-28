@@ -43,7 +43,7 @@ opentelemetry-exporter-otlp-proto-grpc==1.41.1
 opentelemetry-instrumentation==0.62b1
 opentelemetry-instrumentation-asgi==0.62b1
 opentelemetry-instrumentation-fastapi==0.62b1
-opentelemetry-proto==1.41.1
+opentelemetry-proto==1.45.0
 opentelemetry-sdk==1.41.1
 opentelemetry-semantic-conventions==0.62b1
 opentelemetry-util-http==0.62b1
