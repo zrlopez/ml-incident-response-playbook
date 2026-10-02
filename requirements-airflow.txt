@@ -9,7 +9,7 @@
 #   pip install -r requirements-airflow.txt  (inside Airflow image build)
 # ──────────────────────────────────────────────────────────────────────────────
 
-apache-airflow==3.2.2
+apache-airflow==3.3.0
 
 # Airflow providers used by DAGs in this project
 apache-airflow-providers-postgres>=6.0.0,<7.0.0
