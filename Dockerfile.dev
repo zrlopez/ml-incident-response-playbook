@@ -13,7 +13,7 @@
 #   pin the digest: python:3.11-slim@sha256:<digest>
 #   Run `docker inspect python:3.11-slim | jq '.[0].RepoDigests'` to obtain it.
 # =============================================================================
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 ARG APP_VERSION=dev
 
@@ -24,7 +24,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim AS final
+FROM python:3.12-slim AS final
 
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION} \
