@@ -12,7 +12,7 @@
 # pytest-asyncio 1.0.0 adds pytest 9 support but is a major version bump;
 # downgrading pytest to 8.3.x (latest stable 8.x) is the safer fix.
 pytest==8.3.5
-pytest-cov==6.1.0
+pytest-cov==6.3.0
 pytest-asyncio==0.26.0
 # CI-57: pytest-xdist enables parallel test execution via -n auto in CI.
 pytest-xdist==3.6.1
