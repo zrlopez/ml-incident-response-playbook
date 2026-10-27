@@ -48,7 +48,7 @@ dependencies = [
     # ML / Data
     "numpy==2.2.6",
     "pandas==2.3.3",
-    "scikit-learn==1.8.0",
+    "scikit-learn==1.9.1",
     "joblib==1.5.3",
     # AWS SDK
     "boto3==1.43.17",
