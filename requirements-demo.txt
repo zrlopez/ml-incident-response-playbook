@@ -14,6 +14,6 @@
 #   - numpy           (feature vector ops)
 # ---------------------------------------------------------------------------
 gradio>=4.44.0
-scikit-learn==1.8.0
+scikit-learn==1.9.1
 joblib==1.5.3
 numpy==2.2.6
