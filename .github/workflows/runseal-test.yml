@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Bandit inside Runseal sandbox
-        uses: always-further/runseal@v0.3.3
+        uses: always-further/runseal@v0.3.4
         with:
           run: |
             pip install bandit[toml] -q
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Generate audit evidence
-        uses: always-further/runseal@v0.3.3
+        uses: always-further/runseal@v0.3.4
         with:
           run: |
             echo "Running audited commands..."
@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Test filesystem isolation
-        uses: always-further/runseal@v0.3.3
+        uses: always-further/runseal@v0.3.4
         with:
           run: |
             echo "=== Filesystem Isolation Test ==="
