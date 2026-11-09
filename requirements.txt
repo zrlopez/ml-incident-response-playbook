@@ -35,7 +35,7 @@ jmespath==1.1.0
 joblib==1.5.3
 limits==5.8.0
 mako==1.4.2
-markupsafe==3.0.3
+markupsafe==3.0.4
 numpy==2.2.6
 opentelemetry-api==1.41.1
 opentelemetry-exporter-otlp-proto-common==1.41.1
