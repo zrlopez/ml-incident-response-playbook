@@ -25,7 +25,7 @@ dependencies = [
     # Rate limiting
     "slowapi==0.1.9",
     # Data validation
-    "pydantic==2.11.5",
+    "pydantic==2.14.3",
     "pydantic-settings==2.9.1",
     # Structured logging
     "structlog==25.4.0",
@@ -46,7 +46,7 @@ dependencies = [
     "prometheus-fastapi-instrumentator==8.0.0",
     "prometheus-client==0.21.1",
     # ML / Data
-    "numpy==2.2.6",
+    "numpy==2.3.2",
     "pandas==2.3.3",
     "scikit-learn==1.9.1",
     "joblib==1.5.3",
